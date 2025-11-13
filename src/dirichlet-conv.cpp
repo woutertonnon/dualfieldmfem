@@ -42,7 +42,7 @@ struct Parameters {
     // std::string outputfile = "out/rawdata/dirichlet-conv-invisc-dTGV.txt";
 
     std::string outputfile = "out/rawdata/dirichlet-conv-test1.txt";
-    const char* mesh_file = "extern/mfem-4.5/data/ref-cube.mesh";
+    const char* mesh_file = "extern/mfem/data/ref-cube.mesh";
     // const char* mesh_file = "extern/mfem-4.5/data/ref-square.mesh";
 };
 
