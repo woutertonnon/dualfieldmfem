@@ -43,11 +43,9 @@ public:
         refinements = tree.get<int>("refinements",0);
         order = tree.get<int>("order",1);
         visualisation = tree.get<int>("visualisation",0);
-        velocity_code = tree.get<std::string>("velocity","");
         boundary_data_u_code = tree.get<std::string>("boundary_data_u","");
-        boundary_data_A_code = tree.get<std::string>("boundary_data_A","");
         initial_data_u_code = tree.get<std::string>("initial_data_u","");
-        initial_data_A_code = tree.get<std::string>("initial_data_A","");
+        initial_data_w_code = tree.get<std::string>("initial_data_w","");
         viscosity = tree.get<double>("viscosity",0);
 
         // Generate code and load the dynamic library
@@ -65,12 +63,6 @@ public:
     std::string get_outputfile() const { return outputfile; }
 
     // Methods to interface with the dynamic library
-    void velocity_data(const mfem::Vector &x, mfem::Vector &out)
-    {
-        out.SetSize(x.Size());
-        velocity_data_func(x.GetData(), 0., out.GetData(), x.Size());
-    }
-
     void boundary_data_u(const mfem::Vector &x, double t, mfem::Vector &out)
     {
         out.SetSize(x.Size());
@@ -83,18 +75,10 @@ public:
         initial_data_u_func(x.GetData(), out.GetData(), x.Size());
     }
 
-    mfem::real_t boundary_data_A(const mfem::Vector &x, double t)
+    void initial_data_w(const mfem::Vector &x, mfem::Vector &out)
     {
-        double val;
-        boundary_data_A_func(x.GetData(), t, &val, x.Size());
-        return val;
-    }
-
-    mfem::real_t initial_data_A(const mfem::Vector &x)
-    {
-        double out;
-        initial_data_A_func(x.GetData(), &out, x.Size());
-        return out;
+        out.SetSize(x.Size());
+        initial_data_w_func(x.GetData(), out.GetData(), x.Size());
     }
 
 private:
@@ -110,20 +94,16 @@ private:
 
     // Function pointers for the dynamically loaded functions
     typedef void (*InitialDataFunc)(double *, double *, int);
-    typedef void (*VelocityDataFunc)(double *, double, double *, int);
     typedef void (*BoundaryDataFunc)(double *, double, double *, int);
 
-    InitialDataFunc initial_data_u_func, initial_data_A_func;
-    VelocityDataFunc velocity_data_func;
-    BoundaryDataFunc boundary_data_u_func, boundary_data_A_func;
+    InitialDataFunc initial_data_u_func;
+    BoundaryDataFunc boundary_data_u_func;
+    InitialDataFunc initial_data_w_func;
 
     // Code snippets for custom functions loaded from the JSON
-    std::string velocity_code;
     std::string boundary_data_u_code;
     std::string initial_data_u_code;
-    std::string boundary_data_A_code;
-    std::string initial_data_A_code;
-
+    std::string initial_data_w_code;
     // Method to generate code and load the dynamic library
     void PrepareCodeAndLibrary()
     {
@@ -136,26 +116,16 @@ private:
                 void initial_data_u(double* x, double* out, int dim) {
                     )" +
                     initial_data_u_code + R"(
-                }
+                }      
 
-                void initial_data_A(double* x, double* out, int dim) {
+                void initial_data_w(double* x, double* out, int dim) {
                     )" +
-                    initial_data_A_code + R"(
-                }
-        
-                void velocity_data(double* x, double t, double *out, int dim) {
-                    )" +
-                    velocity_code + R"(
+                    initial_data_w_code + R"(
                 }
         
                 void boundary_data_u(double* x, double t, double* out, int dim) {
                     )" +
                     boundary_data_u_code + R"(
-                }
-
-                void boundary_data_A(double* x, double t, double* out, int dim) {
-                    )" +
-                    boundary_data_A_code + R"(
                 }
             }
         )";
@@ -173,7 +143,9 @@ private:
         }
 
         // Load the compiled shared library
-        void *handle = dlopen("libinitial_condition.so", RTLD_LAZY);
+        // Prefer an explicit relative path so dlopen searches the current
+        // working directory where the shared library is generated.
+        void *handle = dlopen("./libinitial_condition.so", RTLD_LAZY);
         if (!handle)
         {
             std::cerr << "Failed to load library: " << dlerror() << std::endl;
@@ -188,33 +160,15 @@ private:
             dlclose(handle);
             return;
         }
-
-        initial_data_A_func = (InitialDataFunc)dlsym(handle, "initial_data_A");
-        if (!initial_data_A_func)
+        initial_data_w_func = (InitialDataFunc)dlsym(handle, "initial_data_w");
+        if (!initial_data_w_func)
         {
             std::cerr << "Failed to load initial data function: " << dlerror() << std::endl;
             dlclose(handle);
             return;
         }
-
-        velocity_data_func = (VelocityDataFunc)dlsym(handle, "velocity_data");
-        if (!velocity_data_func)
-        {
-            std::cerr << "Failed to load velocity function: " << dlerror() << std::endl;
-            dlclose(handle);
-            return;
-        }
-
         boundary_data_u_func = (BoundaryDataFunc)dlsym(handle, "boundary_data_u");
         if (!boundary_data_u_func)
-        {
-            std::cerr << "Failed to load boundary data function: " << dlerror() << std::endl;
-            dlclose(handle);
-            return;
-        }
-
-        boundary_data_A_func = (BoundaryDataFunc)dlsym(handle, "boundary_data_A");
-        if (!boundary_data_A_func)
         {
             std::cerr << "Failed to load boundary data function: " << dlerror() << std::endl;
             dlclose(handle);
