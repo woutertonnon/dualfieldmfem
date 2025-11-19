@@ -1,5 +1,3 @@
-#! /bin/sh
+cd /scratch/users/wtonnon/VisualStudioProjects/dualfieldmfem && rm -rf build && mkdir build && CC=$(command -v mpicc) CXX=$(command -v mpicxx) cmake -S . -B build -DMFEM_FETCH_TPLS=NO -DMFEM_FETCH_METIS=OFF -DMETIS_DIR=/usr -DMETIS_LIBRARY=/lib64/libmetis.so -DMFEM_USE_MUMPS=ON -DMUMPS_DIR=/usr -DMUMPS_VERSION=560 -DCMAKE_BUILD_TYPE=Release -DCMAKE_FIND_DEBUG_MODE=TRUE
 
-
-
-./build/MEHCscheme
+cmake --build build -j$(nproc)

@@ -107,8 +107,7 @@ int main(int argc, char *argv[]) {
     int l;
     for (l = 0; l<refinements; l++) {mesh.UniformRefinement();} 
 
-    // scale dt with meshsize
-    dt *= 0.5; 
+
 
     // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
     mfem::FiniteElementCollection *fec_DG = new mfem::L2_FECollection(order-1,dim);
@@ -119,30 +118,6 @@ int main(int argc, char *argv[]) {
     mfem::FiniteElementSpace ND(&mesh, fec_ND);
     mfem::FiniteElementSpace RT(&mesh, fec_RT);
     mfem::FiniteElementSpace CG(&mesh, fec_CG);
-
-    // essdofs
-    mfem::Array<int> RT_ess_tdof;
-    mfem::Array<int> ND_ess_tdof;
-    mfem::Array<int> ND_ess_tdof_0;
-    mfem::Array<int> ess_dof2;
-    ND.GetBoundaryTrueDofs(ND_ess_tdof); 
-    ND_ess_tdof.Print(std::cout);
-    for (int i=0; i<ND.GetNDofs(); i++) {
-        if(-1 == ND_ess_tdof.Find(i)){
-
-            std::cout << i << ", " << ND.GetBdrElementType(i) << std::endl; 
-            
-        } 
-    }
-    ND.GetBoundaryTrueDofs(ND_ess_tdof_0); 
-    RT.GetBoundaryTrueDofs(ess_dof2);
-    RT.GetBoundaryTrueDofs(RT_ess_tdof);
-    //RT_ess_tdof.Print(std::cout);
-    for (int i=0; i<ND_ess_tdof.Size(); i++) {
-        ND_ess_tdof[i] += RT.GetNDofs() ;
-    }
-    ess_dof2.Append(ND_ess_tdof);
-    abort();
 
     // Initialize time-stepping variables
     double t = 0.;
@@ -192,16 +167,9 @@ int main(int argc, char *argv[]) {
     f1.Assemble();
     f2.Assemble(); 
 
-    // boundary integral for primal reynolds term
-    mfem::LinearForm lform_zxn(&ND);
-    lform_zxn.AddBoundaryIntegrator(new mfem::VectorFEBoundaryTangentLFIntegrator(w_coeff)); 
-    lform_zxn.Assemble();
-    lform_zxn *= -1.*Re_inv; // minus!
 
-    // boundary integral for primal div-free cond
-    mfem::LinearForm lform_un(&CG);
-    lform_un.AddBoundaryIntegrator(new mfem::BoundaryNormalLFIntegrator(u_coeff)); 
-    lform_un.Assemble();
+
+  
 
     // system size
     int size_1 = u.Size() + z.Size() + p.Size();
@@ -301,29 +269,6 @@ int main(int argc, char *argv[]) {
     G.Finalize();
     GT->Finalize();    
 
-    // matrix E2_left
-    int rows_E2 = ess_dof2.Size();
-    mfem::SparseMatrix E2_left (rows_E2, v.Size());
-    for (int i=0; i<RT_ess_tdof.Size(); i++) {
-        E2_left.Set(i, RT_ess_tdof[i], 1.);
-    }
-    E2_left.Finalize();
-
-    // matrix E2_cent
-    mfem::SparseMatrix E2_cent (rows_E2, w.Size());
-    for (int i=0; i<ND_ess_tdof.Size(); i++) {
-        E2_cent.Set(i + RT_ess_tdof.Size(), ND_ess_tdof_0[i], 1.);
-    }
-    E2_cent.Finalize();
-
-    // vector e2
-    mfem::Vector e2(ess_dof2.Size());
-    for (int i=0; i<RT_ess_tdof.Size(); i++) {
-        e2[i] = v[RT_ess_tdof[i]];
-    }
-    for (int i=0; i<ND_ess_tdof.Size(); i++) {
-        e2[i + RT_ess_tdof.Size()] = w[ND_ess_tdof_0[i]];
-    }
 
     // initialize system matrices
     mfem::Array<int> offsets_1 (4);
@@ -339,19 +284,12 @@ int main(int argc, char *argv[]) {
     offsets_2[2] = w.Size();
     offsets_2[3] = q.Size();
     offsets_2.PartialSum();
-    mfem::Array<int> offsets_2_rows (5);
-    offsets_2_rows[0] = 0;
-    offsets_2_rows[1] = v.Size();
-    offsets_2_rows[2] = w.Size();
-    offsets_2_rows[3] = q.Size();
-    offsets_2_rows[4] = ess_dof2.Size();
-    offsets_2_rows.PartialSum();
-    mfem::BlockOperator A2(offsets_2_rows, offsets_2);
+    mfem::BlockMatrix A2(offsets_2);
 
     // initialize rhs
     mfem::Vector b1(size_1);
     mfem::Vector b1sub(u.Size());
-    mfem::Vector b2(size_2 + ess_dof2.Size()); 
+    mfem::Vector b2(size_2); 
     mfem::Vector b2sub(v.Size());
 
     ////////////////////////////////////////////////////////////////////
@@ -388,8 +326,6 @@ int main(int argc, char *argv[]) {
     M_dt.AddMult(u,b1sub,2);
     b1.AddSubVector(f1,0);
     b1.AddSubVector(b1sub,0);
-    b1.AddSubVector(lform_zxn, 0); // NEU
-    b1.AddSubVector(lform_un, u.Size() + z.Size());
 
     // Transposition
     mfem::TransposeOperator AT1 (&A1);
@@ -480,8 +416,6 @@ int main(int argc, char *argv[]) {
         A2.SetBlock(1,0, CT);
         A2.SetBlock(1,1, &M_n);
         A2.SetBlock(2,0, &D);
-        A2.SetBlock(3,0, &E2_left);
-        A2.SetBlock(3,1, &E2_cent);
 
         // update f2
         f_coeff.SetTime(t-dt);
@@ -497,19 +431,8 @@ int main(int argc, char *argv[]) {
         C_Re.AddMult(w,b2sub,-1);
         b2.AddSubVector(f2,0); 
         b2.AddSubVector(b2sub,0);
-        b2.AddSubVector(e2, size_2);
 
         // remove unnecessary equations from matrix corresponding to essdofs
-        for (int i=0; i<RT_ess_tdof.Size(); i++) {
-            NR.EliminateRow(RT_ess_tdof[i]);
-            C_Re.EliminateRow(RT_ess_tdof[i]);
-            DT_n->EliminateRow(RT_ess_tdof[i]);
-            b2[RT_ess_tdof[i]] = 0.;
-        }
-        for (int i=0; i<ND_ess_tdof_0.Size(); i++) {
-            CT->EliminateRow(ND_ess_tdof_0[i]);
-            M_n.EliminateRow(ND_ess_tdof_0[i]);
-        }
 
         // Transposition
         mfem::TransposeOperator AT2 (&A2);
@@ -593,6 +516,18 @@ int main(int argc, char *argv[]) {
         A1.MultTranspose(b1,ATb1);
 
         // solve 
+        // Choose SuperLU as the linear solver
+        //mfem::SuperLUSolver superlu;
+        //superlu.SetOperator(ATA1);
+
+        // Optionally:
+        //superlu.SetPrintStatistics(true);
+        // superlu.SetEquilibriate(true); // depending on the MFEM version
+
+        //superlu.Mult(ATb1, x);
+        mfem::HypreParMatrix *ATA1_ptr = (&ATA1).As<mfem::HypreParMatrix>()->GetSystemMatrix();
+        mfem::MUMPSSolver mumps(ATA1);
+        mumps.Mult(ATb1, x);
         mfem::MINRES(ATA1, ATb1, x, 1, iter, tol*tol, tol*tol);
         x.GetSubVector(u_dofs, u);
         x.GetSubVector(z_dofs, z);
@@ -776,8 +711,8 @@ void f_t(const mfem::Vector &x, double t, mfem::Vector &returnvalue) {
     double Y = x(1)-0.5;
     double Z = x(2)-0.5;
 
-    returnvalue(0) = -2*Fof2 *std::sin(X)*std::cos(X)*std::cos(Y)*std::cos(Y);
-    returnvalue(1) = -2*Fof2 *std::cos(X)*std::cos(X)*std::sin(Y)*std::cos(Y);
+    returnvalue(0) = 0.;
+    returnvalue(1) = 0.;
     returnvalue(2) = 0.;
 }
 
