@@ -1,0 +1,15 @@
+{
+    "mesh": "periodic",
+    "outputfile": "example",
+    "dt": 0.05,
+    "T": 4,
+    "refinements": 2,
+    "order": 1,
+    "visualisation": 1,
+    "viscosity": 0.0,
+    "boundary_data_u": "out[0] = 0.;out[1]=0.;",
+    "initial_data_u": "out[0] = sin(M_PI*x[0])*cos(M_PI*x[1])*cos(M_PI*x[2]);out[1] = cos(M_PI*x[0])*sin(M_PI*x[1])*cos(M_PI*x[2]);out[2] = -2.*cos(M_PI*x[0])*cos(M_PI*x[1])*sin(M_PI*x[2]);",
+    "initial_data_w": "out[0] = 3.*M_PI*cos(M_PI*x[0])*sin(M_PI*x[1])*sin(M_PI*x[2]);out[1] = -3.*M_PI*sin(M_PI*x[0])*cos(M_PI*x[1])*sin(M_PI*x[2]);out[2] =0.;"
+
+
+}
