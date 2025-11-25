@@ -525,9 +525,17 @@ int main(int argc, char *argv[]) {
         // superlu.SetEquilibriate(true); // depending on the MFEM version
 
         //superlu.Mult(ATb1, x);
-        mfem::HypreParMatrix *ATA1_ptr = (&ATA1).As<mfem::HypreParMatrix>()->GetSystemMatrix();
-        mfem::MUMPSSolver mumps(ATA1);
-        mumps.Mult(ATb1, x);
+        //mfem::HypreParMatrix *ATA1_ptr = (&ATA1).As<mfem::HypreParMatrix>()->GetSystemMatrix();
+        //mfem::MUMPSSolver mumps(ATA1);
+        //mumps.Mult(ATb1, x);
+        mfem::UMFPackSolver solver;
+        solver.SetOperator(ATA1);
+        solver.Mult(ATb1, x);
+        //x.Print(std::cout);
+        mfem::Vector res(ATb1);
+        ATA1.AddMult(x,res,-1.);
+        std::cout<< "Error UMFPack: " << res.Norml2()/ATb1.Norml2() << std::endl;
+
         mfem::MINRES(ATA1, ATb1, x, 1, iter, tol*tol, tol*tol);
         x.GetSubVector(u_dofs, u);
         x.GetSubVector(z_dofs, z);

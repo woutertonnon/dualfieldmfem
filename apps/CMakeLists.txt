@@ -4,7 +4,7 @@
 
 # dirichlet problem
 #add_executable(${PROJECT_NAME} dualfieldnavierstokes.cpp)
-add_executable(${PROJECT_NAME} mumpstest.cpp)
+add_executable(${PROJECT_NAME} dualfieldnavierstokes.cpp)
 
 
 
