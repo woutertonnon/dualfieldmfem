@@ -36,12 +36,15 @@ int main(int argc, char *argv[])
     int visualisation = config.get_visualisation(); // Visualisation level
     int printlevel = config.get_printlevel();
     double tol = config.get_tol();
+    bool has_exact_u = config.has_exact_u();
     std::string mesh_string = config.get_mesh();       // Path to mesh file
     std::string output_file = config.get_outputfile(); // Output file for results
     std::string solver_type = config.get_solver();
 
     std::function<void(const mfem::Vector &, double, mfem::Vector &)> boundary_data_u =
         std::bind(&SimulationConfig::boundary_data_u, &config, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    std::function<void(const mfem::Vector &, double, mfem::Vector &)> exact_data_u =
+        std::bind(&SimulationConfig::exact_data_u, &config, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     std::function<void(const mfem::Vector &, double, mfem::Vector &)> force_data =
         std::bind(&SimulationConfig::force_data, &config, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     std::function<void(const mfem::Vector &, mfem::Vector &)> initial_data_u =
@@ -271,7 +274,7 @@ int main(int argc, char *argv[])
    }
 
    // --- CSV output for monitoring six variables (u,z,p,v,w,q) ---
-   EnergyCSVLogger csv_logger(output_file, M_op, N_op, u, v, w, z);
+   EnergyCSVLogger csv_logger(config, M_op, N_op, u, v, w, z);
    csv_logger.WriteRow(0, 0., 0.);
 
    // Set up ParaView data collection for visualization

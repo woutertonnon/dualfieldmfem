@@ -54,6 +54,8 @@ public:
         force_data_code = tree.get<std::string>("force_data", "");
         initial_data_u_code = tree.get<std::string>("initial_data_u", "");
         initial_data_w_code = tree.get<std::string>("initial_data_w", "");
+        exact_data_u_code = tree.get<std::string>("exact_data_u", "");
+        has_exact_u_solution = !exact_data_u_code.empty();
 
         viscosity = tree.get<double>("viscosity", 0);
         printlevel = tree.get<int>("printlevel", 0);
@@ -108,6 +110,21 @@ extern "C" {
                  << force_data_code <<
                 R"(
     }
+)";
+            file <<
+                R"(    void exact_data_u(double* x, double t, double* out, int dim) {
+)";
+            if (has_exact_u_solution)
+            {
+                file << exact_data_u_code << "\n";
+            }
+            else
+            {
+                // Safe default if accidentally called
+                file << "for (int i = 0; i < dim; ++i) out[i] = 0.0;\n";
+            }
+            file <<
+                R"(    }
 
 } // extern "C"
 )";
@@ -140,7 +157,7 @@ extern "C" {
 
         // Load the function pointers
         initial_data_u_func =
-            reinterpret_cast<InitialDataFunc>(dlsym(lib_handle, "initial_data_u"));
+            reinterpret_cast<SpaceDataFunc>(dlsym(lib_handle, "initial_data_u"));
         if (!initial_data_u_func)
         {
             std::cerr << "Rank " << rank
@@ -151,7 +168,7 @@ extern "C" {
         }
 
         initial_data_w_func =
-            reinterpret_cast<InitialDataFunc>(dlsym(lib_handle, "initial_data_w"));
+            reinterpret_cast<SpaceDataFunc>(dlsym(lib_handle, "initial_data_w"));
         if (!initial_data_w_func)
         {
             std::cerr << "Rank " << rank
@@ -162,7 +179,7 @@ extern "C" {
         }
 
         boundary_data_u_func =
-            reinterpret_cast<BoundaryDataFunc>(dlsym(lib_handle, "boundary_data_u"));
+            reinterpret_cast<SpaceTimeDataFunc>(dlsym(lib_handle, "boundary_data_u"));
         if (!boundary_data_u_func)
         {
             std::cerr << "Rank " << rank
@@ -173,11 +190,22 @@ extern "C" {
         }
 
         force_data_func =
-            reinterpret_cast<BoundaryDataFunc>(dlsym(lib_handle, "force_data"));
+            reinterpret_cast<SpaceTimeDataFunc>(dlsym(lib_handle, "force_data"));
         if (!force_data_func)
         {
             std::cerr << "Rank " << rank
                       << ": Failed to load force_data: " << dlerror() << std::endl;
+            dlclose(lib_handle);
+            lib_handle = nullptr;
+            return;
+        }
+
+        exact_data_u_func =
+            reinterpret_cast<SpaceTimeDataFunc>(dlsym(lib_handle, "exact_data_u"));
+        if (!force_data_func)
+        {
+            std::cerr << "Rank " << rank
+                      << ": Failed to load exact_data_u: " << dlerror() << std::endl;
             dlclose(lib_handle);
             lib_handle = nullptr;
             return;
@@ -196,6 +224,7 @@ extern "C" {
     std::string get_mesh() const { return mesh; }
     std::string get_outputfile() const { return outputfile; }
     std::string get_solver() const { return solver; }
+    bool has_exact_u() const { return has_exact_u_solution; }
 
     // Methods to interface with the dynamic library
     void boundary_data_u(const mfem::Vector &x, double t, mfem::Vector &out)
@@ -245,6 +274,16 @@ extern "C" {
         }
         initial_data_w_func(x.GetData(), out.GetData(), x.Size());
     }
+    void exact_data_u(const mfem::Vector &x, double t, mfem::Vector &out)
+    {
+        out.SetSize(x.Size());
+        if (!exact_data_u_func)
+        {
+            std::cerr << "exact_data_u is null (library not initialized?)\n";
+            return;
+        }
+        exact_data_u_func(x.GetData(), t, out.GetData(), x.Size());
+    }
 
 private:
     // Configuration parameters loaded from the JSON file
@@ -261,13 +300,16 @@ private:
     double tol;
 
     // Function pointers for the dynamically loaded functions
-    typedef void (*InitialDataFunc)(double *, double *, int);
-    typedef void (*BoundaryDataFunc)(double *, double, double *, int);
+    typedef void (*SpaceDataFunc)(double *, double *, int);
+    typedef void (*SpaceTimeDataFunc)(double *, double, double *, int);
 
-    InitialDataFunc initial_data_u_func;
-    BoundaryDataFunc boundary_data_u_func;
-    BoundaryDataFunc force_data_func;
-    InitialDataFunc initial_data_w_func;
+    SpaceDataFunc initial_data_u_func;
+    SpaceTimeDataFunc boundary_data_u_func;
+    SpaceTimeDataFunc force_data_func;
+    SpaceDataFunc initial_data_w_func;
+    SpaceTimeDataFunc exact_data_u_func;
+
+    bool has_exact_u_solution;
 
     void *lib_handle; // handle from dlopen
 
@@ -276,12 +318,13 @@ private:
     std::string force_data_code;
     std::string initial_data_u_code;
     std::string initial_data_w_code;
+    std::string exact_data_u_code;
 };
 
 class EnergyCSVLogger
 {
 public:
-    EnergyCSVLogger(const std::string &output_file,
+    EnergyCSVLogger(SimulationConfig &config,
                     mfem::Operator &M_op,
                     mfem::Operator &N_op,
                     mfem::GridFunction &u,
@@ -295,8 +338,9 @@ public:
           M_w_(w.Size()),
           N_v_(v.Size()),
           N_z_(z.Size()),
-          output_file_(output_file)
+          config_(config)
     {
+        std::string output_file = config.get_outputfile();
         std::string csv_path = std::string("../out/") + output_file + std::string("_vars.csv");
         csv_ = std::ofstream(csv_path, std::ios::out);
 
@@ -308,7 +352,12 @@ public:
         }
 
         std::cout << "[info] CSV opened (truncated): " << csv_path << std::endl;
-        csv_ << "cycle,time_full,time_half,||u1||,||u2||,u1*w1,u2*w2\n";
+        csv_ << "cycle,time_full,time_half,||u1||,||u2||,u1*w1,u2*w2";
+        if (config.has_exact_u())
+        {
+            csv_ << ",u1_err_L2,u2_err_L2";
+        }
+        csv_ << std::endl;
         csv_.flush();
     }
 
@@ -337,7 +386,15 @@ public:
              << std::setprecision(15) << std::fixed
              << t_full << "," << t_half << ","
              << u1_norm << "," << u2_norm << ","
-             << u1w1 << "," << u2w2 << "\n";
+             << u1w1 << "," << u2w2;
+        if (config_.has_exact_u())
+        {
+            std::function<void(const mfem::Vector &, double, mfem::Vector &)> exact_data_u =
+                std::bind(&SimulationConfig::exact_data_u, &config_, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+            mfem::VectorFunctionCoefficient u_exact_coeff(3, exact_data_u);
+            csv_ << "," << u_.ComputeL2Error(u_exact_coeff) << "," << v_.ComputeL2Error(u_exact_coeff);
+        }
+        csv_ << std::endl;
         csv_.flush();
     }
 
@@ -351,5 +408,5 @@ private:
 
     mfem::Vector M_u_, M_w_, N_v_, N_z_;
     std::ofstream csv_;
-    std::string output_file_;
+    SimulationConfig &config_;
 };
