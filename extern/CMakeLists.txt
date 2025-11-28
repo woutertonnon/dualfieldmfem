@@ -13,7 +13,8 @@
 # fetching METIS (to prevent ABI mismatches) and avoid optional packages that
 # would require additional system de$pendencies such as STRUMPACK/SuiteSparse.
 #set(MFEM_FETCH_TPLS ON CACHE BOOL "Fetch MFEM TPLs")
-#set(MFEM_FETCH_METIS ON CACHE BOOL "Do not fetch METIS")
+set(MFEM_FETCH_HYPRE ON CACHE BOOL "Fetch HYPRE")
+#set(MFEM_FETCH_METIS OFF CACHE BOOL "Do not fetch METIS")
 # Do not force SuiteSparse off here; allow the top-level caller or command
 # line to enable `-DMFEM_USE_SUITESPARSE=ON` when system SuiteSparse is
 # available. Only set a default if the variable was not provided.

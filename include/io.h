@@ -29,19 +29,7 @@ public:
 
     // Constructor that reads configuration from a JSON file
     explicit SimulationConfig(const std::string &filename)
-        : dt(0.0)
-        , T(0.0)
-        , viscosity(0.0)
-        , refinements(0)
-        , order(1)
-        , visualisation(0)
-        , printlevel(0)
-        , tol(1e-8)
-        , initial_data_u_func(nullptr)
-        , boundary_data_u_func(nullptr)
-        , force_data_func(nullptr)
-        , initial_data_w_func(nullptr)
-        , lib_handle(nullptr)
+        : dt(0.0), T(0.0), viscosity(0.0), refinements(0), order(1), visualisation(0), printlevel(0), tol(1e-8), initial_data_u_func(nullptr), boundary_data_u_func(nullptr), force_data_func(nullptr), initial_data_w_func(nullptr), lib_handle(nullptr)
     {
         // Read the JSON file into a property tree
         boost::property_tree::ptree tree;
@@ -51,23 +39,23 @@ public:
         PrintTree(tree, depth);
 
         // Populate member variables from the JSON configuration
-        mesh          = tree.get<std::string>("mesh");
-        outputfile    = tree.get<std::string>("outputfile");
-        solver        = tree.get<std::string>("solver");
-        dt            = tree.get<double>("dt");
-        T             = tree.get<double>("T");
-        refinements   = tree.get<int>("refinements", 0);
-        order         = tree.get<int>("order", 1);
+        mesh = tree.get<std::string>("mesh");
+        outputfile = tree.get<std::string>("outputfile");
+        solver = tree.get<std::string>("solver");
+        dt = tree.get<double>("dt");
+        T = tree.get<double>("T");
+        refinements = tree.get<int>("refinements", 0);
+        order = tree.get<int>("order", 1);
         visualisation = tree.get<int>("visualisation", 0);
-        tol           = tree.get<double>("tol", 1e-8);
+        tol = tree.get<double>("tol", 1e-8);
 
         boundary_data_u_code = tree.get<std::string>("boundary_data_u", "");
         // BUG FIX: this was overwriting boundary_data_u_code before
-        force_data_code      = tree.get<std::string>("force_data",      "");
-        initial_data_u_code  = tree.get<std::string>("initial_data_u",  "");
-        initial_data_w_code  = tree.get<std::string>("initial_data_w",  "");
+        force_data_code = tree.get<std::string>("force_data", "");
+        initial_data_u_code = tree.get<std::string>("initial_data_u", "");
+        initial_data_w_code = tree.get<std::string>("initial_data_w", "");
 
-        viscosity  = tree.get<double>("viscosity", 0);
+        viscosity = tree.get<double>("viscosity", 0);
         printlevel = tree.get<int>("printlevel", 0);
 
         // NOTE: we DO NOT compile/load the library in the constructor anymore.
@@ -93,32 +81,32 @@ public:
             // Generate C++ code that includes the user-provided function code
             std::ofstream file("generated_initial_condition.cpp");
             file <<
-R"(#include <cmath>
+                R"(#include <cmath>
 
 extern "C" {
 
     void initial_data_u(double* x, double* out, int dim) {
 )"
                  << initial_data_u_code <<
-R"(
+                R"(
     }
 
     void initial_data_w(double* x, double* out, int dim) {
 )"
                  << initial_data_w_code <<
-R"(
+                R"(
     }
 
     void boundary_data_u(double* x, double t, double* out, int dim) {
 )"
                  << boundary_data_u_code <<
-R"(
+                R"(
     }
 
     void force_data(double* x, double t, double* out, int dim) {
 )"
                  << force_data_code <<
-R"(
+                R"(
     }
 
 } // extern "C"
@@ -197,17 +185,17 @@ R"(
     }
 
     // Getter methods for configuration parameters
-    double get_dt()        const { return dt; }
-    double get_T()         const { return T; }
+    double get_dt() const { return dt; }
+    double get_T() const { return T; }
     double get_viscosity() const { return viscosity; }
-    int    get_refinements() const { return refinements; }
-    int    get_order()       const { return order; }
-    int    get_visualisation() const { return visualisation; }
-    int    get_printlevel()   const { return printlevel; }
-    double get_tol()          const { return tol; }
-    std::string get_mesh()      const { return mesh; }
+    int get_refinements() const { return refinements; }
+    int get_order() const { return order; }
+    int get_visualisation() const { return visualisation; }
+    int get_printlevel() const { return printlevel; }
+    double get_tol() const { return tol; }
+    std::string get_mesh() const { return mesh; }
     std::string get_outputfile() const { return outputfile; }
-    std::string get_solver()     const { return solver; }
+    std::string get_solver() const { return solver; }
 
     // Methods to interface with the dynamic library
     void boundary_data_u(const mfem::Vector &x, double t, mfem::Vector &out)
@@ -276,10 +264,10 @@ private:
     typedef void (*InitialDataFunc)(double *, double *, int);
     typedef void (*BoundaryDataFunc)(double *, double, double *, int);
 
-    InitialDataFunc  initial_data_u_func;
+    InitialDataFunc initial_data_u_func;
     BoundaryDataFunc boundary_data_u_func;
     BoundaryDataFunc force_data_func;
-    InitialDataFunc  initial_data_w_func;
+    InitialDataFunc initial_data_w_func;
 
     void *lib_handle; // handle from dlopen
 
@@ -288,4 +276,80 @@ private:
     std::string force_data_code;
     std::string initial_data_u_code;
     std::string initial_data_w_code;
+};
+
+class EnergyCSVLogger
+{
+public:
+    EnergyCSVLogger(const std::string &output_file,
+                    mfem::Operator &M_op,
+                    mfem::Operator &N_op,
+                    mfem::GridFunction &u,
+                    mfem::GridFunction &v,
+                    mfem::GridFunction &w,
+                    mfem::GridFunction &z)
+        : M_op_(M_op),
+          N_op_(N_op),
+          u_(u), v_(v), w_(w), z_(z),
+          M_u_(u.Size()),
+          M_w_(w.Size()),
+          N_v_(v.Size()),
+          N_z_(z.Size()),
+          output_file_(output_file)
+    {
+        std::string csv_path = std::string("../out/") + output_file + std::string("_vars.csv");
+        csv_ = std::ofstream(csv_path, std::ios::out);
+
+        if (!csv_)
+        {
+            std::cerr << "[warn] Failed to open CSV (for truncation): "
+                      << csv_path << std::endl;
+            return;
+        }
+
+        std::cout << "[info] CSV opened (truncated): " << csv_path << std::endl;
+        csv_ << "cycle,time_full,time_half,||u1||,||u2||,u1*w1,u2*w2\n";
+        csv_.flush();
+    }
+
+    bool IsOpen() const { return csv_.is_open(); }
+
+    void WriteRow(int cycle, double t_full, double t_half)
+    {
+        if (!csv_)
+        {
+            return;
+        }
+
+        // Matrix-free applications
+        M_op_.Mult(u_, M_u_); // M u
+        M_op_.Mult(w_, M_w_); // M w
+        N_op_.Mult(v_, N_v_); // N v
+        N_op_.Mult(z_, N_z_); // N z
+
+        // Inner products as dot products
+        double u1_norm = u_ * M_u_; // (u, M u)
+        double u2_norm = v_ * N_v_; // (v, N v)
+        double u1w1 = u_ * M_w_;    // (u, M w)
+        double u2w2 = v_ * N_z_;    // (v, N z)
+
+        csv_ << cycle << ","
+             << std::setprecision(15) << std::fixed
+             << t_full << "," << t_half << ","
+             << u1_norm << "," << u2_norm << ","
+             << u1w1 << "," << u2w2 << "\n";
+        csv_.flush();
+    }
+
+private:
+    mfem::Operator &M_op_;
+    mfem::Operator &N_op_;
+    mfem::GridFunction &u_;
+    mfem::GridFunction &v_;
+    mfem::GridFunction &w_;
+    mfem::GridFunction &z_;
+
+    mfem::Vector M_u_, M_w_, N_v_, N_z_;
+    std::ofstream csv_;
+    std::string output_file_;
 };
