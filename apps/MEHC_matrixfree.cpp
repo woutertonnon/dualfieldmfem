@@ -6,10 +6,7 @@
 
 #include "mfem.hpp"
 #include <mpi.h>
-#include "io.h"
-
-// If you have the SimulationConfig class from earlier, include it here.
-// #include "SimulationConfig.hpp"
+#include "io.h"  // SimulationConfig, EnergyCSVLogger
 
 using namespace mfem;
 using namespace std;
@@ -17,79 +14,82 @@ using namespace std;
 int main(int argc, char *argv[])
 {
    MPI_Init(&argc, &argv);
+   MPI_Comm comm = MPI_COMM_WORLD;
    int rank;
-   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+   MPI_Comm_rank(comm, &rank);
 
+   // Read config and initialize dynamic function library
    SimulationConfig config("../data/config/example2.json");
-   config.InitializeLibrary(rank, MPI_COMM_WORLD);
+   config.InitializeLibrary(rank, comm);
 
    // ------------------------------------------------------------------
-   // 0. Configuration (replace with SimulationConfig if you have it)
+   // 0. Configuration
    // ------------------------------------------------------------------
-   // For illustration I'll hard-code a few things.
-       // Parse configuration parameters
-    double dt = config.get_dt(); // Time step
-    double T = config.get_T();   // Total time
-    double viscosity = config.get_viscosity();
-    int refinements = config.get_refinements();     // Number of mesh refinements
-    int order = config.get_order();                 // Finite element order
-    int visualisation = config.get_visualisation(); // Visualisation level
-    int printlevel = config.get_printlevel();
-    double tol = config.get_tol();
-    bool has_exact_u = config.has_exact_u();
-    std::string mesh_string = config.get_mesh();       // Path to mesh file
-    std::string output_file = config.get_outputfile(); // Output file for results
-    std::string solver_type = config.get_solver();
+   double dt           = config.get_dt();
+   double T            = config.get_T();
+   double viscosity    = config.get_viscosity();
+   int refinements     = config.get_refinements();
+   int order           = config.get_order();
+   int visualisation   = config.get_visualisation();
+   int printlevel      = config.get_printlevel();
+   double tol          = config.get_tol();
+   bool has_exact_u    = config.has_exact_u();
+   std::string mesh_string  = config.get_mesh();
+   std::string output_file  = config.get_outputfile();
+   std::string solver_type  = config.get_solver();
 
-    std::function<void(const mfem::Vector &, double, mfem::Vector &)> boundary_data_u =
-        std::bind(&SimulationConfig::boundary_data_u, &config, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-    std::function<void(const mfem::Vector &, double, mfem::Vector &)> exact_data_u =
-        std::bind(&SimulationConfig::exact_data_u, &config, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-    std::function<void(const mfem::Vector &, double, mfem::Vector &)> force_data =
-        std::bind(&SimulationConfig::force_data, &config, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-    std::function<void(const mfem::Vector &, mfem::Vector &)> initial_data_u =
-        std::bind(&SimulationConfig::initial_data_u, &config, std::placeholders::_1, std::placeholders::_2);
-    std::function<void(const mfem::Vector &, mfem::Vector &)> initial_data_w =
-        std::bind(&SimulationConfig::initial_data_w, &config, std::placeholders::_1, std::placeholders::_2);
+   std::function<void(const mfem::Vector&, double, mfem::Vector&)> boundary_data_u =
+       std::bind(&SimulationConfig::boundary_data_u, &config,
+                 std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+   std::function<void(const mfem::Vector&, double, mfem::Vector&)> exact_data_u =
+       std::bind(&SimulationConfig::exact_data_u, &config,
+                 std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+   std::function<void(const mfem::Vector&, double, mfem::Vector&)> force_data =
+       std::bind(&SimulationConfig::force_data, &config,
+                 std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+   std::function<void(const mfem::Vector&, mfem::Vector&)> initial_data_u =
+       std::bind(&SimulationConfig::initial_data_u, &config,
+                 std::placeholders::_1, std::placeholders::_2);
+   std::function<void(const mfem::Vector&, mfem::Vector&)> initial_data_w =
+       std::bind(&SimulationConfig::initial_data_w, &config,
+                 std::placeholders::_1, std::placeholders::_2);
 
    // ------------------------------------------------------------------
-   // 1. Mesh and FE spaces (serial for now)
+   // 1. Mesh and FE spaces (PARALLEL)
    // ------------------------------------------------------------------
    Mesh mesh(mesh_string.c_str(), 1, 1);
-   int dim = mesh.Dimension();
-
    for (int l = 0; l < refinements; l++)
    {
       mesh.UniformRefinement();
    }
+   int dim = mesh.Dimension();
+
+   // Distribute Mesh to ParMesh
+   ParMesh pmesh(comm, mesh);
+   mesh.Clear(); // free serial mesh
 
    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
    FiniteElementCollection *fec_DG = new L2_FECollection(order - 1, dim);
    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
    FiniteElementCollection *fec_RT = new RT_FECollection(order - 1, dim);
    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
-   FiniteElementSpace DG(&mesh, fec_DG);
-   FiniteElementSpace ND(&mesh, fec_ND);
-   FiniteElementSpace RT(&mesh, fec_RT);
-   FiniteElementSpace CG(&mesh, fec_CG);
+
+   ParFiniteElementSpace DG(&pmesh, fec_DG);
+   ParFiniteElementSpace ND(&pmesh, fec_ND);
+   ParFiniteElementSpace RT(&pmesh, fec_RT);
+   ParFiniteElementSpace CG(&pmesh, fec_CG);
 
    // ------------------------------------------------------------------
-   // 2. Unknowns and gridfunctions
+   // 2. Unknowns and gridfunctions (PARALLEL)
    // ------------------------------------------------------------------
-   GridFunction u(&ND);
-   u = 0.0;
-   GridFunction z(&RT);
-   z = 0.0;
-   GridFunction p(&CG);
-   p = 0.0;
-   GridFunction v(&RT);
-   v = 0.0;
-   GridFunction w(&ND);
-   w = 0.0;
-   GridFunction q(&DG);
-   q = 0.0;
+   ParGridFunction u(&ND); u = 0.0;
+   ParGridFunction z(&RT); z = 0.0;
+   ParGridFunction p(&CG); p = 0.0;
+   ParGridFunction v(&RT); v = 0.0;
+   ParGridFunction w(&ND); w = 0.0;
+   ParGridFunction q(&DG); q = 0.0;
 
-   // For now, just constant initial data
+   // Initial data from user-provided functions
    {
       VectorFunctionCoefficient u0(dim, initial_data_u);
       VectorFunctionCoefficient w0(dim, initial_data_w);
@@ -101,6 +101,7 @@ int main(int argc, char *argv[])
 
    // ------------------------------------------------------------------
    // 3. System sizes and block layout
+   //    NOTE: Sizes are local DOFs per rank.
    // ------------------------------------------------------------------
    int size_1 = u.Size() + z.Size() + p.Size();
    int size_2 = v.Size() + w.Size() + q.Size();
@@ -136,11 +137,12 @@ int main(int argc, char *argv[])
    BlockOperator A2(offsets_2);
 
    // ------------------------------------------------------------------
-   // 4. Time-independent bilinear/mixed forms (matrix-free / PA)
+   // 4. Time-independent bilinear/mixed forms (matrix-free / PA, PARALLEL)
    // ------------------------------------------------------------------
-   // Mass matrices M (on ND) and N (on RT)
    ConstantCoefficient one_coeff(1.0);
-   BilinearForm blf_M(&ND);
+
+   // Mass matrices M (on ND) and N (on RT)
+   ParBilinearForm blf_M(&ND);
    blf_M.AddDomainIntegrator(new VectorFEMassIntegrator(one_coeff));
    blf_M.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_M.Assemble();
@@ -148,7 +150,7 @@ int main(int argc, char *argv[])
    ScaledOperator M_dt_op(&M_op, 1.0 / dt);
    ScaledOperator M_n_op(&M_op, -1.0);
 
-   BilinearForm blf_N(&RT);
+   ParBilinearForm blf_N(&RT);
    blf_N.AddDomainIntegrator(new VectorFEMassIntegrator(one_coeff));
    blf_N.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_N.Assemble();
@@ -157,7 +159,7 @@ int main(int argc, char *argv[])
    ScaledOperator N_n_op(&N_op, -1.0);
 
    // C : ND -> RT (curl)
-   MixedBilinearForm blf_C(&ND, &RT);
+   ParMixedBilinearForm blf_C(&ND, &RT);
    blf_C.AddDomainIntegrator(new MixedVectorCurlIntegrator());
    blf_C.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_C.Assemble();
@@ -167,7 +169,7 @@ int main(int argc, char *argv[])
    ScaledOperator CT_Re_op(&CT_op, viscosity / 2.0);
 
    // D : RT -> DG (div)
-   MixedBilinearForm blf_D(&RT, &DG);
+   ParMixedBilinearForm blf_D(&RT, &DG);
    blf_D.AddDomainIntegrator(new MixedScalarDivergenceIntegrator());
    // blf_D.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_D.Assemble();
@@ -176,7 +178,7 @@ int main(int argc, char *argv[])
    ScaledOperator DT_n_op(&DT_op, -1.0);
 
    // G : CG -> ND (grad)
-   MixedBilinearForm blf_G(&CG, &ND);
+   ParMixedBilinearForm blf_G(&CG, &ND);
    blf_G.AddDomainIntegrator(new MixedVectorGradientIntegrator());
    blf_G.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_G.Assemble();
@@ -189,21 +191,18 @@ int main(int argc, char *argv[])
    double t = 0.0;
    int cycle = 0;
 
-   // For forcing: f = 0 here, but you can plug in your VectorFunctionCoefficient
-   Vector zero_vec(dim);
-   zero_vec = 0.0;
-   VectorFunctionCoefficient f_coeff(dim, [](const Vector &x, Vector &val)
-                                     { val = 0.0; });
+   Vector zero_vec(dim); zero_vec = 0.0;
+   VectorFunctionCoefficient f_coeff(dim, [](const Vector &x, Vector &val){ val = 0.0; });
 
    // Rhs containers
    Vector b1(size_1), b1sub(u.Size());
    Vector b2(size_2), b2sub(v.Size());
 
-   // Solver selection (only iterative, since we are matrix-free)
+   // Solver selection
    unique_ptr<Solver> solver;
    if (solver_type == "MINRES")
    {
-      auto minres = make_unique<MINRESSolver>();
+      auto minres = make_unique<MINRESSolver>(comm);
       minres->SetAbsTol(tol);
       minres->SetRelTol(0.);
       minres->SetMaxIter(10000);
@@ -212,7 +211,7 @@ int main(int argc, char *argv[])
    }
    else // CG
    {
-      auto cg = make_unique<CGSolver>();
+      auto cg = make_unique<CGSolver>(comm);
       cg->SetAbsTol(tol);
       cg->SetRelTol(0.);
       cg->SetMaxIter(10000);
@@ -230,7 +229,7 @@ int main(int argc, char *argv[])
 
    // Euler step: build MR_eul operator (2/dt M + cross(w,·)) in PA
    {
-      MixedBilinearForm blf_MR_eul(&ND, &ND);
+      ParMixedBilinearForm blf_MR_eul(&ND, &ND);
       blf_MR_eul.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
       blf_MR_eul.AddDomainIntegrator(new MixedCrossProductIntegrator(w_gfcoeff));
       // blf_MR_eul.SetAssemblyLevel(AssemblyLevel::PARTIAL);
@@ -248,14 +247,13 @@ int main(int argc, char *argv[])
       A1.SetBlock(1, 1, &N_n_op);
       A1.SetBlock(2, 0, &GT_op);
 
-      // Build rhs b1:  b1 = 2*M_dt*u + f1  (simplified, no extra terms)
+      // Build rhs b1:  b1 = 2*M_dt*u + f1  (simplified)
       b1 = 0.0;
       b1sub = 0.0;
       M_dt_op.Mult(u, tmp_u);
-      b1sub.Add(2.0, tmp_u); // emulate AddMult(u, b1sub, 2)
+      b1sub.Add(2.0, tmp_u);
 
       b1.AddSubVector(b1sub, 0);
-      // you can add f1, boundary terms etc here as in your original code
 
       // Normal equations A1^T A1 x = A1^T b1
       TransposeOperator AT1(&A1);
@@ -273,27 +271,37 @@ int main(int argc, char *argv[])
       x.GetSubVector(p_dofs, p);
    }
 
-   // --- CSV output for monitoring six variables (u,z,p,v,w,q) ---
-   EnergyCSVLogger csv_logger(config, M_op, N_op, u, v, w, z);
-   csv_logger.WriteRow(0, 0., 0.);
+   // --- CSV output (only rank 0) ---
+   EnergyCSVLogger *csv_logger_ptr = nullptr;
+   if (rank == 0)
+   {
+      csv_logger_ptr = new EnergyCSVLogger(config, M_op, N_op, u, v, w, z);
+      if (csv_logger_ptr->IsOpen())
+      {
+         csv_logger_ptr->WriteRow(0, 0., 0.);
+      }
+   }
 
-   // Set up ParaView data collection for visualization
-   mfem::ParaViewDataCollection vtk_dc("/home/wtonnon/VisualStudioProjects/dualfieldmfem/data/visualisation/paraview/" + output_file, &mesh);
+   // ParaView data collection (parallel)
+   mfem::ParaViewDataCollection vtk_dc(
+       "/home/wtonnon/VisualStudioProjects/dualfieldmfem/data/visualisation/paraview/" + output_file,
+       &pmesh);
+
    if (visualisation > 0)
    {
-      vtk_dc.RegisterField("u1", &u); // Register field for visualization
-      vtk_dc.RegisterField("u2", &v); // Register field for visualization
-      vtk_dc.RegisterField("w1", &w); // Register field for visualization
-      vtk_dc.RegisterField("w2", &z); // Register field for visualization
-      vtk_dc.RegisterField("p0", &p); // Register field for visualization
-      vtk_dc.RegisterField("p3", &q); // Register field for visualization
-      vtk_dc.SetCycle(0);             // Set initial cycle
-      vtk_dc.SetTime(0.0);            // Set initial time
-      vtk_dc.Save();                  // Save initial data
+      vtk_dc.RegisterField("u1", &u);
+      vtk_dc.RegisterField("u2", &v);
+      vtk_dc.RegisterField("w1", &w);
+      vtk_dc.RegisterField("w2", &z);
+      vtk_dc.RegisterField("p0", &p);
+      vtk_dc.RegisterField("p3", &q);
+      vtk_dc.SetCycle(0);
+      vtk_dc.SetTime(0.0);
+      vtk_dc.Save();
    }
 
    // ------------------------------------------------------------------
-   // 6. Time loop (simplified, but matrix-free)
+   // 6. Time loop (matrix-free, PARALLEL)
    // ------------------------------------------------------------------
    while (t < T - 0.5 * dt)
    {
@@ -301,17 +309,15 @@ int main(int argc, char *argv[])
       cycle++;
 
       // === DUAL FIELD: build R2 and NR as PA operators ===
-      MixedBilinearForm blf_R2(&RT, &RT);
+      ParMixedBilinearForm blf_R2(&RT, &RT);
       blf_R2.AddDomainIntegrator(new MixedCrossProductIntegrator(z_gfcoeff));
-      // blf_R2.SetAssemblyLevel(AssemblyLevel::PARTIAL);
       blf_R2.Assemble();
       Operator &R2_op = blf_R2;
-      ScaledOperator R2_half_op(&R2_op, 0.5); // R2 * 1/2
+      ScaledOperator R2_half_op(&R2_op, 0.5);
 
-      MixedBilinearForm blf_NR(&RT, &RT);
+      ParMixedBilinearForm blf_NR(&RT, &RT);
       blf_NR.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
       blf_NR.AddDomainIntegrator(new MixedCrossProductIntegrator(z_gfcoeff));
-      // blf_NR.SetAssemblyLevel(AssemblyLevel::PARTIAL);
       blf_NR.Assemble();
       Operator &NR_op = blf_NR;
       ScaledOperator NR_half_op(&NR_op, 0.5);
@@ -338,7 +344,6 @@ int main(int argc, char *argv[])
       b2sub.Add(-1.0, tmp_v);
 
       b2.AddSubVector(b2sub, 0);
-      // add f2 etc as in your original code
 
       // normal equations
       TransposeOperator AT2(&A2);
@@ -354,17 +359,15 @@ int main(int argc, char *argv[])
       y.GetSubVector(q_dofs, q);
 
       // === PRIMAL FIELD: build R1 and MR as PA operators ===
-      MixedBilinearForm blf_R1(&ND, &ND);
+      ParMixedBilinearForm blf_R1(&ND, &ND);
       blf_R1.AddDomainIntegrator(new MixedCrossProductIntegrator(w_gfcoeff));
-      // blf_R1.SetAssemblyLevel(AssemblyLevel::PARTIAL);
       blf_R1.Assemble();
       Operator &R1_op = blf_R1;
       ScaledOperator R1_half_op(&R1_op, 0.5);
 
-      MixedBilinearForm blf_MR(&ND, &ND);
+      ParMixedBilinearForm blf_MR(&ND, &ND);
       blf_MR.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
       blf_MR.AddDomainIntegrator(new MixedCrossProductIntegrator(w_gfcoeff));
-      // blf_MR.SetAssemblyLevel(AssemblyLevel::PARTIAL);
       blf_MR.Assemble();
       Operator &MR_op = blf_MR;
       ScaledOperator MR_half_op(&MR_op, 0.5);
@@ -391,7 +394,6 @@ int main(int argc, char *argv[])
       b1sub.Add(-1.0, tmp_u);
 
       b1.AddSubVector(b1sub, 0);
-      // add f1, lform_zxn, lform_un as in your original code
 
       // normal equations
       TransposeOperator AT1_loop(&A1);
@@ -407,15 +409,18 @@ int main(int argc, char *argv[])
       x.GetSubVector(z_dofs, z);
       x.GetSubVector(p_dofs, p);
 
-      // Append norms to CSV for this timestep (after full primal solve)
-      csv_logger.WriteRow(cycle, t, t - .5 * dt);
+      // Append norms to CSV (rank 0 only)
+      if (rank == 0 && csv_logger_ptr && csv_logger_ptr->IsOpen())
+      {
+         csv_logger_ptr->WriteRow(cycle, t, t - 0.5 * dt);
+      }
 
-      // Save data to ParaView if visualization is enabled
+      // Save data to ParaView (all ranks)
       if (visualisation > 0)
       {
-         vtk_dc.SetCycle(cycle);     // Update cycle in ParaView
-         vtk_dc.SetTime(dt * cycle); // Update time in ParaView
-         vtk_dc.Save();              // Save data
+         vtk_dc.SetCycle(cycle);
+         vtk_dc.SetTime(dt * cycle);
+         vtk_dc.Save();
       }
 
       if (rank == 0)
@@ -427,6 +432,8 @@ int main(int argc, char *argv[])
    // ------------------------------------------------------------------
    // 7. Cleanup
    // ------------------------------------------------------------------
+   if (csv_logger_ptr) { delete csv_logger_ptr; }
+
    delete fec_DG;
    delete fec_ND;
    delete fec_RT;
