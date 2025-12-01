@@ -6,7 +6,7 @@
 
 #include "mfem.hpp"
 #include <mpi.h>
-#include "io.h"  // SimulationConfig, EnergyCSVLogger
+#include "io.h" // SimulationConfig, EnergyCSVLogger
 
 using namespace mfem;
 using namespace std;
@@ -25,32 +25,32 @@ int main(int argc, char *argv[])
    // ------------------------------------------------------------------
    // 0. Configuration
    // ------------------------------------------------------------------
-   double dt           = config.get_dt();
-   double T            = config.get_T();
-   double viscosity    = config.get_viscosity();
-   int refinements     = config.get_refinements();
-   int order           = config.get_order();
-   int visualisation   = config.get_visualisation();
-   int printlevel      = config.get_printlevel();
-   double tol          = config.get_tol();
-   bool has_exact_u    = config.has_exact_u();
-   std::string mesh_string  = config.get_mesh();
-   std::string output_file  = config.get_outputfile();
-   std::string solver_type  = config.get_solver();
+   double dt = config.get_dt();
+   double T = config.get_T();
+   double viscosity = config.get_viscosity();
+   int refinements = config.get_refinements();
+   int order = config.get_order();
+   int visualisation = config.get_visualisation();
+   int printlevel = config.get_printlevel();
+   double tol = config.get_tol();
+   bool has_exact_u = config.has_exact_u();
+   std::string mesh_string = config.get_mesh();
+   std::string output_file = config.get_outputfile();
+   std::string solver_type = config.get_solver();
 
-   std::function<void(const mfem::Vector&, double, mfem::Vector&)> boundary_data_u =
+   std::function<void(const mfem::Vector &, double, mfem::Vector &)> boundary_data_u =
        std::bind(&SimulationConfig::boundary_data_u, &config,
                  std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-   std::function<void(const mfem::Vector&, double, mfem::Vector&)> exact_data_u =
+   std::function<void(const mfem::Vector &, double, mfem::Vector &)> exact_data_u =
        std::bind(&SimulationConfig::exact_data_u, &config,
                  std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-   std::function<void(const mfem::Vector&, double, mfem::Vector&)> force_data =
+   std::function<void(const mfem::Vector &, double, mfem::Vector &)> force_data =
        std::bind(&SimulationConfig::force_data, &config,
                  std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-   std::function<void(const mfem::Vector&, mfem::Vector&)> initial_data_u =
+   std::function<void(const mfem::Vector &, mfem::Vector &)> initial_data_u =
        std::bind(&SimulationConfig::initial_data_u, &config,
                  std::placeholders::_1, std::placeholders::_2);
-   std::function<void(const mfem::Vector&, mfem::Vector&)> initial_data_w =
+   std::function<void(const mfem::Vector &, mfem::Vector &)> initial_data_w =
        std::bind(&SimulationConfig::initial_data_w, &config,
                  std::placeholders::_1, std::placeholders::_2);
 
@@ -64,30 +64,26 @@ int main(int argc, char *argv[])
    }
    int dim = mesh.Dimension();
 
-   // Distribute Mesh to ParMesh
-   ParMesh pmesh(comm, mesh);
-   mesh.Clear(); // free serial mesh
-
    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
    FiniteElementCollection *fec_DG = new L2_FECollection(order - 1, dim);
    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
    FiniteElementCollection *fec_RT = new RT_FECollection(order - 1, dim);
    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
 
-   ParFiniteElementSpace DG(&pmesh, fec_DG);
-   ParFiniteElementSpace ND(&pmesh, fec_ND);
-   ParFiniteElementSpace RT(&pmesh, fec_RT);
-   ParFiniteElementSpace CG(&pmesh, fec_CG);
+   FiniteElementSpace DG(&mesh, fec_DG);
+   FiniteElementSpace ND(&mesh, fec_ND);
+   FiniteElementSpace RT(&mesh, fec_RT);
+   FiniteElementSpace CG(&mesh, fec_CG);
 
    // ------------------------------------------------------------------
    // 2. Unknowns and gridfunctions (PARALLEL)
    // ------------------------------------------------------------------
-   ParGridFunction u(&ND); u = 0.0;
-   ParGridFunction z(&RT); z = 0.0;
-   ParGridFunction p(&CG); p = 0.0;
-   ParGridFunction v(&RT); v = 0.0;
-   ParGridFunction w(&ND); w = 0.0;
-   ParGridFunction q(&DG); q = 0.0;
+   GridFunction u(&ND);
+   GridFunction z(&RT);
+   GridFunction p(&CG);
+   GridFunction v(&RT);
+   GridFunction w(&ND);
+   GridFunction q(&DG);
 
    // Initial data from user-provided functions
    {
@@ -97,6 +93,8 @@ int main(int argc, char *argv[])
       v.ProjectCoefficient(u0);
       w.ProjectCoefficient(w0);
       z.ProjectCoefficient(w0);
+      p = 0.;
+      q = 0.;
    }
 
    // ------------------------------------------------------------------
@@ -135,6 +133,8 @@ int main(int argc, char *argv[])
 
    BlockOperator A1(offsets_1);
    BlockOperator A2(offsets_2);
+   BlockDiagonalPreconditioner pre1(offsets_1);
+   BlockDiagonalPreconditioner pre2(offsets_2);
 
    // ------------------------------------------------------------------
    // 4. Time-independent bilinear/mixed forms (matrix-free / PA, PARALLEL)
@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
    ConstantCoefficient one_coeff(1.0);
 
    // Mass matrices M (on ND) and N (on RT)
-   ParBilinearForm blf_M(&ND);
+   BilinearForm blf_M(&ND);
    blf_M.AddDomainIntegrator(new VectorFEMassIntegrator(one_coeff));
    blf_M.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_M.Assemble();
@@ -150,7 +150,7 @@ int main(int argc, char *argv[])
    ScaledOperator M_dt_op(&M_op, 1.0 / dt);
    ScaledOperator M_n_op(&M_op, -1.0);
 
-   ParBilinearForm blf_N(&RT);
+   BilinearForm blf_N(&RT);
    blf_N.AddDomainIntegrator(new VectorFEMassIntegrator(one_coeff));
    blf_N.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_N.Assemble();
@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
    ScaledOperator N_n_op(&N_op, -1.0);
 
    // C : ND -> RT (curl)
-   ParMixedBilinearForm blf_C(&ND, &RT);
+   MixedBilinearForm blf_C(&ND, &RT);
    blf_C.AddDomainIntegrator(new MixedVectorCurlIntegrator());
    blf_C.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_C.Assemble();
@@ -169,7 +169,7 @@ int main(int argc, char *argv[])
    ScaledOperator CT_Re_op(&CT_op, viscosity / 2.0);
 
    // D : RT -> DG (div)
-   ParMixedBilinearForm blf_D(&RT, &DG);
+   MixedBilinearForm blf_D(&RT, &DG);
    blf_D.AddDomainIntegrator(new MixedScalarDivergenceIntegrator());
    // blf_D.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_D.Assemble();
@@ -178,12 +178,69 @@ int main(int argc, char *argv[])
    ScaledOperator DT_n_op(&DT_op, -1.0);
 
    // G : CG -> ND (grad)
-   ParMixedBilinearForm blf_G(&CG, &ND);
+   MixedBilinearForm blf_G(&CG, &ND);
    blf_G.AddDomainIntegrator(new MixedVectorGradientIntegrator());
-   blf_G.SetAssemblyLevel(AssemblyLevel::PARTIAL);
+   // blf_G.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_G.Assemble();
    Operator &G_op = blf_G;
    TransposeOperator GT_op(G_op);
+
+   BilinearForm blf_H1_pre(&CG);
+   blf_H1_pre.AddDomainIntegrator(new MassIntegrator());
+   blf_H1_pre.AddDomainIntegrator(new DiffusionIntegrator());
+   // blf_H1_pre.SetAssemblyLevel(AssemblyLevel::PARTIAL);
+   blf_H1_pre.Assemble();
+   blf_H1_pre.Finalize();
+
+   BilinearForm blf_Hdiv_pre(&RT);
+   blf_Hdiv_pre.AddDomainIntegrator(new VectorFEMassIntegrator(one_coeff));
+   blf_Hdiv_pre.AddDomainIntegrator(new DivDivIntegrator());
+   // blf_Hdiv_pre.SetAssemblyLevel(AssemblyLevel::PARTIAL);
+   blf_Hdiv_pre.Assemble();
+   blf_Hdiv_pre.Finalize();
+
+   BilinearForm blf_Hcurl_pre(&ND);
+   blf_Hcurl_pre.AddDomainIntegrator(new VectorFEMassIntegrator(one_coeff));
+   blf_Hcurl_pre.AddDomainIntegrator(new CurlCurlIntegrator());
+   // blf_Hcurl_pre.SetAssemblyLevel(AssemblyLevel::PARTIAL);
+   blf_Hcurl_pre.Assemble();
+   blf_Hcurl_pre.Finalize();
+
+   BilinearForm blf_L2_pre(&DG);
+   blf_L2_pre.AddDomainIntegrator(new MassIntegrator());
+   blf_L2_pre.Assemble();
+   blf_L2_pre.Finalize();
+
+   // auto H1_pre = std::make_unique<CGSolver>(comm);
+   //H1_pre->SetMaxIter(100);
+   //H1_pre->SetAbsTol(1e-10);
+   //H1_pre->SetOperator(blf_H1_pre);
+   mfem::DSmoother H1_pre(blf_H1_pre.SpMat());
+
+   //auto Hcurl_pre = std::make_unique<CGSolver>(comm);
+   //Hcurl_pre->SetMaxIter(100);   // Hcurl_pre->SetAbsTol(1e-10);
+   //Hcurl_pre->SetOperator(blf_Hcurl_pre);
+   mfem::DSmoother Hcurl_pre(blf_Hcurl_pre.SpMat());
+
+   //auto Hdiv_pre = std::make_unique<CGSolver>(comm);
+   //Hdiv_pre->SetMaxIter(100);
+   //Hdiv_pre->SetAbsTol(1e-10);
+   //Hdiv_pre->SetOperator(blf_Hdiv_pre);
+   mfem::DSmoother Hdiv_pre(blf_Hdiv_pre.SpMat());
+
+   //   auto L2_pre = std::make_unique<CGSolver>(comm);
+   //L2_pre->SetMaxIter(100);
+   //L2_pre->SetAbsTol(1e-10);
+   //L2_pre->SetOperator(blf_L2_pre);
+   mfem::DSmoother L2_pre(blf_L2_pre.SpMat());
+
+   pre1.SetDiagonalBlock(0, &Hcurl_pre);
+   pre1.SetDiagonalBlock(1, &Hdiv_pre);
+   pre1.SetDiagonalBlock(2, &H1_pre);
+
+   pre2.SetDiagonalBlock(0, &Hdiv_pre);
+   pre2.SetDiagonalBlock(1, &Hcurl_pre);
+   pre2.SetDiagonalBlock(2, &L2_pre);
 
    // ------------------------------------------------------------------
    // 5. Time-stepping
@@ -191,21 +248,35 @@ int main(int argc, char *argv[])
    double t = 0.0;
    int cycle = 0;
 
-   Vector zero_vec(dim); zero_vec = 0.0;
-   VectorFunctionCoefficient f_coeff(dim, [](const Vector &x, Vector &val){ val = 0.0; });
+   Vector zero_vec(dim);
+   zero_vec = 0.0;
+   VectorFunctionCoefficient f_coeff(dim, [](const Vector &x, Vector &val)
+                                     { val = 0.0; });
 
    // Rhs containers
    Vector b1(size_1), b1sub(u.Size());
    Vector b2(size_2), b2sub(v.Size());
 
    // Solver selection
-   unique_ptr<Solver> solver;
+   unique_ptr<IterativeSolver> solver;
    if (solver_type == "MINRES")
    {
       auto minres = make_unique<MINRESSolver>(comm);
       minres->SetAbsTol(tol);
       minres->SetRelTol(0.);
       minres->SetMaxIter(10000);
+      minres->SetPreconditioner(pre1);
+      minres->SetPrintLevel(printlevel);
+      solver = std::move(minres);
+   }
+   else if (solver_type == "GMRES")
+   {
+      auto minres = make_unique<GMRESSolver>(comm);
+      minres->SetAbsTol(tol);
+      minres->SetKDim(500);
+      minres->SetRelTol(0.);
+      minres->SetMaxIter(10000);
+      minres->SetPreconditioner(pre1);
       minres->SetPrintLevel(printlevel);
       solver = std::move(minres);
    }
@@ -214,8 +285,9 @@ int main(int argc, char *argv[])
       auto cg = make_unique<CGSolver>(comm);
       cg->SetAbsTol(tol);
       cg->SetRelTol(0.);
-      cg->SetMaxIter(10000);
+      cg->SetMaxIter(1000);
       cg->SetPrintLevel(printlevel);
+      cg->SetPreconditioner(pre1);
       solver = std::move(cg);
    }
 
@@ -229,7 +301,7 @@ int main(int argc, char *argv[])
 
    // Euler step: build MR_eul operator (2/dt M + cross(w,·)) in PA
    {
-      ParMixedBilinearForm blf_MR_eul(&ND, &ND);
+      MixedBilinearForm blf_MR_eul(&ND, &ND);
       blf_MR_eul.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
       blf_MR_eul.AddDomainIntegrator(new MixedCrossProductIntegrator(w_gfcoeff));
       // blf_MR_eul.SetAssemblyLevel(AssemblyLevel::PARTIAL);
@@ -238,13 +310,15 @@ int main(int argc, char *argv[])
 
       // CT_eul = 2 * CT_Re (operator scaling)
       ScaledOperator CT_eul_op(&CT_Re_op, 2.0);
+      ScaledOperator C_eul_op(&C_Re_op, 2.0);
+      ScaledOperator N_n_eul_op(&N_n_op, viscosity);
 
       // Build A1 for Euler step
       A1.SetBlock(0, 0, &MR_eul_op);
       A1.SetBlock(0, 1, &CT_eul_op);
       A1.SetBlock(0, 2, &G_op);
-      A1.SetBlock(1, 0, &C_op);
-      A1.SetBlock(1, 1, &N_n_op);
+      A1.SetBlock(1, 0, &C_eul_op);
+      A1.SetBlock(1, 1, &N_n_eul_op);
       A1.SetBlock(2, 0, &GT_op);
 
       // Build rhs b1:  b1 = 2*M_dt*u + f1  (simplified)
@@ -255,15 +329,11 @@ int main(int argc, char *argv[])
 
       b1.AddSubVector(b1sub, 0);
 
-      // Normal equations A1^T A1 x = A1^T b1
-      TransposeOperator AT1(&A1);
-      ProductOperator ATA1(&AT1, &A1, false, false);
-
-      Vector ATb1(size_1);
-      A1.MultTranspose(b1, ATb1);
-
-      solver->SetOperator(ATA1);
-      solver->Mult(ATb1, x);
+      std::cout << "start first solver\n";
+      solver->SetPreconditioner(pre1);
+      solver->SetOperator(A1);
+      solver->Mult(b1, x);
+      // std::abort();
 
       // extract u,z,p
       x.GetSubVector(u_dofs, u);
@@ -285,7 +355,7 @@ int main(int argc, char *argv[])
    // ParaView data collection (parallel)
    mfem::ParaViewDataCollection vtk_dc(
        "/home/wtonnon/VisualStudioProjects/dualfieldmfem/data/visualisation/paraview/" + output_file,
-       &pmesh);
+       &mesh);
 
    if (visualisation > 0)
    {
@@ -309,13 +379,13 @@ int main(int argc, char *argv[])
       cycle++;
 
       // === DUAL FIELD: build R2 and NR as PA operators ===
-      ParMixedBilinearForm blf_R2(&RT, &RT);
+      MixedBilinearForm blf_R2(&RT, &RT);
       blf_R2.AddDomainIntegrator(new MixedCrossProductIntegrator(z_gfcoeff));
       blf_R2.Assemble();
       Operator &R2_op = blf_R2;
       ScaledOperator R2_half_op(&R2_op, 0.5);
 
-      ParMixedBilinearForm blf_NR(&RT, &RT);
+      MixedBilinearForm blf_NR(&RT, &RT);
       blf_NR.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
       blf_NR.AddDomainIntegrator(new MixedCrossProductIntegrator(z_gfcoeff));
       blf_NR.Assemble();
@@ -345,27 +415,22 @@ int main(int argc, char *argv[])
 
       b2.AddSubVector(b2sub, 0);
 
-      // normal equations
-      TransposeOperator AT2(&A2);
-      ProductOperator ATA2(&AT2, &A2, false, false);
-      Vector ATb2(size_2);
-      A2.MultTranspose(b2, ATb2);
-
-      solver->SetOperator(ATA2);
-      solver->Mult(ATb2, y);
+      solver->SetPreconditioner(pre2);
+      solver->SetOperator(A2);
+      solver->Mult(b2, y);
 
       y.GetSubVector(v_dofs, v);
       y.GetSubVector(w_dofs, w);
       y.GetSubVector(q_dofs, q);
 
       // === PRIMAL FIELD: build R1 and MR as PA operators ===
-      ParMixedBilinearForm blf_R1(&ND, &ND);
+      MixedBilinearForm blf_R1(&ND, &ND);
       blf_R1.AddDomainIntegrator(new MixedCrossProductIntegrator(w_gfcoeff));
       blf_R1.Assemble();
       Operator &R1_op = blf_R1;
       ScaledOperator R1_half_op(&R1_op, 0.5);
 
-      ParMixedBilinearForm blf_MR(&ND, &ND);
+      MixedBilinearForm blf_MR(&ND, &ND);
       blf_MR.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
       blf_MR.AddDomainIntegrator(new MixedCrossProductIntegrator(w_gfcoeff));
       blf_MR.Assemble();
@@ -387,23 +452,19 @@ int main(int argc, char *argv[])
       M_dt_op.Mult(u, tmp_u);
       b1sub += tmp_u;
 
-      R1_op.Mult(u, tmp_u);
+      tmp_u = 0.;
+      R1_half_op.Mult(u, tmp_u);
       b1sub.Add(-1.0, tmp_u);
 
+      tmp_u = 0.;
       CT_Re_op.Mult(z, tmp_u);
       b1sub.Add(-1.0, tmp_u);
 
       b1.AddSubVector(b1sub, 0);
 
-      // normal equations
-      TransposeOperator AT1_loop(&A1);
-      ProductOperator ATA1_loop(&AT1_loop, &A1, false, false);
-
-      Vector ATb1_loop(size_1);
-      A1.MultTranspose(b1, ATb1_loop);
-
-      solver->SetOperator(ATA1_loop);
-      solver->Mult(ATb1_loop, x);
+      solver->SetPreconditioner(pre1);
+      solver->SetOperator(A1);
+      solver->Mult(b1, x);
 
       x.GetSubVector(u_dofs, u);
       x.GetSubVector(z_dofs, z);
@@ -432,7 +493,10 @@ int main(int argc, char *argv[])
    // ------------------------------------------------------------------
    // 7. Cleanup
    // ------------------------------------------------------------------
-   if (csv_logger_ptr) { delete csv_logger_ptr; }
+   if (csv_logger_ptr)
+   {
+      delete csv_logger_ptr;
+   }
 
    delete fec_DG;
    delete fec_ND;
