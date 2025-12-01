@@ -341,7 +341,7 @@ public:
           config_(config)
     {
         std::string output_file = config.get_outputfile();
-        std::string csv_path = std::string("../out/") + output_file + std::string("_vars.csv");
+        std::string csv_path = std::string("./out/") + output_file + std::string("_vars.csv");
         csv_ = std::ofstream(csv_path, std::ios::out);
 
         if (!csv_)

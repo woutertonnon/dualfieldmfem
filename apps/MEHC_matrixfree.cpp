@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
+#include <boost/program_options.hpp>
 
 #include "mfem.hpp"
 #include <mpi.h>
@@ -10,17 +11,52 @@
 
 using namespace mfem;
 using namespace std;
+namespace po = boost::program_options;
 
 int main(int argc, char *argv[])
 {
-   MPI_Init(&argc, &argv);
-   MPI_Comm comm = MPI_COMM_WORLD;
-   int rank;
-   MPI_Comm_rank(comm, &rank);
+    // ---- Parse command-line options with Boost BEFORE MPI_Init (recommended) ----
+    std::string config_path;
 
-   // Read config and initialize dynamic function library
-   SimulationConfig config("../data/config/example2.json");
-   config.InitializeLibrary(rank, comm);
+    try {
+        po::options_description desc("Allowed options");
+        desc.add_options()
+            ("help,h", "produce help message")
+            ("config,c",
+                po::value<std::string>(&config_path)
+                    ->default_value("../data/config/example2.json"),
+                "path to JSON configuration file");
+
+        po::variables_map vm;
+        po::store(po::parse_command_line(argc, argv, desc), vm);
+        po::notify(vm);
+
+        if (vm.count("help")) {
+            // Just print from rank 0 later, but we don't know rank yet.
+            // For now, print unconditionally (or move this after MPI_Init).
+            std::cout << desc << "\n";
+            return 0;
+        }
+    } catch (const std::exception &e) {
+        std::cerr << "Error parsing command line: " << e.what() << "\n";
+        return 1;
+    }
+
+    // ---- Now start MPI ----
+    MPI_Init(&argc, &argv);
+    MPI_Comm comm = MPI_COMM_WORLD;
+
+    int rank;
+    MPI_Comm_rank(comm, &rank);
+
+    // Optionally only rank 0 prints what config it’s using
+    if (rank == 0) {
+        std::cout << "Using config file: " << config_path << std::endl;
+    }
+
+    // ---- Use the parsed config path ----
+    SimulationConfig config(config_path);
+    config.InitializeLibrary(rank, comm);
 
    // ------------------------------------------------------------------
    // 0. Configuration
@@ -156,7 +192,6 @@ int main(int argc, char *argv[])
    blf_N.Assemble();
    Operator &N_op = blf_N;
    ScaledOperator N_dt_op(&N_op, 1.0 / dt);
-   ScaledOperator N_n_op(&N_op, -1.0);
 
    // C : ND -> RT (curl)
    MixedBilinearForm blf_C(&ND, &RT);
@@ -164,6 +199,7 @@ int main(int argc, char *argv[])
    blf_C.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_C.Assemble();
    Operator &C_op = blf_C;
+   ScaledOperator C_negative_op(&C_op, -1.);
    ScaledOperator C_Re_op(&C_op, viscosity / 2.0);
    TransposeOperator CT_op(C_op);
    ScaledOperator CT_Re_op(&CT_op, viscosity / 2.0);
@@ -300,6 +336,7 @@ int main(int argc, char *argv[])
    ConstantCoefficient two_over_dt(2.0 / dt);
 
    // Euler step: build MR_eul operator (2/dt M + cross(w,·)) in PA
+   if(false)
    {
       MixedBilinearForm blf_MR_eul(&ND, &ND);
       blf_MR_eul.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
@@ -310,15 +347,14 @@ int main(int argc, char *argv[])
 
       // CT_eul = 2 * CT_Re (operator scaling)
       ScaledOperator CT_eul_op(&CT_Re_op, 2.0);
-      ScaledOperator C_eul_op(&C_Re_op, 2.0);
-      ScaledOperator N_n_eul_op(&N_n_op, viscosity);
+      ScaledOperator C_eul_op(&C_op, -1.);
 
       // Build A1 for Euler step
       A1.SetBlock(0, 0, &MR_eul_op);
       A1.SetBlock(0, 1, &CT_eul_op);
       A1.SetBlock(0, 2, &G_op);
       A1.SetBlock(1, 0, &C_eul_op);
-      A1.SetBlock(1, 1, &N_n_eul_op);
+      A1.SetBlock(1, 1, &N_op);
       A1.SetBlock(2, 0, &GT_op);
 
       // Build rhs b1:  b1 = 2*M_dt*u + f1  (simplified)
@@ -441,8 +477,8 @@ int main(int argc, char *argv[])
       A1.SetBlock(0, 0, &MR_half_op);
       A1.SetBlock(0, 1, &CT_Re_op);
       A1.SetBlock(0, 2, &G_op);
-      A1.SetBlock(1, 0, &C_op);
-      A1.SetBlock(1, 1, &N_n_op);
+      A1.SetBlock(1, 0, &C_negative_op);
+      A1.SetBlock(1, 1, &N_op);
       A1.SetBlock(2, 0, &GT_op);
 
       // rhs b1 = M_dt*u - R1*u - CT_Re*z + f1 + boundary terms...

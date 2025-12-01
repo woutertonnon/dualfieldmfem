@@ -28,9 +28,11 @@ target_link_options(${PROJECT_NAME} PRIVATE
     -fno-omit-frame-pointer
 )
 
+find_package(Boost REQUIRED COMPONENTS program_options)
+
 
 # link libraries
-target_link_libraries(${PROJECT_NAME} mfem)
+target_link_libraries(${PROJECT_NAME} mfem Boost::program_options)
 
 
 
