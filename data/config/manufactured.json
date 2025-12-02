@@ -1,5 +1,5 @@
 {
-    "mesh": "/home/wtonnon/VisualStudioProjects/dualfieldmfem/extern/mfem/data/periodic-cube.mesh",
+    "mesh": "./extern/mfem/data/periodic-cube.mesh",
     "outputfile": "example",
     "solver": "GMRES",
     "dt": 0.02,
