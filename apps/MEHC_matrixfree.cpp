@@ -90,6 +90,8 @@ int main(int argc, char *argv[])
        std::bind(&SimulationConfig::initial_data_w, &config,
                  std::placeholders::_1, std::placeholders::_2);
 
+   VectorFunctionCoefficient force_coef(3, force_data);
+
    // ------------------------------------------------------------------
    // 1. Mesh and FE spaces (PARALLEL)
    // ------------------------------------------------------------------
@@ -278,6 +280,13 @@ int main(int argc, char *argv[])
    pre2.SetDiagonalBlock(1, &Hcurl_pre);
    pre2.SetDiagonalBlock(2, &L2_pre);
 
+   LinearForm f1_lf(&ND);
+   f1_lf.AddDomainIntegrator(new VectorFEDomainLFIntegrator(force_coef));
+
+   LinearForm f2_lf(&RT);
+   f2_lf.AddDomainIntegrator(new VectorFEDomainLFIntegrator(force_coef));
+
+
    // ------------------------------------------------------------------
    // 5. Time-stepping
    // ------------------------------------------------------------------
@@ -409,6 +418,10 @@ int main(int argc, char *argv[])
       vtk_dc.Save();
    }
 
+
+
+
+
    // ------------------------------------------------------------------
    // 6. Time loop (matrix-free, PARALLEL)
    // ------------------------------------------------------------------
@@ -417,6 +430,14 @@ int main(int argc, char *argv[])
       t += dt;
       cycle++;
 
+      force_coef.SetTime(t-.5*dt);
+      f2_lf.Assemble();
+
+         mfem::VectorFunctionCoefficient w_exact_coeff(3,
+    [t](const mfem::Vector &x, mfem::Vector &out)
+    { out.SetSize(3); out[0] = -2*M_PI*(t+1)*cos(2*M_PI*x[2]); out[1] = -2*M_PI*(1-t)*cos(2*M_PI*x[0]); out[2] =  2*M_PI*(2-t)*sin(2*M_PI*x[1]); });
+
+      //z.ProjectCoefficient(w_exact_coeff);
       // === DUAL FIELD: build R2 and NR as PA operators ===
       MixedBilinearForm blf_R2(&RT, &RT);
       blf_R2.AddDomainIntegrator(new MixedCrossProductIntegrator(z_gfcoeff));
@@ -453,6 +474,7 @@ int main(int argc, char *argv[])
       b2sub.Add(-1.0, tmp_v);
 
       b2.AddSubVector(b2sub, 0);
+      b2.AddSubVector(f2_lf, 0);
 
       solver->SetPreconditioner(pre2);
       solver->SetOperator(A2);
@@ -462,7 +484,9 @@ int main(int argc, char *argv[])
       y.GetSubVector(v_dofs, v);
       y.GetSubVector(w_dofs, w);
       y.GetSubVector(q_dofs, q);
-
+      force_coef.SetTime(t);
+      f1_lf.Assemble();
+     //w.ProjectCoefficient(w_exact_coeff);
       // === PRIMAL FIELD: build R1 and MR as PA operators ===
       MixedBilinearForm blf_R1(&ND, &ND);
       blf_R1.AddDomainIntegrator(new MixedCrossProductIntegrator(w_gfcoeff));
@@ -501,6 +525,7 @@ int main(int argc, char *argv[])
       b1sub.Add(-1.0, tmp_u);
 
       b1.AddSubVector(b1sub, 0);
+      b1.AddSubVector(f1_lf, 0);
 
       solver->SetPreconditioner(pre1);
       solver->SetOperator(A1);
