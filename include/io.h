@@ -330,7 +330,9 @@ public:
                     mfem::GridFunction &u,
                     mfem::GridFunction &v,
                     mfem::GridFunction &w,
-                    mfem::GridFunction &z)
+                    mfem::GridFunction &z,
+                    int &num_it_A1,
+                    int &num_it_A2)
         : M_op_(M_op),
           N_op_(N_op),
           u_(u), v_(v), w_(w), z_(z),
@@ -338,6 +340,8 @@ public:
           M_w_(w.Size()),
           N_v_(v.Size()),
           N_z_(z.Size()),
+          num_it_A1_(num_it_A1),
+          num_it_A2_(num_it_A2),
           config_(config)
     {
         std::string output_file = config.get_outputfile();
@@ -352,7 +356,7 @@ public:
         }
 
         std::cout << "[info] CSV opened (truncated): " << csv_path << std::endl;
-        csv_ << "cycle,time_full,time_half,||u1||,||u2||,u1*w1,u2*w2";
+        csv_ << "cycle,time_full,time_half,num_it_A1,num_it_A2,||u1||,||u2||,u1*w1,u2*w2";
         if (config.has_exact_u())
         {
             csv_ << ",u1_err_L2,u2_err_L2";
@@ -385,6 +389,7 @@ public:
         csv_ << cycle << ","
              << std::setprecision(15) << std::fixed
              << t_full << "," << t_half << ","
+             << num_it_A1_ << "," << num_it_A2_ << ","
              << u1_norm << "," << u2_norm << ","
              << u1w1 << "," << u2w2;
         if (config_.has_exact_u())
@@ -405,6 +410,8 @@ private:
     mfem::GridFunction &v_;
     mfem::GridFunction &w_;
     mfem::GridFunction &z_;
+    int &num_it_A1_;
+    int &num_it_A2_;
 
     mfem::Vector M_u_, M_w_, N_v_, N_z_;
     std::ofstream csv_;

@@ -180,7 +180,7 @@ int main(int argc, char *argv[])
    // Mass matrices M (on ND) and N (on RT)
    BilinearForm blf_M(&ND);
    blf_M.AddDomainIntegrator(new VectorFEMassIntegrator(one_coeff));
-   blf_M.SetAssemblyLevel(AssemblyLevel::PARTIAL);
+   //blf_M.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_M.Assemble();
    Operator &M_op = blf_M;
    ScaledOperator M_dt_op(&M_op, 1.0 / dt);
@@ -188,7 +188,7 @@ int main(int argc, char *argv[])
 
    BilinearForm blf_N(&RT);
    blf_N.AddDomainIntegrator(new VectorFEMassIntegrator(one_coeff));
-   blf_N.SetAssemblyLevel(AssemblyLevel::PARTIAL);
+   //blf_N.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_N.Assemble();
    Operator &N_op = blf_N;
    ScaledOperator N_dt_op(&N_op, 1.0 / dt);
@@ -196,7 +196,7 @@ int main(int argc, char *argv[])
    // C : ND -> RT (curl)
    MixedBilinearForm blf_C(&ND, &RT);
    blf_C.AddDomainIntegrator(new MixedVectorCurlIntegrator());
-   blf_C.SetAssemblyLevel(AssemblyLevel::PARTIAL);
+   //blf_C.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_C.Assemble();
    Operator &C_op = blf_C;
    ScaledOperator C_negative_op(&C_op, -1.);
@@ -309,7 +309,7 @@ int main(int argc, char *argv[])
    {
       auto minres = make_unique<GMRESSolver>(comm);
       minres->SetAbsTol(tol);
-      minres->SetKDim(500);
+      minres->SetKDim(300);
       minres->SetRelTol(0.);
       minres->SetMaxIter(10000);
       minres->SetPreconditioner(pre1);
@@ -377,11 +377,14 @@ int main(int argc, char *argv[])
       x.GetSubVector(p_dofs, p);
    }
 
+   int num_it_A1, num_it_A2;
+   num_it_A1 = num_it_A2 = 0;
+
    // --- CSV output (only rank 0) ---
    EnergyCSVLogger *csv_logger_ptr = nullptr;
    if (rank == 0)
    {
-      csv_logger_ptr = new EnergyCSVLogger(config, M_op, N_op, u, v, w, z);
+      csv_logger_ptr = new EnergyCSVLogger(config, M_op, N_op, u, v, w, z, num_it_A1, num_it_A2);
       if (csv_logger_ptr->IsOpen())
       {
          csv_logger_ptr->WriteRow(0, 0., 0.);
@@ -443,7 +446,7 @@ int main(int argc, char *argv[])
       N_dt_op.Mult(v, tmp_v);
       b2sub += tmp_v;
 
-      R2_op.Mult(v, tmp_v);
+      R2_half_op.Mult(v, tmp_v);
       b2sub.Add(-1.0, tmp_v);
 
       C_Re_op.Mult(w, tmp_v);
@@ -454,6 +457,7 @@ int main(int argc, char *argv[])
       solver->SetPreconditioner(pre2);
       solver->SetOperator(A2);
       solver->Mult(b2, y);
+      num_it_A2 = solver->GetNumIterations();
 
       y.GetSubVector(v_dofs, v);
       y.GetSubVector(w_dofs, w);
@@ -501,6 +505,7 @@ int main(int argc, char *argv[])
       solver->SetPreconditioner(pre1);
       solver->SetOperator(A1);
       solver->Mult(b1, x);
+      num_it_A1 = solver->GetNumIterations();
 
       x.GetSubVector(u_dofs, u);
       x.GetSubVector(z_dofs, z);
