@@ -393,7 +393,7 @@ int main(int argc, char *argv[])
 
    // ParaView data collection (parallel)
    mfem::ParaViewDataCollection vtk_dc(
-       "/home/wtonnon/VisualStudioProjects/dualfieldmfem/data/visualisation/paraview/" + output_file,
+       "./data/visualisation/paraview/" + output_file,
        &mesh);
 
    if (visualisation > 0)
