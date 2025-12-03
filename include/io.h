@@ -6,6 +6,7 @@
 #include <cstdlib>                             // For std::system
 #include <dlfcn.h>                             // For dlopen, dlsym, dlclose
 #include <mpi.h>                               // For MPI_Comm, MPI_Barrier
+#include <chrono>
 
 // Class to manage the simulation configuration
 class SimulationConfig
@@ -342,7 +343,8 @@ public:
           N_z_(z.Size()),
           num_it_A1_(num_it_A1),
           num_it_A2_(num_it_A2),
-          config_(config)
+          config_(config),
+          time(std::chrono::time_point(std::chrono::steady_clock::now()))
     {
         std::string output_file = config.get_outputfile();
         std::string csv_path = std::string("./out/") + output_file + std::string("_vars.csv");
@@ -356,7 +358,7 @@ public:
         }
 
         std::cout << "[info] CSV opened (truncated): " << csv_path << std::endl;
-        csv_ << "cycle,time_full,time_half,num_it_A1,num_it_A2,||u1||,||u2||,u1*w1,u2*w2";
+        csv_ << "runtime_it,cycle,time_full,time_half,num_it_A1,num_it_A2,||u1||,||u2||,u1*w1,u2*w2";
         if (config.has_exact_u())
         {
             csv_ << ",u1_err_L2,u2_err_L2";
@@ -386,7 +388,10 @@ public:
         double u1w1 = u_ * M_w_;    // (u, M w)
         double u2w2 = v_ * N_z_;    // (v, N z)
 
-        csv_ << cycle << ","
+        std::chrono::duration<double> runtime_it = std::chrono::steady_clock::now() - time;
+        time = std::chrono::steady_clock::now(); 
+
+        csv_ << runtime_it.count() << "," << cycle << ","
              << std::setprecision(15) << std::fixed
              << t_full << "," << t_half << ","
              << num_it_A1_ << "," << num_it_A2_ << ","
@@ -416,4 +421,5 @@ private:
     mfem::Vector M_u_, M_w_, N_v_, N_z_;
     std::ofstream csv_;
     SimulationConfig &config_;
+    std::chrono::time_point<std::chrono::steady_clock> time;
 };
