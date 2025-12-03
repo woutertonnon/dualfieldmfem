@@ -250,36 +250,36 @@ int main(int argc, char *argv[])
    blf_L2_pre.Assemble();
    blf_L2_pre.Finalize();
 
-#if FALSE
-   auto H1_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_H1_pre);
+#if 1
+   auto H1_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_H1_pre, mfem::Array<int>{});
    auto H1_pre = std::make_unique<CGSolver>(comm);
    H1_pre->SetMaxIter(100);
    H1_pre->SetAbsTol(1e-10);
-   H1_pre->SetPreconditioner(H1_pre_pre);
+   H1_pre->SetPreconditioner(*H1_pre_pre);
    H1_pre->SetOperator(blf_H1_pre);
    //mfem::DSmoother H1_pre(blf_H1_pre.SpMat());
 
-   auto Hcurl_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_Hcurl_pre);
+   auto Hcurl_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_Hcurl_pre, mfem::Array<int>{});
    auto Hcurl_pre = std::make_unique<CGSolver>(comm);
    Hcurl_pre->SetMaxIter(100);   
    Hcurl_pre->SetAbsTol(1e-10);
-   Hcurl_pre->SetPreconditioner(Hcurl_pre_pre);
+   Hcurl_pre->SetPreconditioner(*Hcurl_pre_pre);
    Hcurl_pre->SetOperator(blf_Hcurl_pre);
    //mfem::DSmoother Hcurl_pre(blf_Hcurl_pre.SpMat());
 
-   auto Hdiv_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_Hdiv_pre);
+   auto Hdiv_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_Hdiv_pre, mfem::Array<int>{});
    auto Hdiv_pre = std::make_unique<CGSolver>(comm);
    Hdiv_pre->SetMaxIter(100);
    Hdiv_pre->SetAbsTol(1e-10);
-   Hdiv_pre->SetPreconditioner(Hdiv_pre_pre);
+   Hdiv_pre->SetPreconditioner(*Hdiv_pre_pre);
    Hdiv_pre->SetOperator(blf_Hdiv_pre);
    //mfem::DSmoother Hdiv_pre(blf_Hdiv_pre.SpMat());
 
-   auto L2_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_L2_pre);
+   auto L2_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_L2_pre, mfem::Array<int>{});
    auto L2_pre = std::make_unique<CGSolver>(comm);
    L2_pre->SetMaxIter(100);
    L2_pre->SetAbsTol(1e-10);
-   L2->SetPreconditioner(L2_pre_pre);
+   L2_pre->SetPreconditioner(*L2_pre_pre);
    L2_pre->SetOperator(blf_L2_pre);
    //mfem::DSmoother L2_pre(blf_L2_pre.SpMat());
    pre1.SetDiagonalBlock(0, Hcurl_pre.get());
@@ -371,6 +371,10 @@ int main(int argc, char *argv[])
 
    int num_it_A1, num_it_A2;
    num_it_A1 = num_it_A2 = 0;
+
+   EnergyCSVLogger *csv_logger_ptr = nullptr;
+   if(rank==0)
+      csv_logger_ptr = new EnergyCSVLogger(config, M_op, N_op, u, v, w, z, num_it_A1, num_it_A2);
    // Euler step: build MR_eul operator (2/dt M + cross(w,·)) in PA
    if(true)
    {
@@ -419,10 +423,8 @@ int main(int argc, char *argv[])
 
 
    // --- CSV output (only rank 0) ---
-   EnergyCSVLogger *csv_logger_ptr = nullptr;
    if (rank == 0)
    {
-      csv_logger_ptr = new EnergyCSVLogger(config, M_op, N_op, u, v, w, z, num_it_A1, num_it_A2);
       if (csv_logger_ptr->IsOpen())
       {
          csv_logger_ptr->WriteRow(0, 0., 0.);
