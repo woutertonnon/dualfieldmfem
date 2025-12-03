@@ -226,7 +226,7 @@ int main(int argc, char *argv[])
 
    BilinearForm blf_H1_pre(&CG);
    blf_H1_pre.AddDomainIntegrator(new MassIntegrator());
-   blf_H1_pre.AddDomainIntegrator(new DiffusionIntegrator());
+   //blf_H1_pre.AddDomainIntegrator(new DiffusionIntegrator());
    // blf_H1_pre.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_H1_pre.Assemble();
    blf_H1_pre.Finalize();
@@ -250,29 +250,50 @@ int main(int argc, char *argv[])
    blf_L2_pre.Assemble();
    blf_L2_pre.Finalize();
 
-   // auto H1_pre = std::make_unique<CGSolver>(comm);
-   //H1_pre->SetMaxIter(100);
-   //H1_pre->SetAbsTol(1e-10);
-   //H1_pre->SetOperator(blf_H1_pre);
-   mfem::DSmoother H1_pre(blf_H1_pre.SpMat());
+#if FALSE
+   auto H1_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_H1_pre);
+   auto H1_pre = std::make_unique<CGSolver>(comm);
+   H1_pre->SetMaxIter(100);
+   H1_pre->SetAbsTol(1e-10);
+   H1_pre->SetPreconditioner(H1_pre_pre);
+   H1_pre->SetOperator(blf_H1_pre);
+   //mfem::DSmoother H1_pre(blf_H1_pre.SpMat());
 
-   //auto Hcurl_pre = std::make_unique<CGSolver>(comm);
-   //Hcurl_pre->SetMaxIter(100);   // Hcurl_pre->SetAbsTol(1e-10);
-   //Hcurl_pre->SetOperator(blf_Hcurl_pre);
-   mfem::DSmoother Hcurl_pre(blf_Hcurl_pre.SpMat());
+   auto Hcurl_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_Hcurl_pre);
+   auto Hcurl_pre = std::make_unique<CGSolver>(comm);
+   Hcurl_pre->SetMaxIter(100);   
+   Hcurl_pre->SetAbsTol(1e-10);
+   Hcurl_pre->SetPreconditioner(Hcurl_pre_pre);
+   Hcurl_pre->SetOperator(blf_Hcurl_pre);
+   //mfem::DSmoother Hcurl_pre(blf_Hcurl_pre.SpMat());
 
-   //auto Hdiv_pre = std::make_unique<CGSolver>(comm);
-   //Hdiv_pre->SetMaxIter(100);
-   //Hdiv_pre->SetAbsTol(1e-10);
-   //Hdiv_pre->SetOperator(blf_Hdiv_pre);
-   mfem::DSmoother Hdiv_pre(blf_Hdiv_pre.SpMat());
+   auto Hdiv_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_Hdiv_pre);
+   auto Hdiv_pre = std::make_unique<CGSolver>(comm);
+   Hdiv_pre->SetMaxIter(100);
+   Hdiv_pre->SetAbsTol(1e-10);
+   Hdiv_pre->SetPreconditioner(Hdiv_pre_pre);
+   Hdiv_pre->SetOperator(blf_Hdiv_pre);
+   //mfem::DSmoother Hdiv_pre(blf_Hdiv_pre.SpMat());
 
-   //   auto L2_pre = std::make_unique<CGSolver>(comm);
-   //L2_pre->SetMaxIter(100);
-   //L2_pre->SetAbsTol(1e-10);
-   //L2_pre->SetOperator(blf_L2_pre);
-   mfem::DSmoother L2_pre(blf_L2_pre.SpMat());
+   auto L2_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_L2_pre);
+   auto L2_pre = std::make_unique<CGSolver>(comm);
+   L2_pre->SetMaxIter(100);
+   L2_pre->SetAbsTol(1e-10);
+   L2->SetPreconditioner(L2_pre_pre);
+   L2_pre->SetOperator(blf_L2_pre);
+   //mfem::DSmoother L2_pre(blf_L2_pre.SpMat());
+   pre1.SetDiagonalBlock(0, Hcurl_pre.get());
+   pre1.SetDiagonalBlock(1, Hdiv_pre.get());
+   pre1.SetDiagonalBlock(2, H1_pre.get());
 
+   pre2.SetDiagonalBlock(0, Hdiv_pre.get());
+   pre2.SetDiagonalBlock(1, Hcurl_pre.get());
+   pre2.SetDiagonalBlock(2, L2_pre.get());
+#else
+   mfem::UMFPackSolver H1_pre(blf_H1_pre.SpMat(), true);
+   mfem::UMFPackSolver Hcurl_pre(blf_Hcurl_pre.SpMat(), true);
+   mfem::UMFPackSolver Hdiv_pre(blf_Hdiv_pre.SpMat(), true);
+   mfem::UMFPackSolver L2_pre(blf_L2_pre.SpMat(), true);
    pre1.SetDiagonalBlock(0, &Hcurl_pre);
    pre1.SetDiagonalBlock(1, &Hdiv_pre);
    pre1.SetDiagonalBlock(2, &H1_pre);
@@ -280,6 +301,8 @@ int main(int argc, char *argv[])
    pre2.SetDiagonalBlock(0, &Hdiv_pre);
    pre2.SetDiagonalBlock(1, &Hcurl_pre);
    pre2.SetDiagonalBlock(2, &L2_pre);
+#endif
+
 
    LinearForm f1_lf(&ND);
    f1_lf.AddDomainIntegrator(new VectorFEDomainLFIntegrator(force_coef));
