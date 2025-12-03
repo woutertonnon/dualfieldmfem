@@ -204,6 +204,7 @@ int main(int argc, char *argv[])
    ScaledOperator C_negative_op(&C_op, -1.);
    ScaledOperator C_Re_op(&C_op, viscosity / 2.0);
    TransposeOperator CT_op(C_op);
+   ScaledOperator neg_CT_op(&CT_op, -1.);
    ScaledOperator CT_Re_op(&CT_op, viscosity / 2.0);
 
    // D : RT -> DG (div)
@@ -232,14 +233,14 @@ int main(int argc, char *argv[])
 
    BilinearForm blf_Hdiv_pre(&RT);
    blf_Hdiv_pre.AddDomainIntegrator(new VectorFEMassIntegrator(one_coeff));
-   blf_Hdiv_pre.AddDomainIntegrator(new DivDivIntegrator());
+   //blf_Hdiv_pre.AddDomainIntegrator(new DivDivIntegrator());
    // blf_Hdiv_pre.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_Hdiv_pre.Assemble();
    blf_Hdiv_pre.Finalize();
 
    BilinearForm blf_Hcurl_pre(&ND);
    blf_Hcurl_pre.AddDomainIntegrator(new VectorFEMassIntegrator(one_coeff));
-   blf_Hcurl_pre.AddDomainIntegrator(new CurlCurlIntegrator());
+   //blf_Hcurl_pre.AddDomainIntegrator(new CurlCurlIntegrator());
    // blf_Hcurl_pre.SetAssemblyLevel(AssemblyLevel::PARTIAL);
    blf_Hcurl_pre.Assemble();
    blf_Hcurl_pre.Finalize();
@@ -343,9 +344,12 @@ int main(int argc, char *argv[])
    VectorGridFunctionCoefficient w_gfcoeff(&w);
    VectorGridFunctionCoefficient z_gfcoeff(&z);
    ConstantCoefficient two_over_dt(2.0 / dt);
+   ConstantCoefficient two(2.);
 
+   int num_it_A1, num_it_A2;
+   num_it_A1 = num_it_A2 = 0;
    // Euler step: build MR_eul operator (2/dt M + cross(w,·)) in PA
-   if(false)
+   if(true)
    {
       MixedBilinearForm blf_MR_eul(&ND, &ND);
       blf_MR_eul.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
@@ -367,17 +371,21 @@ int main(int argc, char *argv[])
       A1.SetBlock(2, 0, &GT_op);
 
       // Build rhs b1:  b1 = 2*M_dt*u + f1  (simplified)
+      force_coef.SetTime(0.5*dt);
+      f1_lf.Assemble();
       b1 = 0.0;
       b1sub = 0.0;
       M_dt_op.Mult(u, tmp_u);
       b1sub.Add(2.0, tmp_u);
 
       b1.AddSubVector(b1sub, 0);
+      b1.AddSubVector(f1_lf, 0);
 
       std::cout << "start first solver\n";
       solver->SetPreconditioner(pre1);
       solver->SetOperator(A1);
       solver->Mult(b1, x);
+      num_it_A1 = solver->GetNumIterations();
       // std::abort();
 
       // extract u,z,p
@@ -386,8 +394,6 @@ int main(int argc, char *argv[])
       x.GetSubVector(p_dofs, p);
    }
 
-   int num_it_A1, num_it_A2;
-   num_it_A1 = num_it_A2 = 0;
 
    // --- CSV output (only rank 0) ---
    EnergyCSVLogger *csv_logger_ptr = nullptr;
@@ -430,7 +436,7 @@ int main(int argc, char *argv[])
       t += dt;
       cycle++;
 
-      force_coef.SetTime(t-.5*dt);
+      force_coef.SetTime(t);
       f2_lf.Assemble();
 
          mfem::VectorFunctionCoefficient w_exact_coeff(3,
@@ -450,14 +456,14 @@ int main(int argc, char *argv[])
       blf_NR.AddDomainIntegrator(new MixedCrossProductIntegrator(z_gfcoeff));
       blf_NR.Assemble();
       Operator &NR_op = blf_NR;
-      ScaledOperator NR_half_op(&NR_op, 0.5);
+      ScaledOperator NR_half_op(&NR_op, 0.5*dt);
 
       // A2 blocks:
       A2.SetBlock(0, 0, &NR_half_op);
       A2.SetBlock(0, 1, &C_Re_op);
       A2.SetBlock(0, 2, &DT_n_op);
-      A2.SetBlock(1, 0, &CT_op);
-      A2.SetBlock(1, 1, &M_n_op);
+      A2.SetBlock(1, 0, &neg_CT_op);
+      A2.SetBlock(1, 1, &M_op);
       A2.SetBlock(2, 0, &D_op);
 
       // rhs b2 = N_dt*v - R2*v - C_Re*w + f2
@@ -472,9 +478,11 @@ int main(int argc, char *argv[])
 
       C_Re_op.Mult(w, tmp_v);
       b2sub.Add(-1.0, tmp_v);
+      b2sub.Add(1.,f2_lf);
+      b2sub *= dt;
 
       b2.AddSubVector(b2sub, 0);
-      b2.AddSubVector(f2_lf, 0);
+      //b2.AddSubVector(f2_lf, 0);
 
       solver->SetPreconditioner(pre2);
       solver->SetOperator(A2);
@@ -484,9 +492,9 @@ int main(int argc, char *argv[])
       y.GetSubVector(v_dofs, v);
       y.GetSubVector(w_dofs, w);
       y.GetSubVector(q_dofs, q);
-      force_coef.SetTime(t);
+      force_coef.SetTime(t+0.5*dt);
       f1_lf.Assemble();
-     //w.ProjectCoefficient(w_exact_coeff);
+      //w.ProjectCoefficient(w_exact_coeff);
       // === PRIMAL FIELD: build R1 and MR as PA operators ===
       MixedBilinearForm blf_R1(&ND, &ND);
       blf_R1.AddDomainIntegrator(new MixedCrossProductIntegrator(w_gfcoeff));
