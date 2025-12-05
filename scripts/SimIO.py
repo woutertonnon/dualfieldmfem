@@ -9,6 +9,12 @@ import os
 import paramiko
 from paramiko.ssh_exception import SSHException, ChannelException
 import sys
+import matplotlib.pyplot as plt
+import pandas as pd
+import glob
+import re
+import numpy as np
+from matplotlib.ticker import MultipleLocator
 
 class ExactEquations:
     def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t, initial_condition_only: bool):
@@ -127,8 +133,6 @@ class SimulationHelper:
         return s
 
     def generate_config_files(self, T: float, dt: float, refinements: List[int], orders: List[int], tol=1e-5):
-        
-        
         directory = Path("./data/config/"+self.name)
         
         shutil.rmtree(directory, ignore_errors=True)
@@ -330,7 +334,265 @@ class SimulationHelper:
         finally:
             client.close()
 
-    
+
+class SimulationDataProcessor:
+    def __init__(self, name: str):
+        self.name = name
+        self.data = None
+        self.error_columns = ["u1_err_L2","u2_err_L2"]
+        self.cons_columns = ["||u1||","||u2||","u1*w1","u2*w2"]
+
+    def collect_data(self, time_point, tol_time):
+        """
+        Scan conv_order*_ref*_vars.csv files and collect error vs refinement level
+        at the given physical time.
+
+        Returns:
+            data: dict[order] = dict with keys 'refs' (np.array) and 'errs' (np.array)
+        """
+        pattern = re.compile(self.name + r"_conv_order(\d+)_ref(\d+)_vars\.csv")
+
+        # data[order] will store list of (ref, err)
+        self.data = {}
+
+        for fname in glob.glob("out/data/" + self.name + "/" + self.name + "_conv_order*_ref*_vars.csv"):
+            base = os.path.basename(fname)
+            m = pattern.match(base)
+            if not m:
+                continue
+
+            order = int(m.group(1))
+            ref = int(m.group(2))
+
+            # Read CSV
+            df = pd.read_csv(fname)
+
+            if "time_full" not in df.columns:
+                raise ValueError(f"'time_full' column not found in {fname}")
+            
+            for error_column in self.error_columns:
+                if error_column not in df.columns:
+                    raise ValueError(f"'{error_column}' column not found in {fname}")
+
+            # Find row closest to desired time
+            idx_closest = (df["time_full"] - time_point).abs().idxmin()
+            row = df.loc[idx_closest]
+            t_found = row["time_full"]
+
+            if abs(t_found - time_point) > tol_time:
+                print(
+                    f"Warning: In {fname}, closest time to t={time_point} is "
+                    f"{t_found} (|dt|={abs(t_found - time_point)})."
+                )
+            else:
+                errs = {}
+                for error_column in self.error_columns:
+                    errs[error_column] = float(row[error_column])
+
+                if order not in self.data:
+                    self.data[order] = []
+                self.data[order].append((ref, errs))
+
+        # Convert lists to sorted arrays
+        for order in list(self.data.keys()):
+            if not self.data[order]:
+                continue
+            self.data[order].sort(key=lambda x: x[0])  # sort by refinement level
+            refs = np.array([r for r, _ in self.data[order]], dtype=float)
+            errs = np.array([e for _, e in self.data[order]], dtype=dict)
+            temp_dict = {"refs": refs, "errs": {}}
+            for error_column in self.error_columns:
+                temp_dict["errs"][error_column] = np.array([e[error_column] for _, e in self.data[order]], dtype=float)
+            self.data[order]= temp_dict
+
+        return self.data
+
+
+    def add_reference_triangles(self, ax, order, x_anchor, y_anchor):
+        """
+        Add small dotted triangles indicating O(h) and O(h^2) behavior.
+
+        The triangles are aligned so that their right vertex is exactly at
+        the last point of the convergence curve: (x_anchor, y_anchor).
+
+        We assume that going one refinement level to the left corresponds
+        to doubling h, so the error increases by 2^p for order p.
+        """
+        if x_anchor is None or y_anchor is None or y_anchor <= 0:
+            return
+
+        # One refinement step to the left
+        x0 = x_anchor - 1.0
+        x1 = x_anchor
+
+        # First-order triangle (O(h)):
+        # coarser mesh (x0) has error 2 * y_anchor
+        y1 = y_anchor
+        y0 = y_anchor * (2.0 ** order)
+
+        ax.semilogy([x0, x1], [y0, y1], ":k")
+    # ax.semilogy([x1, x1], [y0, y1], ":k")
+        ax.text(
+            x0 + 0.05,
+            np.sqrt(y0 * y1),
+            "O(h"+str(order)+")",
+            verticalalignment="center",
+            horizontalalignment="left",
+        )
+
+
+
+
+    def plot_convergence(self, time_point, show_plot = False, reference_order = lambda order: order):
+        """
+        Make a log-linear plot of L2 error vs refinement level for each order.
+        """
+        figs = {}
+        axs = {}
+        for error_column in self.error_columns:
+            figs[error_column], axs[error_column] = plt.subplots()
+
+        markers = {
+            1: "o-",
+            2: "s-",
+            3: "^-",
+            4: "v-",
+        }
+
+        last_ref = None
+        last_err = None
+
+        if not self.data:
+            print(self.data)
+            print("Error: data array not initialized. Call collect_data() to initialize the data array!")
+            exit(1)
+
+        for order, d in sorted(self.data.items()):
+            refs = d["refs"]
+            errs = d["errs"]
+            style = markers.get(order, "o-")
+            for error_column in self.error_columns:
+                last_ref = refs[-1]
+                last_err = errs[error_column][-1]
+                axs[error_column].semilogy(
+                    refs,
+                    errs[error_column],
+                    style,
+                    label=f"order {order}",
+                    linewidth=1.5,
+                    markersize=6,
+                )
+                self.add_reference_triangles(axs[error_column], reference_order(order), last_ref, last_err)
+
+        for error_column in self.error_columns:
+            axs[error_column].set_xlabel("Refinement level (ref index)")
+            axs[error_column].set_ylabel(f"L2 error '{error_column}' at t = {time_point}")
+            axs[error_column].set_title("Convergence vs mesh refinement")
+            axs[error_column].grid(True, which="both", linestyle="--", linewidth=0.5)
+            axs[error_column].xaxis.set_major_locator(MultipleLocator(1.0))
+            axs[error_column].legend(loc="best")
+
+            directory = "./out/plots/" +self.name + "/convergence"
+            try:
+                os.makedirs(directory)
+            except FileExistsError:
+                print("Warning: tried creating directory \"" + directory + "\", but it already exists.")
+
+            # Add O(h) and O(h^2) reference triangles, anchored at last point
+            # Save figure
+            outname = (directory + "/" + self.name + "_" + error_column).format(time=time_point)
+            figs[error_column].tight_layout()
+            figs[error_column].savefig(outname, dpi=300)
+            print(f"Saved figure to '{outname}'")
+
+            if show_plot:
+                plt.show()
+            else:
+                plt.close(figs[error_column])
+
+
+    def plot_conserved_variables(self):
+        directory = "./out/plots/" +self.name + "/conservation"
+        try:
+            os.makedirs(directory)
+        except FileExistsError:
+            print("Warning: tried creating directory \"" + directory + "\", but it already exists.")
+
+        pattern = re.compile(self.name + r"_conv_order(\d+)_ref(\d+)_vars\.csv")
+
+        # data[order] will store list of (ref, err)
+        self.data = {}
+
+        for fname in glob.glob("out/data/" + self.name + "/" + self.name + "_conv_order*_ref*_vars.csv"):
+            base = os.path.basename(fname)
+            m = pattern.match(base)
+            if not m:
+                continue
+
+            order = int(m.group(1))
+            ref = int(m.group(2))
+
+            # Read CSV
+            df = pd.read_csv(fname)
+
+            if "time_full" not in df.columns:
+                raise ValueError(f"'time_full' column not found in {fname}")
+            
+            for cons_column in self.cons_columns:
+                if cons_column not in df.columns:
+                    raise ValueError(f"'{cons_column}' column not found in {fname}")
+                
+                fig, ax =plt.subplots()
+                ax.plot(np.array(df["time_full"]),np.array(df[cons_column]))
+                ax.set_xlabel("time_full [s]")
+                ax.set_ylabel(cons_column)
+                ax.grid()
+                plt.savefig(directory + "/" + self.name+"_" + cons_column +"_order"+str(order)+"_ref"+str(ref)+".png" )
+
+                
+
+
+    def pull_data_from_euler(self):
+        hostname = "euler.ethz.ch"
+        username = "wtonnon"
+        key_path = "/home/wtonnon/.ssh/id_ed25519.pub"
+
+        #key = paramiko.RSAKey.from_private_key_file(key_path)
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        try:
+            client.connect(
+                hostname=hostname,
+                username=username,
+                key_filename=key_path,
+                port=22,
+                timeout=10,
+            )
+
+            EXECUTABLE = "./build/MEHCscheme"
+            config_directory = "data/config/" + self.name +"/"
+            out_directory = "out/data/" + self.name + "/"
+
+            files = os.listdir(config_directory)
+            print(files)
+
+
+            try:
+                os.makedirs(out_directory)
+            except FileExistsError:
+                print("Warning: tried creating directory \"" + out_directory + "\", but it already exists.")
+
+            sftp = client.open_sftp()
+            for config_file in files:
+                out_file, ext = os.path.splitext(config_file)
+                out_file = out_file + "_vars.csv"
+                local_path = "./" + out_directory + out_file
+                remote_path = "/cluster/home/wtonnon/dualfieldmfem/" + out_directory + out_file
+                sftp.get(remote_path,local_path)
+        finally:
+            client.close()
+
 
 x0, x1, x2, t = sp.symbols('x0 x1 x2 t', real=True)
 nu=0
@@ -345,6 +607,11 @@ u = sp.Matrix([u1, u2, u3])
 p = 0
 coords = [x0, x1, x2]
 
-testSimulationHelper = SimulationHelper(ExactEquations(u,p,nu,coords,t,False),"initial_test2")
-#testSimulationHelper.run_convergence(1.,0.02,[0,1],[1,2])
-testSimulationHelper.run_all_configs_euler()
+#testSimulationHelper = SimulationHelper(ExactEquations(u,p,nu,coords,t,False),"initial_test2")
+#testSimulationHelper.run_convergence(1.,0.02,[0,1,2],[1])
+#testSimulationHelper.run_all_configs_euler()
+SDP = SimulationDataProcessor("initial_test2")
+SDP.pull_data_from_euler()
+SDP.collect_data(1.,0.1)
+SDP.plot_convergence(1.)
+SDP.plot_conserved_variables()
