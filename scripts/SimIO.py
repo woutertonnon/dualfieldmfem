@@ -16,7 +16,86 @@ import re
 import numpy as np
 from matplotlib.ticker import MultipleLocator
 
-class ExactEquations:
+class InitialCondition:
+    def __init__(self, u_init: sp.Matrix, nu: float, coords):        
+        expected_rows, expected_cols = 3, 1
+        if (u_init.rows, u_init.cols) != (expected_rows, expected_cols):
+            raise ValueError(
+                f"u\_init must be {expected_rows}x{expected_cols} (a 3-dimensional vector), "
+                f"but got {u.rows}x{u.cols}"
+            )
+        self.nu = nu
+        self.u_init = u_init
+        self.coords = coords
+        self.vorticity_init = self.curl(u_init)
+
+    def curl(self, u):
+        """
+        3D curl: w = ∇ × u
+        coords: [x, y, z]
+        u: Matrix([u1, u2, u3])
+        """
+        x, y, z = self.coords
+        u1, u2, u3 = u
+        w1 = sp.diff(u3, y) - sp.diff(u2, z)
+        w2 = sp.diff(u1, z) - sp.diff(u3, x)
+        w3 = sp.diff(u2, x) - sp.diff(u1, y)
+        return sp.Matrix([w1, w2, w3])
+    
+    def get_u_init(self):
+        return self.u_init
+
+    def get_vorticity_init(self):
+        return self.vorticity_init
+    
+    def get_u(self):
+        NotImplemented("NotImplemented(): get_u() is not implemented for class ExactEquations.")
+        return None
+    
+    def get_p(self):
+        NotImplemented("NotImplemented(): get_p() is not implemented for class ExactEquations.")
+        return None
+    
+    def get_vorticity(self):
+        NotImplemented("NotImplemented(): get_vorticity() is not implemented for class ExactEquations.")
+        return None
+    
+    def get_rhs(self):
+        NotImplemented("NotImplemented(): get_rhs() is not implemented for class ExactEquations")
+        return sp.Matrix([0, 0, 0])
+    
+    def get_viscosity(self):
+        return self.nu
+
+    
+    
+class InitialConditionAndForce(InitialCondition):
+    def __init__(self, u_init: sp.Matrix, force: sp.Matrix, nu: float, coords):
+        super().__init__(u_init, nu, coords)
+        self.force = force
+
+    def get_rhs(self):
+        return self.force
+    
+class InitialConditionAndForceAndSolution(InitialConditionAndForce):
+    def __init__(self, u: sp.Matrix, p: sp.Expr, force: sp.Matrix, nu: float, coords, t):
+        self.t = t
+        self.u = u
+        self.p = p
+        super().__init__(u.subs(self.t,0), force, nu, coords)
+
+    def get_p(self):
+        return self.p
+
+    def get_u(self):
+        return self.u
+    
+    def get_vorticity(self):
+        return self.curl(self.u)
+    
+
+
+class ManufacturedEquations(InitialConditionAndForceAndSolution):
     def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t, initial_condition_only: bool):
         expected_rows, expected_cols = 3, 1
         if (u.rows, u.cols) != (expected_rows, expected_cols):
@@ -24,13 +103,8 @@ class ExactEquations:
                 f"u must be {expected_rows}x{expected_cols} (a 3-dimensional vector), "
                 f"but got {u.rows}x{u.cols}"
             )
-        
-        self.u = u
-        self.p = p
+        super().__init__(u, p, self.navier_stokes_rhs(u,p,nu,t),coords,t)
         self.nu = nu
-        self.coords = coords
-        self.t = t
-        self.initial_condition_only = initial_condition_only
 
         assert(sp.Eq(self.divergence(u),0))
 
@@ -66,7 +140,7 @@ class ExactEquations:
     def time_derivative(self, u, t):
         return sp.diff(u,t)
 
-    def navier_stokes_rhs(self, u, p, rho, nu,t):
+    def navier_stokes_rhs(self, u, p, nu,t):
         """
         RHS = - (u · ∇)u - (1/rho) ∇p + nu ∇²u
         """
@@ -76,53 +150,9 @@ class ExactEquations:
         lap_u = self.laplacian_vector(u)
         return dudt + conv - grad_p + nu * lap_u
 
-    def curl(self, u):
-        """
-        3D curl: w = ∇ × u
-        coords: [x, y, z]
-        u: Matrix([u1, u2, u3])
-        """
-        x, y, z = self.coords
-        u1, u2, u3 = u
-        w1 = sp.diff(u3, y) - sp.diff(u2, z)
-        w2 = sp.diff(u1, z) - sp.diff(u3, x)
-        w3 = sp.diff(u2, x) - sp.diff(u1, y)
-        return sp.Matrix([w1, w2, w3])
-    
-    def get_u(self):
-        if(self.initial_condition_only):
-            RuntimeError("ExactEquations: Ru was requested, but only the initial condition is defined.")
-        return self.u
-    
-    def get_vorticity(self):
-        if(self.initial_condition_only):
-            RuntimeError("ExactEquations: vorticity was requested, but only the initial condition is defined.")
-        return self.curl(self.u)
-
-    def get_u_init(self):
-        return self.u.subs(self.t, 0)
-    
-    def get_vorticity_init(self):
-        return self.curl(self.u).subs(self.t, 0)
-    
-    def get_rhs(self):
-        if(self.initial_condition_only):
-            RuntimeError("ExactEquations: RHS was requested, but only the initial condition is defined.")
-        rhs = self.navier_stokes_rhs(self.u, self.p, self.nu,self.nu,self.t)
-        return rhs
-    
-    def get_vorticity(self):
-        return self.curl(self.u)
-    
-    def get_initial_condition_only(self):
-        return self.initial_condition_only
-    
-    def get_viscosity(self):
-        return self.nu
-
 
 class SimulationHelper:
-    def __init__(self, exact_equations: ExactEquations, name: str):
+    def __init__(self, exact_equations: InitialCondition, name: str):
         self.exact_equations = exact_equations
         self.name = name
 
@@ -143,9 +173,6 @@ class SimulationHelper:
         u_init = self.exact_equations.get_u_init()
         w_init = self.exact_equations.get_vorticity_init()
         force = self.exact_equations.get_rhs()
-        if(not self.exact_equations.get_initial_condition_only()):
-            u = self.exact_equations.get_u()
-            w = self.exact_equations.get_vorticity()
 
         # ---- Convert to C/JSON strings ----
         # force_data uses RHS (time-dependent)
@@ -166,8 +193,9 @@ class SimulationHelper:
             f"out[0] = {iw0};out[1] = {iw1};out[2] = {iw2};"
         )
 
-
-        if(not self.exact_equations.get_initial_condition_only()):
+        try:
+            u = self.exact_equations.get_u()
+            w = self.exact_equations.get_vorticity()
             # exact_data_u: u(x,t)
             eu0, eu1, eu2 = [self.expr_to_c(comp) for comp in u]
             exact_data_u = (
@@ -179,6 +207,8 @@ class SimulationHelper:
             exact_data_w = (
                 f"out[0] = {ew0};out[1] = {ew1};out[2] = {ew2};"
             )
+        except NotImplementedError:
+            print("Warning: exact solutions for u and w are not given. We continue without!")
 
         for order in orders:
             for refinement in refinements:
@@ -211,9 +241,12 @@ class SimulationHelper:
                     ),
                 }
 
-                if(not self.exact_equations.get_initial_condition_only()):
+                try:
                     config["exact_data_u"] = exact_data_u
                     config["exact_data_w"] = exact_data_w
+                except NameError:
+                    print("Warning: exact solutions for u and w are not given. We continue without!")
+
 
                 filename = filename_no_extension + ".json"
 
