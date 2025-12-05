@@ -366,6 +366,10 @@ class SimulationDataProcessor:
 
             # Read CSV
             df = pd.read_csv(fname)
+            print("len(df) = " + str(len(df)))
+            if len(df)==0:
+                print(f"Skipping empty file: {fname}")
+                continue
 
             if "time_full" not in df.columns:
                 raise ValueError(f"'time_full' column not found in {fname}")
@@ -543,6 +547,7 @@ class SimulationDataProcessor:
                 ax.set_ylabel(cons_column)
                 ax.grid()
                 plt.savefig(directory + "/" + self.name+"_" + cons_column +"_order"+str(order)+"_ref"+str(ref)+".png" )
+                plt.close(fig)
 
     def pull_data_from_euler(self):
         hostname = "euler.ethz.ch"
@@ -585,7 +590,10 @@ class SimulationDataProcessor:
                 out_file = out_file + "_vars.csv"
                 local_path = "./" + out_directory + out_file
                 remote_path = "/cluster/home/wtonnon/dualfieldmfem/" + out_directory + out_file
-                sftp.get(remote_path,local_path)
+                try:
+                    sftp.get(remote_path,local_path)
+                except FileNotFoundError:
+                    print("Warning: "+ remote_path + " or " + local_path  + " on remote or local machine, respectively, not found. Skipping file..")
         finally:
             client.close()
 
