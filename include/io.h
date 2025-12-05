@@ -7,6 +7,7 @@
 #include <dlfcn.h>                             // For dlopen, dlsym, dlclose
 #include <mpi.h>                               // For MPI_Comm, MPI_Barrier
 #include <chrono>
+#include <filesystem>
 
 // Class to manage the simulation configuration
 class SimulationConfig
@@ -347,7 +348,13 @@ public:
           time(std::chrono::time_point(std::chrono::steady_clock::now()))
     {
         std::string output_file = config.get_outputfile();
-        std::string csv_path = std::string("./out/") + output_file + std::string("_vars.csv");
+        std::string csv_path = std::string("./out/data/") + output_file + std::string("_vars.csv");
+        std::filesystem::path dir = std::filesystem::path(csv_path).parent_path();        
+        if (!std::filesystem::exists(dir)) {
+            throw std::runtime_error("Directory does not exist: " + dir.string());
+        }
+
+
         csv_ = std::ofstream(csv_path, std::ios::out);
 
         if (!csv_)
