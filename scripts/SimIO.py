@@ -82,7 +82,7 @@ class ExactEquations:
         coords: [x, y, z]
         u: Matrix([u1, u2, u3])
         """
-        x, y, z = coords
+        x, y, z = self.coords
         u1, u2, u3 = u
         w1 = sp.diff(u3, y) - sp.diff(u2, z)
         w2 = sp.diff(u1, z) - sp.diff(u3, x)
@@ -407,7 +407,6 @@ class SimulationDataProcessor:
 
         return self.data
 
-
     def add_reference_triangles(self, ax, order, x_anchor, y_anchor):
         """
         Add small dotted triangles indicating O(h) and O(h^2) behavior.
@@ -439,9 +438,6 @@ class SimulationDataProcessor:
             verticalalignment="center",
             horizontalalignment="left",
         )
-
-
-
 
     def plot_convergence(self, time_point, show_plot = False, reference_order = lambda order: order):
         """
@@ -510,7 +506,6 @@ class SimulationDataProcessor:
             else:
                 plt.close(figs[error_column])
 
-
     def plot_conserved_variables(self):
         directory = "./out/plots/" +self.name + "/conservation"
         try:
@@ -549,9 +544,6 @@ class SimulationDataProcessor:
                 ax.grid()
                 plt.savefig(directory + "/" + self.name+"_" + cons_column +"_order"+str(order)+"_ref"+str(ref)+".png" )
 
-                
-
-
     def pull_data_from_euler(self):
         hostname = "euler.ethz.ch"
         username = "wtonnon"
@@ -574,7 +566,11 @@ class SimulationDataProcessor:
             config_directory = "data/config/" + self.name +"/"
             out_directory = "out/data/" + self.name + "/"
 
-            files = os.listdir(config_directory)
+            try:
+                files = os.listdir(config_directory)
+            except:
+                print("Error: directory " + config_directory + " not found! Cannot continue.")
+                sys.exit(1)
             print(files)
 
 
@@ -594,24 +590,3 @@ class SimulationDataProcessor:
             client.close()
 
 
-x0, x1, x2, t = sp.symbols('x0 x1 x2 t', real=True)
-nu=0
-
-# 3D velocity field u(x,t)
-u1 = sp.cos(2 * sp.pi * x1)
-u2 = sp.sin(2 * sp.pi * x2)
-u3 = sp.sin(2 * sp.pi * x0)
-u = sp.Matrix([u1, u2, u3])
-
-# Pressure (here zero)
-p = 0
-coords = [x0, x1, x2]
-
-#testSimulationHelper = SimulationHelper(ExactEquations(u,p,nu,coords,t,False),"initial_test2")
-#testSimulationHelper.run_convergence(1.,0.02,[0,1,2],[1])
-#testSimulationHelper.run_all_configs_euler()
-SDP = SimulationDataProcessor("initial_test2")
-SDP.pull_data_from_euler()
-SDP.collect_data(1.,0.1)
-SDP.plot_convergence(1.)
-SDP.plot_conserved_variables()
