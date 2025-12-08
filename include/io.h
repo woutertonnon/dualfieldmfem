@@ -409,6 +409,8 @@ public:
             std::function<void(const mfem::Vector &, double, mfem::Vector &)> exact_data_u =
                 std::bind(&SimulationConfig::exact_data_u, &config_, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
             mfem::VectorFunctionCoefficient u_exact_coeff(3, exact_data_u);
+            u_exact_coeff.SetTime(t_full);
+            std::cout << "u_exact_coef time: " << u_exact_coeff.GetTime() << std::endl;
             csv_ << "," << u_.ComputeL2Error(u_exact_coeff) << "," << v_.ComputeL2Error(u_exact_coeff);
         }
         csv_ << std::endl;
