@@ -481,7 +481,7 @@ int main(int argc, char *argv[])
       blf_NR.AddDomainIntegrator(new MixedCrossProductIntegrator(z_gfcoeff));
       blf_NR.Assemble();
       Operator &NR_op = blf_NR;
-      ScaledOperator NR_half_op(&NR_op, 0.5*dt);
+      ScaledOperator NR_half_op(&NR_op, 0.5);
 
       // A2 blocks:
       A2.SetBlock(0, 0, &NR_half_op);
@@ -504,7 +504,7 @@ int main(int argc, char *argv[])
       C_Re_op.Mult(w, tmp_v);
       b2sub.Add(-1.0, tmp_v);
       b2sub.Add(1.,f2_lf);
-      b2sub *= dt;
+      //b2sub *= dt;
 
       b2.AddSubVector(b2sub, 0);
       //b2.AddSubVector(f2_lf, 0);
