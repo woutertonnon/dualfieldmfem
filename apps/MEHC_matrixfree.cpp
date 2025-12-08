@@ -376,7 +376,7 @@ int main(int argc, char *argv[])
    if(rank==0)
       csv_logger_ptr = new EnergyCSVLogger(config, M_op, N_op, u, v, w, z, num_it_A1, num_it_A2);
    // Euler step: build MR_eul operator (2/dt M + cross(w,·)) in PA
-   if(true)
+   if(false)
    {
       MixedBilinearForm blf_MR_eul(&ND, &ND);
       blf_MR_eul.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
@@ -475,10 +475,10 @@ int main(int argc, char *argv[])
       blf_R2.Assemble();
       Operator &R2_op = blf_R2;
       ScaledOperator R2_half_op(&R2_op, 0.5);
-
+            std::cout << "viscosity = " << viscosity << std::endl;
       MixedBilinearForm blf_NR(&RT, &RT);
       blf_NR.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
-      blf_NR.AddDomainIntegrator(new MixedCrossProductIntegrator(z_gfcoeff));
+      //blf_NR.AddDomainIntegrator(new MixedCrossProductIntegrator(z_gfcoeff));
       blf_NR.Assemble();
       Operator &NR_op = blf_NR;
       ScaledOperator NR_half_op(&NR_op, 0.5);
@@ -495,12 +495,15 @@ int main(int argc, char *argv[])
       b2 = 0.0;
       b2sub = 0.0;
 
+      tmp_v = 0.;
       N_dt_op.Mult(v, tmp_v);
       b2sub += tmp_v;
 
-      R2_half_op.Mult(v, tmp_v);
+      tmp_v = 0.;
+      //R2_half_op.Mult(v, tmp_v);
       b2sub.Add(-1.0, tmp_v);
 
+      tmp_v = 0.;
       C_Re_op.Mult(w, tmp_v);
       b2sub.Add(-1.0, tmp_v);
       b2sub.Add(1.,f2_lf);
@@ -529,7 +532,7 @@ int main(int argc, char *argv[])
 
       MixedBilinearForm blf_MR(&ND, &ND);
       blf_MR.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
-      blf_MR.AddDomainIntegrator(new MixedCrossProductIntegrator(w_gfcoeff));
+      //blf_MR.AddDomainIntegrator(new MixedCrossProductIntegrator(w_gfcoeff));
       blf_MR.Assemble();
       Operator &MR_op = blf_MR;
       ScaledOperator MR_half_op(&MR_op, 0.5);
@@ -546,11 +549,12 @@ int main(int argc, char *argv[])
       b1 = 0.0;
       b1sub = 0.0;
 
+      tmp_u = 0.;
       M_dt_op.Mult(u, tmp_u);
       b1sub += tmp_u;
 
       tmp_u = 0.;
-      R1_half_op.Mult(u, tmp_u);
+      //R1_half_op.Mult(u, tmp_u);
       b1sub.Add(-1.0, tmp_u);
 
       tmp_u = 0.;
