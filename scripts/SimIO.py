@@ -96,15 +96,18 @@ class InitialConditionAndForceAndSolution(InitialConditionAndForce):
 
 
 class ManufacturedEquations(InitialConditionAndForceAndSolution):
-    def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t, initial_condition_only: bool):
+    def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t):
         expected_rows, expected_cols = 3, 1
         if (u.rows, u.cols) != (expected_rows, expected_cols):
             raise ValueError(
                 f"u must be {expected_rows}x{expected_cols} (a 3-dimensional vector), "
                 f"but got {u.rows}x{u.cols}"
             )
-        super().__init__(u, p, self.navier_stokes_rhs(u,p,nu,t),coords,t)
         self.nu = nu
+        self.coords = coords
+        print(self.divergence(u))
+        assert(sp.Eq(self.divergence(u),0))
+        super().__init__(u,p,self.navier_stokes_rhs(u,p,nu,t),nu,coords,t)
 
         assert(sp.Eq(self.divergence(u),0))
 
@@ -122,13 +125,17 @@ class ManufacturedEquations(InitialConditionAndForceAndSolution):
         return lap
 
     def convective_term(self, u):
-        n = u.rows
-        conv = sp.Matrix.zeros(n, 1)
-        for i in range(n):
-            term = 0
-            for j, c in enumerate(self.coords):
-                term += u[j] * sp.diff(u[i], c)
-            conv[i] = term
+        #n = u.rows
+        #conv = sp.Matrix.zeros(n, 1)
+        #for i in range(n):
+        #    term = 0
+        #    for j, c in enumerate(self.coords):
+        #        term += u[j] * sp.diff(u[i], c)
+        #    conv[i] = term
+        #tes = conv.equals(-u.cross(self.curl(u)))
+        #print(conv)
+        #print(sp.simplify(u.cross(self.curl(u))))
+        conv = -u.cross(self.curl(u))#
         return conv
 
     def divergence(self, u):
@@ -148,7 +155,7 @@ class ManufacturedEquations(InitialConditionAndForceAndSolution):
         conv = self.convective_term(u)
         grad_p = self.grad(p)
         lap_u = self.laplacian_vector(u)
-        return dudt + conv - grad_p + nu * lap_u
+        return dudt + conv + grad_p - nu * lap_u
 
 
 class SimulationHelper:
@@ -221,7 +228,7 @@ class SimulationHelper:
                     "T": T,
                     "refinements": refinement,
                     "order": order,
-                    "visualisation": 1,
+                    "visualisation": 0,
                     "printlevel": 0,
                     "viscosity": self.exact_equations.get_viscosity(),
                     "tol": tol,

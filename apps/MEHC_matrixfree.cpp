@@ -304,11 +304,7 @@ int main(int argc, char *argv[])
 #endif
 
 
-   LinearForm f1_lf(&ND);
-   f1_lf.AddDomainIntegrator(new VectorFEDomainLFIntegrator(force_coef));
 
-   LinearForm f2_lf(&RT);
-   f2_lf.AddDomainIntegrator(new VectorFEDomainLFIntegrator(force_coef));
 
 
    // ------------------------------------------------------------------
@@ -376,7 +372,7 @@ int main(int argc, char *argv[])
    if(rank==0)
       csv_logger_ptr = new EnergyCSVLogger(config, M_op, N_op, u, v, w, z, num_it_A1, num_it_A2);
    // Euler step: build MR_eul operator (2/dt M + cross(w,·)) in PA
-   if(true)
+   if(false)
    {
       MixedBilinearForm blf_MR_eul(&ND, &ND);
       blf_MR_eul.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
@@ -399,6 +395,9 @@ int main(int argc, char *argv[])
 
       // Build rhs b1:  b1 = 2*M_dt*u + f1  (simplified)
       force_coef.SetTime(0.5*dt);
+
+      LinearForm f1_lf(&ND);
+      f1_lf.AddDomainIntegrator(new VectorFEDomainLFIntegrator(force_coef));
       f1_lf.Assemble();
       b1 = 0.0;
       b1sub = 0.0;
@@ -462,6 +461,9 @@ int main(int argc, char *argv[])
       cycle++;
 
       force_coef.SetTime(t);
+
+      LinearForm f2_lf(&RT);
+      f2_lf.AddDomainIntegrator(new VectorFEDomainLFIntegrator(force_coef));
       f2_lf.Assemble();
 
          mfem::VectorFunctionCoefficient w_exact_coeff(3,
@@ -521,6 +523,9 @@ int main(int argc, char *argv[])
       y.GetSubVector(w_dofs, w);
       y.GetSubVector(q_dofs, q);
       force_coef.SetTime(t+0.5*dt);
+
+      LinearForm f1_lf(&ND);
+      f1_lf.AddDomainIntegrator(new VectorFEDomainLFIntegrator(force_coef));
       f1_lf.Assemble();
       //w.ProjectCoefficient(w_exact_coeff);
       // === PRIMAL FIELD: build R1 and MR as PA operators ===
