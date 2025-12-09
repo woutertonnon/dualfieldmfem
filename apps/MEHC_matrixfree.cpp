@@ -376,7 +376,7 @@ int main(int argc, char *argv[])
    if(rank==0)
       csv_logger_ptr = new EnergyCSVLogger(config, M_op, N_op, u, v, w, z, num_it_A1, num_it_A2);
    // Euler step: build MR_eul operator (2/dt M + cross(w,·)) in PA
-   if(false)
+   if(true)
    {
       MixedBilinearForm blf_MR_eul(&ND, &ND);
       blf_MR_eul.AddDomainIntegrator(new VectorFEMassIntegrator(two_over_dt));
