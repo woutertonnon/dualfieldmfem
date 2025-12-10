@@ -5,7 +5,7 @@
 #include <fstream>                             // For file output
 #include <cstdlib>                             // For std::system
 #include <dlfcn.h>                             // For dlopen, dlsym, dlclose
-#include <mpi.h>                               // For MPI_Comm, MPI_Barrier
+// #include <mpi.h>                               // For MPI_Comm, MPI_Barrier
 #include <chrono>
 #include <filesystem>
 
@@ -78,8 +78,9 @@ public:
     // Must be called by ALL ranks, AFTER MPI_Init.
     // rank 0: generates and compiles libinitial_condition.so
     // all ranks: wait, then dlopen + dlsym
-    void InitializeLibrary(int rank, MPI_Comm comm)
+    void InitializeLibrary(int rank)
     {
+        rank = 0;
         if (rank == 0)
         {
             // Generate C++ code that includes the user-provided function code
@@ -146,7 +147,7 @@ extern "C" {
         }
 
         // Ensure all ranks wait until rank 0 is done writing & compiling
-        MPI_Barrier(comm);
+        // MPI_Barrier(comm);
 
         // Load the compiled shared library (all ranks)
         lib_handle = dlopen("./libinitial_condition.so", RTLD_LAZY);
@@ -323,101 +324,136 @@ private:
     std::string exact_data_u_code;
 };
 
-class EnergyCSVLogger
+class CSVLogger
 {
 public:
-    EnergyCSVLogger(SimulationConfig &config,
-                    mfem::Operator &M_op,
-                    mfem::Operator &N_op,
-                    mfem::GridFunction &u,
-                    mfem::GridFunction &v,
-                    mfem::GridFunction &w,
-                    mfem::GridFunction &z,
-                    int &num_it_A1,
-                    int &num_it_A2)
-        : M_op_(M_op),
-          N_op_(N_op),
-          u_(u), v_(v), w_(w), z_(z),
-          M_u_(u.Size()),
-          M_w_(w.Size()),
-          N_v_(v.Size()),
-          N_z_(z.Size()),
-          num_it_A1_(num_it_A1),
-          num_it_A2_(num_it_A2),
-          config_(config),
-          time(std::chrono::time_point(std::chrono::steady_clock::now()))
+    CSVLogger(SimulationConfig &config)
+        : config_(config)
     {
         std::string output_file = config.get_outputfile();
         std::string csv_path = std::string("./out/data/") + output_file + std::string("_vars.csv");
-        std::filesystem::path dir = std::filesystem::path(csv_path).parent_path();        
-        if (!std::filesystem::exists(dir)) {
+        std::filesystem::path dir = std::filesystem::path(csv_path).parent_path();
+        if (!std::filesystem::exists(dir))
+        {
             throw std::runtime_error("Directory does not exist: " + dir.string());
         }
-
-
         csv_ = std::ofstream(csv_path, std::ios::out);
-
         if (!csv_)
         {
             std::cerr << "[warn] Failed to open CSV (for truncation): "
                       << csv_path << std::endl;
             return;
         }
-
         std::cout << "[info] CSV opened (truncated): " << csv_path << std::endl;
-        csv_ << "runtime_it,cycle,time_full,time_half,num_it_A1,num_it_A2,||u1||,||u2||,u1*w1,u2*w2";
-        if (config.has_exact_u())
-        {
-            csv_ << ",u1_err_L2,u2_err_L2";
-        }
-        csv_ << std::endl;
-        csv_.flush();
-    }
+    };
 
     bool IsOpen() const { return csv_.is_open(); }
 
-    void WriteRow(int cycle, double t_full, double t_half)
+    std::ofstream &get_ofstream() { 
+        
+        if (!csv_) std::runtime_error("[warn] Failed to open CSV;\n");
+        return csv_; 
+    };
+
+    SimulationConfig &get_config(){return config_;};
+
+    double MatrixConservedVariable(mfem::Operator &M, mfem::Vector u)
     {
-        if (!csv_)
+        if (M.Height() != M.Width())
         {
-            return;
+            throw std::runtime_error("CSVLogger::MatrixConservedVariable(): Matrix not symmetric!");
         }
+        mfem::Vector M_u(u.Size());
+        M.Mult(u, M_u);
+        return u * M_u;
+    }
 
-        // Matrix-free applications
-        M_op_.Mult(u_, M_u_); // M u
-        M_op_.Mult(w_, M_w_); // M w
-        N_op_.Mult(v_, N_v_); // N v
-        N_op_.Mult(z_, N_z_); // N z
+    double MatrixConservedVariable(mfem::Vector v, mfem::Operator &M, mfem::Vector u)
+    {
+        if (M.Height() != v.Size() || M.Width() != u.Size())
+        {
+            throw std::runtime_error("CSVLogger::MatrixConservedVariable(): Dimensions of v, M, and u do not match!");
+        }
+        mfem::Vector M_u(M.Height());
+        M.Mult(u, M_u);
+        return v * M_u;
+    }
 
+    virtual void WriteRow() = 0;
+
+private:
+    SimulationConfig &config_;
+    std::ofstream csv_;
+};
+
+class DualFieldCSVLogger : public CSVLogger
+{
+public:
+    DualFieldCSVLogger(SimulationConfig &config,
+                       int &cycle,
+                       double &t_full,
+                       double &t_half,
+                       mfem::Operator &M_op,
+                       mfem::Operator &N_op,
+                       mfem::GridFunction &u,
+                       mfem::GridFunction &v,
+                       mfem::GridFunction &w,
+                       mfem::GridFunction &z,
+                       int &num_it_A1,
+                       int &num_it_A2)
+        : CSVLogger(config),
+          cycle_(cycle),
+          t_full_(t_full),
+          t_half_(t_half),
+          M_op_(M_op),
+          N_op_(N_op),
+          u_(u), v_(v), w_(w), z_(z),
+          num_it_A1_(num_it_A1),
+          num_it_A2_(num_it_A2),
+          time_(std::chrono::time_point(std::chrono::steady_clock::now()))
+    {
+        get_ofstream() << "runtime_it,cycle,time_full,time_half,num_it_A1,num_it_A2,||u1||,||u2||,u1*w1,u2*w2";
+        if (config.has_exact_u())
+        {
+            get_ofstream() << ",u1_err_L2,u2_err_L2";
+        }
+        get_ofstream() << std::endl;
+        get_ofstream().flush();
+    };
+
+    void WriteRow()
+    {
         // Inner products as dot products
-        double u1_norm = u_ * M_u_; // (u, M u)
-        double u2_norm = v_ * N_v_; // (v, N v)
-        double u1w1 = u_ * M_w_;    // (u, M w)
-        double u2w2 = v_ * N_z_;    // (v, N z)
+        double u1_norm = MatrixConservedVariable(M_op_,u_); // (u, M u)
+        double u2_norm = MatrixConservedVariable(N_op_,v_); // (v, N v)
+        double u1w1 = MatrixConservedVariable(u_,M_op_,w_); // (u, M w)
+        double u2w2 = MatrixConservedVariable(v_,N_op_,z_); // (v, N z)
 
-        std::chrono::duration<double> runtime_it = std::chrono::steady_clock::now() - time;
-        time = std::chrono::steady_clock::now(); 
+        std::chrono::duration<double> runtime_it = std::chrono::steady_clock::now() - time_;
+        time_ = std::chrono::steady_clock::now();
 
-        csv_ << runtime_it.count() << "," << cycle << ","
+        get_ofstream() << runtime_it.count() << "," << cycle_ << ","
              << std::setprecision(15) << std::fixed
-             << t_full << "," << t_half << ","
+             << t_full_ << "," << t_half_ << ","
              << num_it_A1_ << "," << num_it_A2_ << ","
              << u1_norm << "," << u2_norm << ","
              << u1w1 << "," << u2w2;
-        if (config_.has_exact_u())
+        if (get_config().has_exact_u())
         {
             std::function<void(const mfem::Vector &, double, mfem::Vector &)> exact_data_u =
-                std::bind(&SimulationConfig::exact_data_u, &config_, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+                std::bind(&SimulationConfig::exact_data_u, &get_config(), std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
             mfem::VectorFunctionCoefficient u_exact_coeff(3, exact_data_u);
-            u_exact_coeff.SetTime(t_full);
-            std::cout << "u_exact_coef time: " << u_exact_coeff.GetTime() << std::endl;
-            csv_ << "," << u_.ComputeL2Error(u_exact_coeff) << "," << v_.ComputeL2Error(u_exact_coeff);
+            u_exact_coeff.SetTime(t_full_);
+            get_ofstream() << "," << u_.ComputeL2Error(u_exact_coeff) << "," << v_.ComputeL2Error(u_exact_coeff);
         }
-        csv_ << std::endl;
-        csv_.flush();
-    }
+        get_ofstream() << std::endl;
+        get_ofstream().flush();
+    };
 
 private:
+    int &cycle_;
+    double &t_full_;
+    double &t_half_;
     mfem::Operator &M_op_;
     mfem::Operator &N_op_;
     mfem::GridFunction &u_;
@@ -426,9 +462,48 @@ private:
     mfem::GridFunction &z_;
     int &num_it_A1_;
     int &num_it_A2_;
+    std::chrono::time_point<std::chrono::steady_clock> time_;
+};
 
-    mfem::Vector M_u_, M_w_, N_v_, N_z_;
-    std::ofstream csv_;
-    SimulationConfig &config_;
-    std::chrono::time_point<std::chrono::steady_clock> time;
+class NitscheStokesCSVLogger : public CSVLogger
+{
+public:
+    NitscheStokesCSVLogger(SimulationConfig &config,
+                       mfem::GridFunction &u,
+                       int &num_it_solver)
+        : CSVLogger(config),
+          u_(u),
+          num_it_solver_(num_it_solver),
+          time_(std::chrono::time_point(std::chrono::steady_clock::now()))
+    {
+        get_ofstream() << "runtime_it,num_it_solver";
+        if (config.has_exact_u())
+        {
+            get_ofstream() << ",u1_err_L2,u2_err_L2";
+        }
+        get_ofstream() << std::endl;
+        get_ofstream().flush();
+    };
+
+    void WriteRow()
+    {
+        std::chrono::duration<double> runtime_it = std::chrono::steady_clock::now() - time_;
+        time_ = std::chrono::steady_clock::now();
+
+        get_ofstream() << runtime_it.count() << "," << num_it_solver_;
+        if (get_config().has_exact_u())
+        {
+            std::function<void(const mfem::Vector &, double, mfem::Vector &)> exact_data_u =
+                std::bind(&SimulationConfig::exact_data_u, &get_config(), std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+            mfem::VectorFunctionCoefficient u_exact_coeff(3, exact_data_u);
+            get_ofstream() << "," << u_.ComputeL2Error(u_exact_coeff);
+        }
+        get_ofstream() << std::endl;
+        get_ofstream().flush();
+    };
+
+private:
+    mfem::GridFunction &u_;
+    int &num_it_solver_;
+    std::chrono::time_point<std::chrono::steady_clock> time_;
 };
