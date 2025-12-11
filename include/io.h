@@ -8,11 +8,18 @@
 // #include <mpi.h>                               // For MPI_Comm, MPI_Barrier
 #include <chrono>
 #include <filesystem>
+#include <typeindex>
+#include <unistd.h>
+#include <stdio.h>
 
-// Class to manage the simulation configuration
 class SimulationConfig
 {
 public:
+    SimulationConfig(const std::string &filename)
+    {
+        boost::property_tree::read_json(filename, tree_);
+    }
+
     void PrintTree(const boost::property_tree::ptree &pt, int depth = 0)
     {
         std::string indent(depth * 2, ' ');
@@ -29,191 +36,105 @@ public:
         }
     }
 
-    // Constructor that reads configuration from a JSON file
-    explicit SimulationConfig(const std::string &filename)
-        : dt(0.0), T(0.0), viscosity(0.0), refinements(0), order(1), visualisation(0), printlevel(0), tol(1e-8), initial_data_u_func(nullptr), boundary_data_u_func(nullptr), force_data_func(nullptr), initial_data_w_func(nullptr), lib_handle(nullptr)
+    boost::property_tree::ptree &get_tree() { return tree_; };
+
+    template <typename T>
+    T get_value(std::string variable, T default_value) { return tree_.get<T>(variable.data(), default_value); };
+
+    template <typename T>
+    T get_value(std::string variable) { return tree_.get<T>(variable.data()); };
+
+    std::function<void(const Vector &, double, Vector &)> get_exact_data(std::string function_name){return functions_.at(function_name);};
+
+    void InitializeLibrary(std::initializer_list<std::string> function_names)
     {
-        // Read the JSON file into a property tree
-        boost::property_tree::ptree tree;
-        boost::property_tree::read_json(filename, tree);
+        // Get job ID to get unique name
+        auto pid = getpid();
+        library_name_ = std::string("config_library_") + std::to_string(pid) + std::string(".cpp");
+        // Generate C++ code that includes the user-provided function code
+        std::ofstream file(library_name_);
+        file << R"(#include <cmath>
 
-        int depth = 1;
-        PrintTree(tree, depth);
+                   extern "C" {                                 )";
+        for (std::string function_name : function_names)
+            file << "void " << function_name << R"((double* x, double t, double* out, int dim){)" << tree_.get<std::string>(function_name, "") << R"()};\n)";
 
-        // Populate member variables from the JSON configuration
-        mesh = tree.get<std::string>("mesh");
-        outputfile = tree.get<std::string>("outputfile");
-        solver = tree.get<std::string>("solver");
-        dt = tree.get<double>("dt");
-        T = tree.get<double>("T");
-        refinements = tree.get<int>("refinements", 0);
-        order = tree.get<int>("order", 1);
-        visualisation = tree.get<int>("visualisation", 0);
-        tol = tree.get<double>("tol", 1e-8);
+        file << R"(} // extern "C")";
+        file.close();
 
-        boundary_data_u_code = tree.get<std::string>("boundary_data_u", "");
-        // BUG FIX: this was overwriting boundary_data_u_code before
-        force_data_code = tree.get<std::string>("force_data", "");
-        initial_data_u_code = tree.get<std::string>("initial_data_u", "");
-        initial_data_w_code = tree.get<std::string>("initial_data_w", "");
-        exact_data_u_code = tree.get<std::string>("exact_data_u", "");
-        has_exact_u_solution = !exact_data_u_code.empty();
-
-        viscosity = tree.get<double>("viscosity", 0);
-        printlevel = tree.get<int>("printlevel", 0);
-
-        // NOTE: we DO NOT compile/load the library in the constructor anymore.
-        // Call InitializeLibrary(rank, comm) after MPI_Init on all ranks.
-    }
-
-    ~SimulationConfig()
-    {
-        if (lib_handle)
+        lib_handle_ = dlopen(library_name_.data(), RTLD_LAZY);
+        if (!lib_handle_)
         {
-            dlclose(lib_handle);
-            lib_handle = nullptr;
-        }
-    }
-
-    // Must be called by ALL ranks, AFTER MPI_Init.
-    // rank 0: generates and compiles libinitial_condition.so
-    // all ranks: wait, then dlopen + dlsym
-    void InitializeLibrary(int rank)
-    {
-        rank = 0;
-        if (rank == 0)
-        {
-            // Generate C++ code that includes the user-provided function code
-            std::ofstream file("generated_initial_condition.cpp");
-            file <<
-                R"(#include <cmath>
-
-extern "C" {
-
-    void initial_data_u(double* x, double* out, int dim) {
-)"
-                 << initial_data_u_code <<
-                R"(
-    }
-
-    void initial_data_w(double* x, double* out, int dim) {
-)"
-                 << initial_data_w_code <<
-                R"(
-    }
-
-    void boundary_data_u(double* x, double t, double* out, int dim) {
-)"
-                 << boundary_data_u_code <<
-                R"(
-    }
-
-    void force_data(double* x, double t, double* out, int dim) {
-)"
-                 << force_data_code <<
-                R"(
-    }
-)";
-            file <<
-                R"(    void exact_data_u(double* x, double t, double* out, int dim) {
-)";
-            if (has_exact_u_solution)
-            {
-                file << exact_data_u_code << "\n";
-            }
-            else
-            {
-                // Safe default if accidentally called
-                file << "for (int i = 0; i < dim; ++i) out[i] = 0.0;\n";
-            }
-            file <<
-                R"(    }
-
-} // extern "C"
-)";
-            file.close();
-
-            // Compile the generated code into a shared library
-            const char *compile_command =
-                "g++ -shared -fPIC -o libinitial_condition.so generated_initial_condition.cpp";
-            int result = std::system(compile_command);
-
-            if (result != 0)
-            {
-                std::cerr << "Rank 0: Failed to compile the initial condition library! "
-                          << "(exit code " << result << ")\n";
-                // Still continue to the barrier so other ranks don't hang.
-            }
-        }
-
-        // Ensure all ranks wait until rank 0 is done writing & compiling
-        // MPI_Barrier(comm);
-
-        // Load the compiled shared library (all ranks)
-        lib_handle = dlopen("./libinitial_condition.so", RTLD_LAZY);
-        if (!lib_handle)
-        {
-            std::cerr << "Rank " << rank
-                      << ": Failed to load library: " << dlerror() << std::endl;
+            std::cerr << ": Failed to load library: " << dlerror() << std::endl;
             return;
         }
 
         // Load the function pointers
-        initial_data_u_func =
-            reinterpret_cast<SpaceDataFunc>(dlsym(lib_handle, "initial_data_u"));
-        if (!initial_data_u_func)
+        for (std::string function_name : function_names)
         {
-            std::cerr << "Rank " << rank
-                      << ": Failed to load initial_data_u: " << dlerror() << std::endl;
-            dlclose(lib_handle);
-            lib_handle = nullptr;
-            return;
-        }
-
-        initial_data_w_func =
-            reinterpret_cast<SpaceDataFunc>(dlsym(lib_handle, "initial_data_w"));
-        if (!initial_data_w_func)
-        {
-            std::cerr << "Rank " << rank
-                      << ": Failed to load initial_data_w: " << dlerror() << std::endl;
-            dlclose(lib_handle);
-            lib_handle = nullptr;
-            return;
-        }
-
-        boundary_data_u_func =
-            reinterpret_cast<SpaceTimeDataFunc>(dlsym(lib_handle, "boundary_data_u"));
-        if (!boundary_data_u_func)
-        {
-            std::cerr << "Rank " << rank
-                      << ": Failed to load boundary_data_u: " << dlerror() << std::endl;
-            dlclose(lib_handle);
-            lib_handle = nullptr;
-            return;
-        }
-
-        force_data_func =
-            reinterpret_cast<SpaceTimeDataFunc>(dlsym(lib_handle, "force_data"));
-        if (!force_data_func)
-        {
-            std::cerr << "Rank " << rank
-                      << ": Failed to load force_data: " << dlerror() << std::endl;
-            dlclose(lib_handle);
-            lib_handle = nullptr;
-            return;
-        }
-
-        exact_data_u_func =
-            reinterpret_cast<SpaceTimeDataFunc>(dlsym(lib_handle, "exact_data_u"));
-        if (!force_data_func)
-        {
-            std::cerr << "Rank " << rank
-                      << ": Failed to load exact_data_u: " << dlerror() << std::endl;
-            dlclose(lib_handle);
-            lib_handle = nullptr;
-            return;
+            lib_func_handles_.insert({function_name, reinterpret_cast<SpaceTimeDataFunc>(dlsym(lib_handle_, "initial_data_u"))});
+            if (!lib_func_handles_.at(function_name))
+            {
+                std::cerr << ": Failed to load initial_data_u: " << dlerror() << std::endl;
+                dlclose(lib_handle_);
+                lib_handle_ = nullptr;
+                return;
+            }
+            functions_.insert({function_name, 
+                               [this, &function_name](const mfem::Vector &x, double t, mfem::Vector &v)
+                                    {
+                                        this->lib_func_handles_.at(function_name)(x.GetData(), t, v.GetData(), x.Size());
+                                        return;
+                                    }
+                                }
+                            );
         }
     }
+
+    ~SimulationConfig()
+    {
+        if (lib_handle_)
+        {
+            dlclose(lib_handle_);
+            lib_handle_ = nullptr;
+        }
+        std::filesystem::remove(library_name_);
+    }
+
+private:
+    boost::property_tree::ptree tree_;
+    std::string library_name_;
+    void *lib_handle_;
+
+    typedef void (*SpaceTimeDataFunc)(double *, double, double *, int);
+    std::map<std::string, SpaceTimeDataFunc> lib_func_handles_;
+    std::map<std::string, std::function<void(const Vector &, double, Vector &)>> functions_;
+};
+
+// Class to manage the simulation configuration
+class DualFieldConfig : public SimulationConfig
+{
+public:
+    // Constructor that reads configuration from a JSON file
+    DualFieldConfig(const std::string &filename)
+        : SimulationConfig(filename),
+          mesh(get_value<std::string>("mesh")),
+          outputfile(get_value<std::string>("outputfile")),
+          solver(get_value<std::string>("solver")),
+          dt(get_value("dt", 0.02)),
+          T(get_value("T", 1.)),
+          refinements(get_value("refinements", 10)),
+          order(get_value("order", 1)),
+          visualisation(get_value("visualisation", 0)),
+          tol(get_value("tol", 1e-8)),
+          viscosity(get_value("viscosity",0.)),
+          printlevel(get_value("printlevel",0)),
+          has_exact_u_solution(!get_value<std::string>("exact_data_u", "").empty())
+    {
+        std::initializer_list<std::string> function_names({"force_data","initial_data_u","initial_data_w","exact_data_u","exact_data_w"});
+        InitializeLibrary(function_names);
+    }
+
 
     // Getter methods for configuration parameters
     double get_dt() const { return dt; }
@@ -229,64 +150,55 @@ extern "C" {
     std::string get_solver() const { return solver; }
     bool has_exact_u() const { return has_exact_u_solution; }
 
-    // Methods to interface with the dynamic library
-    void boundary_data_u(const mfem::Vector &x, double t, mfem::Vector &out)
+private:
+    // Configuration parameters loaded from the JSON file
+    std::string mesh;
+    std::string outputfile;
+    std::string solver;
+    double dt;
+    double T;
+    double viscosity;
+    int refinements;
+    int order;
+    int visualisation;
+    int printlevel;
+    double tol;
+    bool has_exact_u_solution;
+};
+
+class NitscheStokesConfig : public SimulationConfig
+{
+public:
+    // Constructor that reads configuration from a JSON file
+    NitscheStokesConfig(const std::string &filename)
+        : SimulationConfig(filename),
+          mesh(get_value<std::string>("mesh")),
+          outputfile(get_value<std::string>("outputfile")),
+          solver(get_value<std::string>("solver")),
+          refinements(get_value("refinements", 10)),
+          order(get_value("order", 1)),
+          visualisation(get_value("visualisation", 0)),
+          tol(get_value("tol", 1e-8)),
+          viscosity(get_value("viscosity",0.)),
+          printlevel(get_value("printlevel",0)),
+          has_exact_u_solution(!get_value<std::string>("exact_data_u", "").empty())
     {
-        out.SetSize(x.Size());
-        if (!boundary_data_u_func)
-        {
-            std::cerr << "boundary_data_u_func is null (library not initialized?)\n";
-            out = 0.0;
-            return;
-        }
-        boundary_data_u_func(x.GetData(), t, out.GetData(), x.Size());
+        std::initializer_list<std::string> function_names({"force_data","exact_data_u"});
+        InitializeLibrary(function_names);
     }
 
-    void force_data(const mfem::Vector &x, double t, mfem::Vector &out)
-    {
-        out.SetSize(x.Size());
-        if (!force_data_func)
-        {
-            std::cerr << "force_data_func is null (library not initialized?)\n";
-            out = 0.0;
-            return;
-        }
-        force_data_func(x.GetData(), t, out.GetData(), x.Size());
-    }
 
-    void initial_data_u(const mfem::Vector &x, mfem::Vector &out)
-    {
-        out.SetSize(x.Size());
-        if (!initial_data_u_func)
-        {
-            std::cerr << "initial_data_u_func is null (library not initialized?)\n";
-            out = 0.0;
-            return;
-        }
-        initial_data_u_func(x.GetData(), out.GetData(), x.Size());
-    }
-
-    void initial_data_w(const mfem::Vector &x, mfem::Vector &out)
-    {
-        out.SetSize(x.Size());
-        if (!initial_data_w_func)
-        {
-            std::cerr << "initial_data_w_func is null (library not initialized?)\n";
-            out = 0.0;
-            return;
-        }
-        initial_data_w_func(x.GetData(), out.GetData(), x.Size());
-    }
-    void exact_data_u(const mfem::Vector &x, double t, mfem::Vector &out)
-    {
-        out.SetSize(x.Size());
-        if (!exact_data_u_func)
-        {
-            std::cerr << "exact_data_u is null (library not initialized?)\n";
-            return;
-        }
-        exact_data_u_func(x.GetData(), t, out.GetData(), x.Size());
-    }
+    // Getter methods for configuration parameters
+    double get_viscosity() const { return viscosity; }
+    int get_refinements() const { return refinements; }
+    int get_order() const { return order; }
+    int get_visualisation() const { return visualisation; }
+    int get_printlevel() const { return printlevel; }
+    double get_tol() const { return tol; }
+    std::string get_mesh() const { return mesh; }
+    std::string get_outputfile() const { return outputfile; }
+    std::string get_solver() const { return solver; }
+    bool has_exact_u() const { return has_exact_u_solution; }
 
 private:
     // Configuration parameters loaded from the JSON file
@@ -301,27 +213,7 @@ private:
     int visualisation;
     int printlevel;
     double tol;
-
-    // Function pointers for the dynamically loaded functions
-    typedef void (*SpaceDataFunc)(double *, double *, int);
-    typedef void (*SpaceTimeDataFunc)(double *, double, double *, int);
-
-    SpaceDataFunc initial_data_u_func;
-    SpaceTimeDataFunc boundary_data_u_func;
-    SpaceTimeDataFunc force_data_func;
-    SpaceDataFunc initial_data_w_func;
-    SpaceTimeDataFunc exact_data_u_func;
-
     bool has_exact_u_solution;
-
-    void *lib_handle; // handle from dlopen
-
-    // Code snippets for custom functions loaded from the JSON
-    std::string boundary_data_u_code;
-    std::string force_data_code;
-    std::string initial_data_u_code;
-    std::string initial_data_w_code;
-    std::string exact_data_u_code;
 };
 
 class CSVLogger
@@ -349,13 +241,15 @@ public:
 
     bool IsOpen() const { return csv_.is_open(); }
 
-    std::ofstream &get_ofstream() { 
-        
-        if (!csv_) std::runtime_error("[warn] Failed to open CSV;\n");
-        return csv_; 
+    std::ofstream &get_ofstream()
+    {
+
+        if (!csv_)
+            std::runtime_error("[warn] Failed to open CSV;\n");
+        return csv_;
     };
 
-    SimulationConfig &get_config(){return config_;};
+    SimulationConfig &get_config() { return config_; };
 
     double MatrixConservedVariable(mfem::Operator &M, mfem::Vector u)
     {
@@ -424,20 +318,20 @@ public:
     void WriteRow()
     {
         // Inner products as dot products
-        double u1_norm = MatrixConservedVariable(M_op_,u_); // (u, M u)
-        double u2_norm = MatrixConservedVariable(N_op_,v_); // (v, N v)
-        double u1w1 = MatrixConservedVariable(u_,M_op_,w_); // (u, M w)
-        double u2w2 = MatrixConservedVariable(v_,N_op_,z_); // (v, N z)
+        double u1_norm = MatrixConservedVariable(M_op_, u_);  // (u, M u)
+        double u2_norm = MatrixConservedVariable(N_op_, v_);  // (v, N v)
+        double u1w1 = MatrixConservedVariable(u_, M_op_, w_); // (u, M w)
+        double u2w2 = MatrixConservedVariable(v_, N_op_, z_); // (v, N z)
 
         std::chrono::duration<double> runtime_it = std::chrono::steady_clock::now() - time_;
         time_ = std::chrono::steady_clock::now();
 
         get_ofstream() << runtime_it.count() << "," << cycle_ << ","
-             << std::setprecision(15) << std::fixed
-             << t_full_ << "," << t_half_ << ","
-             << num_it_A1_ << "," << num_it_A2_ << ","
-             << u1_norm << "," << u2_norm << ","
-             << u1w1 << "," << u2w2;
+                       << std::setprecision(15) << std::fixed
+                       << t_full_ << "," << t_half_ << ","
+                       << num_it_A1_ << "," << num_it_A2_ << ","
+                       << u1_norm << "," << u2_norm << ","
+                       << u1w1 << "," << u2w2;
         if (get_config().has_exact_u())
         {
             std::function<void(const mfem::Vector &, double, mfem::Vector &)> exact_data_u =
@@ -469,8 +363,8 @@ class NitscheStokesCSVLogger : public CSVLogger
 {
 public:
     NitscheStokesCSVLogger(SimulationConfig &config,
-                       mfem::GridFunction &u,
-                       int &num_it_solver)
+                           mfem::GridFunction &u,
+                           int &num_it_solver)
         : CSVLogger(config),
           u_(u),
           num_it_solver_(num_it_solver),
