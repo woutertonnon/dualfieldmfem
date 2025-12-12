@@ -16,100 +16,11 @@ import re
 import numpy as np
 from matplotlib.ticker import MultipleLocator
 
-class InitialCondition:
-    def __init__(self, u_init: sp.Matrix, nu: float, coords):        
-        expected_rows, expected_cols = 3, 1
-        if (u_init.rows, u_init.cols) != (expected_rows, expected_cols):
-            raise ValueError(
-                f"u\_init must be {expected_rows}x{expected_cols} (a 3-dimensional vector), "
-                f"but got {u.rows}x{u.cols}"
-            )
-        self.nu = nu
-        self.u_init = u_init
+class ExactManipulationsSpace:
+    
+    def __init__(self, coords):
         self.coords = coords
-        self.vorticity_init = self.curl(u_init)
 
-    def curl(self, u):
-        """
-        3D curl: w = ∇ × u
-        coords: [x, y, z]
-        u: Matrix([u1, u2, u3])
-        """
-        x, y, z = self.coords
-        u1, u2, u3 = u
-        w1 = sp.diff(u3, y) - sp.diff(u2, z)
-        w2 = sp.diff(u1, z) - sp.diff(u3, x)
-        w3 = sp.diff(u2, x) - sp.diff(u1, y)
-        return sp.Matrix([w1, w2, w3])
-    
-    def get_u_init(self):
-        return self.u_init
-
-    def get_vorticity_init(self):
-        return self.vorticity_init
-    
-    def get_u(self):
-        NotImplemented("NotImplemented(): get_u() is not implemented for class ExactEquations.")
-        return None
-    
-    def get_p(self):
-        NotImplemented("NotImplemented(): get_p() is not implemented for class ExactEquations.")
-        return None
-    
-    def get_vorticity(self):
-        NotImplemented("NotImplemented(): get_vorticity() is not implemented for class ExactEquations.")
-        return None
-    
-    def get_rhs(self):
-        NotImplemented("NotImplemented(): get_rhs() is not implemented for class ExactEquations")
-        return sp.Matrix([0, 0, 0])
-    
-    def get_viscosity(self):
-        return self.nu
-
-    
-    
-class InitialConditionAndForce(InitialCondition):
-    def __init__(self, u_init: sp.Matrix, force: sp.Matrix, nu: float, coords):
-        super().__init__(u_init, nu, coords)
-        self.force = force
-
-    def get_rhs(self):
-        return self.force
-    
-class InitialConditionAndForceAndSolution(InitialConditionAndForce):
-    def __init__(self, u: sp.Matrix, p: sp.Expr, force: sp.Matrix, nu: float, coords, t):
-        self.t = t
-        self.u = u
-        self.p = p
-        super().__init__(u.subs(self.t,0), force, nu, coords)
-
-    def get_p(self):
-        return self.p
-
-    def get_u(self):
-        return self.u
-    
-    def get_vorticity(self):
-        return self.curl(self.u)
-    
-
-
-class ManufacturedEquations(InitialConditionAndForceAndSolution):
-    def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t):
-        expected_rows, expected_cols = 3, 1
-        if (u.rows, u.cols) != (expected_rows, expected_cols):
-            raise ValueError(
-                f"u must be {expected_rows}x{expected_cols} (a 3-dimensional vector), "
-                f"but got {u.rows}x{u.cols}"
-            )
-        self.nu = nu
-        self.coords = coords
-        print(self.divergence(u))
-        assert(sp.Eq(self.divergence(u),0))
-        super().__init__(u,p,self.navier_stokes_rhs(u,p,nu,t),nu,coords,t)
-
-        assert(sp.Eq(self.divergence(u),0))
 
     def grad(self, scalar_field):
         return sp.Matrix([sp.diff(scalar_field, c) for c in self.coords])
@@ -125,16 +36,6 @@ class ManufacturedEquations(InitialConditionAndForceAndSolution):
         return lap
 
     def convective_term(self, u):
-        #n = u.rows
-        #conv = sp.Matrix.zeros(n, 1)
-        #for i in range(n):
-        #    term = 0
-        #    for j, c in enumerate(self.coords):
-        #        term += u[j] * sp.diff(u[i], c)
-        #    conv[i] = term
-        #tes = conv.equals(-u.cross(self.curl(u)))
-        #print(conv)
-        #print(sp.simplify(u.cross(self.curl(u))))
         conv = -u.cross(self.curl(u))#
         return conv
 
@@ -144,8 +45,96 @@ class ManufacturedEquations(InitialConditionAndForceAndSolution):
             term += sp.diff(u[j],c)
         return term
 
+
+    def curl(self, u):
+        """
+        3D curl: w = ∇ × u
+        coords: [x, y, z]
+        u: Matrix([u1, u2, u3])
+        """
+        x, y, z = self.coords
+        u1, u2, u3 = u
+        w1 = sp.diff(u3, y) - sp.diff(u2, z)
+        w2 = sp.diff(u1, z) - sp.diff(u3, x)
+        w3 = sp.diff(u2, x) - sp.diff(u1, y)
+        return sp.Matrix([w1, w2, w3])
+
+class manufacturedStokes(ExactManipulationsSpace):
+    def __init__(self, u, p, nu, coords):
+        super().__init__(coords)
+        self.u = u
+        self.p = p
+        self.nu = nu
+
+    def get_viscosity(self):
+        return self.nu
+
+    def get_u(self):
+        return self.u
+    
+    def get_vorticity(self):
+        return self.curl(self.u)
+
+    def get_rhs(self):
+        return self.u - self.nu*self.laplacian_vector(self.u) + self.grad(self.p)
+
+class ExactManipulationsSpaceTime(ExactManipulationsSpace):
+    
+    def __init__(self, coords, t):
+        super().__init__(coords)
+        self.t = t
+
+
     def time_derivative(self, u, t):
         return sp.diff(u,t)
+
+
+class IBVPNavierStokes(ExactManipulationsSpace):
+    def __init__(self, u_init: sp.Matrix, nu: float, coords, force = sp.Matrix([0, 0, 0])):        
+        expected_rows, expected_cols = 3, 1
+        if (u_init.rows, u_init.cols) != (expected_rows, expected_cols):
+            raise ValueError(
+                f"u\_init must be {expected_rows}x{expected_cols} (a 3-dimensional vector), "
+                f"but got {u.rows}x{u.cols}"
+            )
+        super().__init__(coords)
+        self.nu = nu
+        self.u_init = u_init
+        self.coords = coords
+        self.force = force
+        self.vorticity_init = self.curl(u_init)
+
+    def get_u_init(self):
+        return self.u_init
+
+    def get_vorticity_init(self):
+        return self.vorticity_init
+    
+    def get_viscosity(self):
+        return self.nu
+    
+    def get_rhs(self):
+        return self.force
+    
+class IBVPNavierStokesSolution(IBVPNavierStokes):
+    def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t, force = sp.Matrix([0,0,0])):
+        self.t = t
+        self.u = u
+        self.p = p
+        super().__init__(u.subs(self.t,0), nu, coords, force)
+
+    def get_p(self):
+        return self.p
+
+    def get_u(self):
+        return self.u
+    
+    def get_vorticity(self):
+        return self.curl(self.u)
+    
+class manufacturedNavierStokes(IBVPNavierStokesSolution):
+    def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t, force = sp.Matrix([0,0,0])):
+        super().__init__(u.subs(self.t,0), p, nu, coords, t, self.navier_stokes_rhs(u,p,nu,t))
 
     def navier_stokes_rhs(self, u, p, nu,t):
         """
@@ -158,9 +147,9 @@ class ManufacturedEquations(InitialConditionAndForceAndSolution):
         return dudt + conv + grad_p - nu * lap_u
 
 
+
 class SimulationHelper:
-    def __init__(self, exact_equations: InitialCondition, name: str):
-        self.exact_equations = exact_equations
+    def __init__(self, name: str):
         self.name = name
 
     def expr_to_c(self,expr):
@@ -169,6 +158,13 @@ class SimulationHelper:
         s = s.replace(' ', '')  # remove spaces to match your style
         return s
 
+    def sp_vector_to_str(self,expr):
+        vec = [self.expr_to_c(comp) for comp in expr]
+        out_str = ""
+        for idx, comp in enumerate(vec):
+            out_str = out_str + "out["+str(idx) +"] = " + str(comp) + ";"
+        return out_str
+
     def generate_config_files(self, T: float, dt: float, refinements: List[int], orders: List[int], tol=1e-5):
         directory = Path("./data/config/"+self.name)
         
@@ -176,91 +172,27 @@ class SimulationHelper:
 
         # Recreate directory
         directory.mkdir(parents=True, exist_ok=True)
-        
-        u_init = self.exact_equations.get_u_init()
-        w_init = self.exact_equations.get_vorticity_init()
-        force = self.exact_equations.get_rhs()
-
-        # ---- Convert to C/JSON strings ----
-        # force_data uses RHS (time-dependent)
-        f0, f1, f2 = [self.expr_to_c(comp) for comp in force]
-        force_data = (
-            f"out[0] = {f0};out[1] = {f1};out[2] = {f2};"
-        )
-
-        # initial_data_u: u(x,0)
-        iu0, iu1, iu2 = [self.expr_to_c(comp) for comp in u_init]
-        initial_data_u = (
-            f"out[0] = {iu0};out[1] = {iu1};out[2] = {iu2};"
-        )
-
-        # initial_data_w: w(x,0)
-        iw0, iw1, iw2 = [self.expr_to_c(comp) for comp in w_init]
-        initial_data_w = (
-            f"out[0] = {iw0};out[1] = {iw1};out[2] = {iw2};"
-        )
-
-        try:
-            u = self.exact_equations.get_u()
-            w = self.exact_equations.get_vorticity()
-            # exact_data_u: u(x,t)
-            eu0, eu1, eu2 = [self.expr_to_c(comp) for comp in u]
-            exact_data_u = (
-                f"out[0] = {eu0};out[1] = {eu1};out[2] = {eu2};"
-            )
-
-            # exact_data_w: w(x,t) = curl(u)
-            ew0, ew1, ew2 = [self.expr_to_c(comp) for comp in w]
-            exact_data_w = (
-                f"out[0] = {ew0};out[1] = {ew1};out[2] = {ew2};"
-            )
-        except NotImplementedError:
-            print("Warning: exact solutions for u and w are not given. We continue without!")
-
+  
         for order in orders:
             for refinement in refinements:
                 filename_no_extension = self.name + "_conv_order"+str(order)+"_ref"+str(refinement)
-                config = {
-                    "mesh": "./extern/mfem/data/periodic-cube.mesh",
-                    "outputfile": self.name + "/" + filename_no_extension,
-                    "solver": "GMRES",
-                    "dt": dt,
-                    "T": T,
-                    "refinements": refinement,
-                    "order": order,
-                    "visualisation": 0,
-                    "printlevel": 0,
-                    "viscosity": self.exact_equations.get_viscosity(),
-                    "tol": tol,
-                    "boundary_data_u": "out[0] = 0.;out[1]=0.;out[2]=0.;",
-                    "force_data": force_data,
-                    "initial_data_u": initial_data_u,
-                    "initial_data_w": initial_data_w,
-                    "exact_data_u": (
-                        "out[0] = cos(2*M_PI*x[1]);"
-                        "out[1] = sin(2*M_PI*x[2]);"
-                        "out[2] = sin(2*M_PI*x[0]);"
-                    ),
-                    "exact_data_w": (
-                        "out[0] = -2*M_PI*cos(2*M_PI*x[2]);"
-                        "out[1] = -2*M_PI*cos(2*M_PI*x[0]);"
-                        "out[2] =  2*M_PI*sin(2*M_PI*x[1]);"
-                    ),
-                }
-
-                try:
-                    config["exact_data_u"] = exact_data_u
-                    config["exact_data_w"] = exact_data_w
-                except NameError:
-                    print("Warning: exact solutions for u and w are not given. We continue without!")
-
+                config = self.base_config_file()
+                config["outputfile"] = self.name + "/" + filename_no_extension
+                config["dt"] = dt
+                config["T"] = T
+                config["refinements"] = refinement 
+                config["order"] = order
+                config["tol"] = tol
 
                 filename = filename_no_extension + ".json"
-
                 p = directory / Path(filename)
 
                 with p.open("w") as f:
                     json.dump(config, f, indent=4)
+
+    def base_config_file(self) -> dict:
+        raise NotImplementedError("Error: base_config_file() was not implemented for the class SimulationHelper!")
+
 
     def run_convergence(self, T: float, dt: float, refinements: List[int], orders: List[int], tol=1e-5):
         self.generate_config_files(T,dt,refinements,orders,tol)
@@ -374,25 +306,67 @@ class SimulationHelper:
         finally:
             client.close()
 
+class NavierStokesSimulationHelper(SimulationHelper):
+    def __init__(self, exact_equations: IBVPNavierStokes, name: str):
+        super().__init__(name)
+        self.exact_equations = exact_equations
+
+    def base_config_file(self):
+        config = {
+            "mesh": "./extern/mfem/data/periodic-cube.mesh",
+            "solver": "GMRES",
+            "visualisation": 0,
+            "printlevel": 0,
+            "viscosity": self.exact_equations.get_viscosity(),
+            "boundary_data_u": "out[0] = 0.;out[1]=0.;out[2]=0.;",
+            "force_data": self.sp_vector_to_str(self.exact_equations.get_force()),
+            "initial_data_u": self.sp_vector_to_str(self.exact_equations.get_u_init()),
+            "initial_data_w": self.sp_vector_to_str(self.exact_equations.get_vorticity_init()),
+        }
+
+        if isinstance(config,IBVPNavierStokesSolution):
+            config["exact_data_u"] = self.sp_vector_to_str(self.exact_equations.get_u())
+            config["exact_data_w"] = self.sp_vector_to_str(self.exact_equations.get_vorticity())
+        else:
+            print("Warning: exact solutions for u and w are not given. We continue without!")
+
+        return config
+
+class StokesSimulationHelper(SimulationHelper):
+    def __init__(self, exact_equations: manufacturedStokes, name: str):
+        super().__init__(name)
+        self.exact_equations = exact_equations
+
+    def base_config_file(self):
+        config = {
+            "mesh": "./extern/mfem/data/periodic-cube.mesh",
+            "solver": "GMRES",
+            "visualisation": 0,
+            "printlevel": 1,
+            "viscosity": self.exact_equations.get_viscosity(),
+            "force_data": self.sp_vector_to_str(self.exact_equations.get_rhs()),
+            "exact_data_u": self.sp_vector_to_str(self.exact_equations.get_u())
+        }
+
+        return config
 
 class SimulationDataProcessor:
     def __init__(self, name: str):
         self.name = name
         self.data = None
-        self.error_columns = ["u1_err_L2","u2_err_L2"]
-        self.cons_columns = ["||u1||","||u2||","u1*w1","u2*w2"]
+        self.error_columns = ["u1_err_L2"]
+        self.cons_columns = []
 
-    def collect_data(self, time_point, tol_time):
+    def collect_data(self):
         """
         Scan conv_order*_ref*_vars.csv files and collect error vs refinement level
-        at the given physical time.
+        using the LAST row of each file (no time matching).
 
         Returns:
-            data: dict[order] = dict with keys 'refs' (np.array) and 'errs' (np.array)
+            data: dict[order] = dict with keys 'refs' (np.array) and 'errs' (dict of np.array)
         """
         pattern = re.compile(self.name + r"_conv_order(\d+)_ref(\d+)_vars\.csv")
 
-        # data[order] will store list of (ref, err)
         self.data = {}
 
         for fname in glob.glob("out/data/" + self.name + "/" + self.name + "_conv_order*_ref*_vars.csv"):
@@ -404,38 +378,25 @@ class SimulationDataProcessor:
             order = int(m.group(1))
             ref = int(m.group(2))
 
-            # Read CSV
             df = pd.read_csv(fname)
             print("len(df) = " + str(len(df)))
-            if len(df)==0:
+            if len(df) == 0:
                 print(f"Skipping empty file: {fname}")
                 continue
 
-            if "time_full" not in df.columns:
-                raise ValueError(f"'time_full' column not found in {fname}")
-            
+            # Validate error columns exist
             for error_column in self.error_columns:
                 if error_column not in df.columns:
                     raise ValueError(f"'{error_column}' column not found in {fname}")
 
-            # Find row closest to desired time
-            idx_closest = (df["time_full"] - time_point).abs().idxmin()
-            row = df.loc[idx_closest]
-            t_found = row["time_full"]
+            # Always take the last row
+            row = df.iloc[-1]
 
-            if abs(t_found - time_point) > tol_time:
-                print(
-                    f"Warning: In {fname}, closest time to t={time_point} is "
-                    f"{t_found} (|dt|={abs(t_found - time_point)})."
-                )
-            else:
-                errs = {}
-                for error_column in self.error_columns:
-                    errs[error_column] = float(row[error_column])
+            errs = {col: float(row[col]) for col in self.error_columns}
 
-                if order not in self.data:
-                    self.data[order] = []
-                self.data[order].append((ref, errs))
+            if order not in self.data:
+                self.data[order] = []
+            self.data[order].append((ref, errs))
 
         # Convert lists to sorted arrays
         for order in list(self.data.keys()):
@@ -443,13 +404,18 @@ class SimulationDataProcessor:
                 continue
             self.data[order].sort(key=lambda x: x[0])  # sort by refinement level
             refs = np.array([r for r, _ in self.data[order]], dtype=float)
-            errs = np.array([e for _, e in self.data[order]], dtype=dict)
+
             temp_dict = {"refs": refs, "errs": {}}
             for error_column in self.error_columns:
-                temp_dict["errs"][error_column] = np.array([e[error_column] for _, e in self.data[order]], dtype=float)
-            self.data[order]= temp_dict
+                temp_dict["errs"][error_column] = np.array(
+                    [e[error_column] for _, e in self.data[order]],
+                    dtype=float,
+                )
+
+            self.data[order] = temp_dict
 
         return self.data
+
 
     def add_reference_triangles(self, ax, order, x_anchor, y_anchor):
         """
@@ -483,7 +449,7 @@ class SimulationDataProcessor:
             horizontalalignment="left",
         )
 
-    def plot_convergence(self, time_point, show_plot = False, reference_order = lambda order: order):
+    def plot_convergence(self, show_plot = False, reference_order = lambda order: order):
         """
         Make a log-linear plot of L2 error vs refinement level for each order.
         """
@@ -526,7 +492,7 @@ class SimulationDataProcessor:
 
         for error_column in self.error_columns:
             axs[error_column].set_xlabel("Refinement level (ref index)")
-            axs[error_column].set_ylabel(f"L2 error '{error_column}' at t = {time_point}")
+            axs[error_column].set_ylabel(f"L2 error '{error_column}'")
             axs[error_column].set_title("Convergence vs mesh refinement")
             axs[error_column].grid(True, which="both", linestyle="--", linewidth=0.5)
             axs[error_column].xaxis.set_major_locator(MultipleLocator(1.0))
@@ -540,7 +506,7 @@ class SimulationDataProcessor:
 
             # Add O(h) and O(h^2) reference triangles, anchored at last point
             # Save figure
-            outname = (directory + "/" + self.name + "_" + error_column).format(time=time_point)
+            outname = (directory + "/" + self.name + "_" + error_column)
             figs[error_column].tight_layout()
             figs[error_column].savefig(outname, dpi=300)
             print(f"Saved figure to '{outname}'")

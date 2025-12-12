@@ -39,30 +39,40 @@ public:
     boost::property_tree::ptree &get_tree() { return tree_; };
 
     template <typename T>
-    T get_value(std::string variable, T default_value) { return tree_.get<T>(variable.data(), default_value); };
+    T get_value(std::string variable, const T default_value) { return tree_.get<T>(variable.data(), default_value); };
 
     template <typename T>
     T get_value(std::string variable) { return tree_.get<T>(variable.data()); };
 
-    std::function<void(const Vector &, double, Vector &)> get_exact_data(std::string function_name){return functions_.at(function_name);};
+    std::function<void(const mfem::Vector &, double, mfem::Vector &)> get_exact_data(std::string function_name) { return functions_.at(function_name); };
 
     void InitializeLibrary(std::initializer_list<std::string> function_names)
     {
         // Get job ID to get unique name
         auto pid = getpid();
-        library_name_ = std::string("config_library_") + std::to_string(pid) + std::string(".cpp");
+        library_name_ = std::string("config_library_") + std::to_string(pid); // + std::string(".cpp");
+        std::string library_name_cpp = library_name_ + std::string(".cpp");
+        std::string library_name_so  = library_name_ + std::string(".so");
         // Generate C++ code that includes the user-provided function code
-        std::ofstream file(library_name_);
+        std::ofstream file(library_name_cpp);
         file << R"(#include <cmath>
 
-                   extern "C" {                                 )";
+                   extern "C" {)";
         for (std::string function_name : function_names)
-            file << "void " << function_name << R"((double* x, double t, double* out, int dim){)" << tree_.get<std::string>(function_name, "") << R"()};\n)";
+            file << "void " << function_name << R"((double* x, double t, double* out, int dim){)" << tree_.get<std::string>(function_name, "") << R"(};)";
 
         file << R"(} // extern "C")";
         file.close();
 
-        lib_handle_ = dlopen(library_name_.data(), RTLD_LAZY);
+        std::string cmd = "g++ -O2 -fPIC -shared -o " + library_name_so + " " + library_name_cpp;
+        int rc = std::system(cmd.c_str());
+        if (rc != 0)
+        {
+            std::cerr << "Failed to compile generated library. cmd: " << cmd << "\n";
+            return;
+        }
+
+        lib_handle_ = dlopen(library_name_so.data(), RTLD_LAZY);
         if (!lib_handle_)
         {
             std::cerr << ": Failed to load library: " << dlerror() << std::endl;
@@ -72,7 +82,7 @@ public:
         // Load the function pointers
         for (std::string function_name : function_names)
         {
-            lib_func_handles_.insert({function_name, reinterpret_cast<SpaceTimeDataFunc>(dlsym(lib_handle_, "initial_data_u"))});
+            lib_func_handles_.insert({function_name, reinterpret_cast<SpaceTimeDataFunc>(dlsym(lib_handle_, function_name.data()))});
             if (!lib_func_handles_.at(function_name))
             {
                 std::cerr << ": Failed to load initial_data_u: " << dlerror() << std::endl;
@@ -80,14 +90,12 @@ public:
                 lib_handle_ = nullptr;
                 return;
             }
-            functions_.insert({function_name, 
-                               [this, &function_name](const mfem::Vector &x, double t, mfem::Vector &v)
-                                    {
-                                        this->lib_func_handles_.at(function_name)(x.GetData(), t, v.GetData(), x.Size());
-                                        return;
-                                    }
-                                }
-                            );
+            functions_.insert({function_name,
+                               [this, function_name](const mfem::Vector &x, double t, mfem::Vector &v)
+                               {
+                                   this->lib_func_handles_.at(function_name)(x.GetData(), t, v.GetData(), x.Size());
+                                   return;
+                               }});
         }
     }
 
@@ -98,7 +106,8 @@ public:
             dlclose(lib_handle_);
             lib_handle_ = nullptr;
         }
-        std::filesystem::remove(library_name_);
+        std::filesystem::remove(library_name_+std::string(".so"));
+        std::filesystem::remove(library_name_+std::string(".cpp"));
     }
 
 private:
@@ -108,7 +117,7 @@ private:
 
     typedef void (*SpaceTimeDataFunc)(double *, double, double *, int);
     std::map<std::string, SpaceTimeDataFunc> lib_func_handles_;
-    std::map<std::string, std::function<void(const Vector &, double, Vector &)>> functions_;
+    std::map<std::string, std::function<void(const mfem::Vector &, double, mfem::Vector &)>> functions_;
 };
 
 // Class to manage the simulation configuration
@@ -127,14 +136,13 @@ public:
           order(get_value("order", 1)),
           visualisation(get_value("visualisation", 0)),
           tol(get_value("tol", 1e-8)),
-          viscosity(get_value("viscosity",0.)),
-          printlevel(get_value("printlevel",0)),
+          viscosity(get_value("viscosity", 0.)),
+          printlevel(get_value("printlevel", 0)),
           has_exact_u_solution(!get_value<std::string>("exact_data_u", "").empty())
     {
-        std::initializer_list<std::string> function_names({"force_data","initial_data_u","initial_data_w","exact_data_u","exact_data_w"});
+        std::initializer_list<std::string> function_names({"force_data", "initial_data_u", "initial_data_w", "exact_data_u", "exact_data_w"});
         InitializeLibrary(function_names);
     }
-
 
     // Getter methods for configuration parameters
     double get_dt() const { return dt; }
@@ -146,7 +154,7 @@ public:
     int get_printlevel() const { return printlevel; }
     double get_tol() const { return tol; }
     std::string get_mesh() const { return mesh; }
-    std::string get_outputfile() const { return outputfile; }
+    std::string get_outputfile() { return outputfile; }
     std::string get_solver() const { return solver; }
     bool has_exact_u() const { return has_exact_u_solution; }
 
@@ -179,14 +187,13 @@ public:
           order(get_value("order", 1)),
           visualisation(get_value("visualisation", 0)),
           tol(get_value("tol", 1e-8)),
-          viscosity(get_value("viscosity",0.)),
-          printlevel(get_value("printlevel",0)),
+          viscosity(get_value("viscosity", 0.)),
+          printlevel(get_value("printlevel", 0)),
           has_exact_u_solution(!get_value<std::string>("exact_data_u", "").empty())
     {
-        std::initializer_list<std::string> function_names({"force_data","exact_data_u"});
+        std::initializer_list<std::string> function_names({"force_data", "exact_data_u"});
         InitializeLibrary(function_names);
     }
-
 
     // Getter methods for configuration parameters
     double get_viscosity() const { return viscosity; }
@@ -219,10 +226,8 @@ private:
 class CSVLogger
 {
 public:
-    CSVLogger(SimulationConfig &config)
-        : config_(config)
+    CSVLogger(std::string output_file)
     {
-        std::string output_file = config.get_outputfile();
         std::string csv_path = std::string("./out/data/") + output_file + std::string("_vars.csv");
         std::filesystem::path dir = std::filesystem::path(csv_path).parent_path();
         if (!std::filesystem::exists(dir))
@@ -249,8 +254,6 @@ public:
         return csv_;
     };
 
-    SimulationConfig &get_config() { return config_; };
-
     double MatrixConservedVariable(mfem::Operator &M, mfem::Vector u)
     {
         if (M.Height() != M.Width())
@@ -276,14 +279,13 @@ public:
     virtual void WriteRow() = 0;
 
 private:
-    SimulationConfig &config_;
     std::ofstream csv_;
 };
 
 class DualFieldCSVLogger : public CSVLogger
 {
 public:
-    DualFieldCSVLogger(SimulationConfig &config,
+    DualFieldCSVLogger(DualFieldConfig &config,
                        int &cycle,
                        double &t_full,
                        double &t_half,
@@ -295,7 +297,7 @@ public:
                        mfem::GridFunction &z,
                        int &num_it_A1,
                        int &num_it_A2)
-        : CSVLogger(config),
+        : CSVLogger(config.get_outputfile()),
           cycle_(cycle),
           t_full_(t_full),
           t_half_(t_half),
@@ -304,7 +306,8 @@ public:
           u_(u), v_(v), w_(w), z_(z),
           num_it_A1_(num_it_A1),
           num_it_A2_(num_it_A2),
-          time_(std::chrono::time_point(std::chrono::steady_clock::now()))
+          time_(std::chrono::time_point(std::chrono::steady_clock::now())),
+          config_(config)
     {
         get_ofstream() << "runtime_it,cycle,time_full,time_half,num_it_A1,num_it_A2,||u1||,||u2||,u1*w1,u2*w2";
         if (config.has_exact_u())
@@ -332,11 +335,9 @@ public:
                        << num_it_A1_ << "," << num_it_A2_ << ","
                        << u1_norm << "," << u2_norm << ","
                        << u1w1 << "," << u2w2;
-        if (get_config().has_exact_u())
+        if (config_.has_exact_u())
         {
-            std::function<void(const mfem::Vector &, double, mfem::Vector &)> exact_data_u =
-                std::bind(&SimulationConfig::exact_data_u, &get_config(), std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-            mfem::VectorFunctionCoefficient u_exact_coeff(3, exact_data_u);
+            mfem::VectorFunctionCoefficient u_exact_coeff(3, config_.get_exact_data("exact_data_u"));
             u_exact_coeff.SetTime(t_full_);
             get_ofstream() << "," << u_.ComputeL2Error(u_exact_coeff) << "," << v_.ComputeL2Error(u_exact_coeff);
         }
@@ -357,15 +358,17 @@ private:
     int &num_it_A1_;
     int &num_it_A2_;
     std::chrono::time_point<std::chrono::steady_clock> time_;
+    DualFieldConfig config_;
 };
 
 class NitscheStokesCSVLogger : public CSVLogger
 {
 public:
-    NitscheStokesCSVLogger(SimulationConfig &config,
+    NitscheStokesCSVLogger(NitscheStokesConfig &config,
                            mfem::GridFunction &u,
                            int &num_it_solver)
-        : CSVLogger(config),
+        : CSVLogger(config.get_outputfile()),
+          config_(config),
           u_(u),
           num_it_solver_(num_it_solver),
           time_(std::chrono::time_point(std::chrono::steady_clock::now()))
@@ -373,7 +376,7 @@ public:
         get_ofstream() << "runtime_it,num_it_solver";
         if (config.has_exact_u())
         {
-            get_ofstream() << ",u1_err_L2,u2_err_L2";
+            get_ofstream() << ",u1_err_L2";
         }
         get_ofstream() << std::endl;
         get_ofstream().flush();
@@ -385,11 +388,9 @@ public:
         time_ = std::chrono::steady_clock::now();
 
         get_ofstream() << runtime_it.count() << "," << num_it_solver_;
-        if (get_config().has_exact_u())
+        if (config_.has_exact_u())
         {
-            std::function<void(const mfem::Vector &, double, mfem::Vector &)> exact_data_u =
-                std::bind(&SimulationConfig::exact_data_u, &get_config(), std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-            mfem::VectorFunctionCoefficient u_exact_coeff(3, exact_data_u);
+            mfem::VectorFunctionCoefficient u_exact_coeff(3, config_.get_exact_data("exact_data_u"));
             get_ofstream() << "," << u_.ComputeL2Error(u_exact_coeff);
         }
         get_ofstream() << std::endl;
@@ -397,6 +398,7 @@ public:
     };
 
 private:
+    NitscheStokesConfig config_;
     mfem::GridFunction &u_;
     int &num_it_solver_;
     std::chrono::time_point<std::chrono::steady_clock> time_;

@@ -7,7 +7,7 @@ FIND_PACKAGE(Boost COMPONENTS program_options filesystem REQUIRED)
 INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIRS})
 #find_package(MFEM REQUIRED)
 # Use the bundled extern/mfem headers/build instead of an external ../mfem/build
-include_directories("${PROJECT_SOURCE_DIR}/include")
+include_directories("${PROJECT_SOURCE_DIR}/extern/mfem/build" "${PROJECT_SOURCE_DIR}/include")
 link_directories("${CMAKE_BINARY_DIR}/src")
 
 # Force MFEM to build with MUMPS (and MPI) when configuring the bundled extern/mfem
@@ -17,6 +17,7 @@ link_directories("${CMAKE_BINARY_DIR}/src")
 message(STATUS "Forcing MFEM configuration: MFEM_USE_MPI=ON, MFEM_USE_MUMPS=ON")
 
 add_subdirectory(extern)
+add_subdirectory(src)
 add_subdirectory(apps)
 
 

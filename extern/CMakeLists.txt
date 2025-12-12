@@ -13,20 +13,20 @@
 # fetching METIS (to prevent ABI mismatches) and avoid optional packages that
 # would require additional system de$pendencies such as STRUMPACK/SuiteSparse.
 #set(MFEM_FETCH_TPLS ON CACHE BOOL "Fetch MFEM TPLs")
-set(MFEM_FETCH_HYPRE ON CACHE BOOL "Fetch HYPRE")
+#set(MFEM_FETCH_HYPRE ON CACHE BOOL "Fetch HYPRE")
 #set(MFEM_FETCH_METIS OFF CACHE BOOL "Do not fetch METIS")
 # Do not force SuiteSparse off here; allow the top-level caller or command
 # line to enable `-DMFEM_USE_SUITESPARSE=ON` when system SuiteSparse is
 # available. Only set a default if the variable was not provided.
-set(MFEM_USE_MPI ON CACHE BOOL "Enable MPI in MFEM")
-set(MFEM_USE_METIS ON CACHE BOOL "Enable METIS")
-set(MFEM_USE_METIS_5 ON CACHE BOOL "Enable METIS 5")
-set(METIS_INCLUDE_DIRS "/home/wtonnon/local/include"
-    CACHE PATH "METIS include directory")
-set(METIS_LIBRARIES
-    "/home/wtonnon/local/lib/libmetis.a;/home/wtonnon/VisualStudioProjects/GKlib/lib/libGKlib.so"
-    CACHE STRING "METIS libraries")
-
+#set(MFEM_USE_MPI ON CACHE BOOL "Enable MPI in MFEM")
+#set(MFEM_USE_METIS ON CACHE BOOL "Enable METIS")
+#set(MFEM_USE_METIS_5 ON CACHE BOOL "Enable METIS 5")
+#set(METIS_INCLUDE_DIRS "/home/wtonnon/local/include"
+#    CACHE PATH "METIS include directory")
+#set(METIS_LIBRARIES
+#    "/home/wtonnon/local/lib/libmetis.a;/home/wtonnon/VisualStudioProjects/GKlib/lib/libGKlib.so"
+#    CACHE STRING "METIS libraries")
+#set(MFEM_USE_SUITESPARSE ON CACHE BOOL "Use SuiteSparse)")
 #set(MFEM_USE_STRUMPACK ON CACHE BOOL "Enable STRUMPACK" )
 #set(MFEM_USE_SUPERLU NO CACHE BOOL "Enable SUPERLU")
 # cmake ..   -DMFEM_USE_MPI=YES   -DMFEM_USE_METIS=YES   -DMFEM_USE_METIS_5=YES   -DMETIS_INCLUDE_DIRS=/home/wtonnon/local/include   -DMETIS_LIBRARIES="/home/wtonnon/local/lib/libmetis.a;/home/wtonnon/VisualStudioProjects/GKlib/lib/libGKlib.so"

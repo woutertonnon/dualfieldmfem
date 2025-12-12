@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
             ("help,h", "produce help message")
             ("config,c",
                 po::value<std::string>(&config_path)
-                    ->default_value("../data/config/example2.json"),
+                    ->default_value("../data/config/StokesTest/StokesTest_conv_order1_ref0.json"),
                 "path to JSON configuration file");
 
         po::variables_map vm;
@@ -41,22 +41,16 @@ int main(int argc, char *argv[])
         std::cerr << "Error parsing command line: " << e.what() << "\n";
         return 1;
     }
-    int rank = 0;
 
     // Optionally only rank 0 prints what config it’s using
-    if (rank == 0) {
-        std::cout << "Using config file: " << config_path << std::endl;
-    }
+    std::cout << "Using config file: " << config_path << std::endl;
 
     // ---- Use the parsed config path ----
-    SimulationConfig config(config_path);
-    config.InitializeLibrary(rank);
+    NitscheStokesConfig config(config_path);
 
    // ------------------------------------------------------------------
    // 0. Configuration
    // ------------------------------------------------------------------
-   double dt = config.get_dt();
-   double T = config.get_T();
    double viscosity = config.get_viscosity();
    int refinements = config.get_refinements();
    int order = config.get_order();
@@ -67,23 +61,6 @@ int main(int argc, char *argv[])
    std::string mesh_string = config.get_mesh();
    std::string output_file = config.get_outputfile();
    std::string solver_type = config.get_solver();
-
-   std::function<void(const mfem::Vector &, double, mfem::Vector &)> boundary_data_u =
-       std::bind(&SimulationConfig::boundary_data_u, &config,
-                 std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-   std::function<void(const mfem::Vector &, double, mfem::Vector &)> exact_data_u =
-       std::bind(&SimulationConfig::exact_data_u, &config,
-                 std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-   std::function<void(const mfem::Vector &, double, mfem::Vector &)> force_data =
-       std::bind(&SimulationConfig::force_data, &config,
-                 std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-   std::function<void(const mfem::Vector &, mfem::Vector &)> initial_data_u =
-       std::bind(&SimulationConfig::initial_data_u, &config,
-                 std::placeholders::_1, std::placeholders::_2);
-   std::function<void(const mfem::Vector &, mfem::Vector &)> initial_data_w =
-       std::bind(&SimulationConfig::initial_data_w, &config,
-                 std::placeholders::_1, std::placeholders::_2);
-
 
    // ------------------------------------------------------------------
    // 1. Mesh and FE spaces (PARALLEL)
@@ -110,8 +87,7 @@ int main(int argc, char *argv[])
 
    // Initial data from user-provided functions
    {
-      VectorFunctionCoefficient u0(dim, initial_data_u);
-      u.ProjectCoefficient(u0);
+      u = 0.;
       p = 0.;
    }
 
@@ -144,7 +120,7 @@ int main(int argc, char *argv[])
    ConstantCoefficient one_coeff(1.0);
 
    // Mass matrices M (on ND) and N (on RT)
-   ConstantCoefficient mass_coeff(1./dt), diff_coef(viscosity);
+   ConstantCoefficient mass_coeff(1.), diff_coef(viscosity);
    BilinearForm blf_A(&ND);
    blf_A.AddDomainIntegrator(new VectorFEMassIntegrator(mass_coeff));
    blf_A.AddDomainIntegrator(new CurlCurlIntegrator(diff_coef));
@@ -160,13 +136,13 @@ int main(int argc, char *argv[])
 
    BilinearForm blf_H1_pre(&CG);
    blf_H1_pre.AddDomainIntegrator(new MassIntegrator());
-   //blf_H1_pre.AddDomainIntegrator(new DiffusionIntegrator());
+   blf_H1_pre.AddDomainIntegrator(new DiffusionIntegrator());
    blf_H1_pre.Assemble();
    blf_H1_pre.Finalize();
 
    BilinearForm blf_Hcurl_pre(&ND);
-   blf_Hcurl_pre.AddDomainIntegrator(new VectorFEMassIntegrator(one_coeff));
-   //blf_Hcurl_pre.AddDomainIntegrator(new CurlCurlIntegrator());
+   blf_Hcurl_pre.AddDomainIntegrator(new VectorFEMassIntegrator(mass_coeff));
+   blf_Hcurl_pre.AddDomainIntegrator(new CurlCurlIntegrator(diff_coef));
    blf_Hcurl_pre.Assemble();
    blf_Hcurl_pre.Finalize();
 
@@ -209,7 +185,7 @@ int main(int argc, char *argv[])
    {
       auto minres = make_unique<GMRESSolver>();
       minres->SetAbsTol(tol);
-      minres->SetKDim(300);
+      minres->SetKDim(3000);
       minres->SetRelTol(0.);
       minres->SetMaxIter(10000);
       minres->SetPreconditioner(pre1);
@@ -233,12 +209,12 @@ int main(int argc, char *argv[])
 
    // A1 blocks:
    A1.SetBlock(0, 0, &A_op);
-   A1.SetBlock(0, 1, &BT_op);
-   A1.SetBlock(1, 0, &B_op);
+   A1.SetBlock(0, 1, &B_op);
+   A1.SetBlock(1, 0, &BT_op);
 
    // rhs b1 = M_dt*u - R1*u - CT_Re*z + f1 + boundary terms...
    LinearForm f1_lf(&ND);
-   VectorFunctionCoefficient force_coef(mesh.Dimension(), force_data);
+   VectorFunctionCoefficient force_coef(mesh.Dimension(), config.get_exact_data("force_data"));
    f1_lf.AddDomainIntegrator(new VectorFEDomainLFIntegrator(force_coef));
    f1_lf.Assemble();
    b1.AddSubVector(f1_lf, 0);
@@ -255,7 +231,6 @@ int main(int argc, char *argv[])
 
    csv.WriteRow();
 
-   mfem::VectorFunctionCoefficient exact_data_u_coef(mesh.Dimension(),exact_data_u);
    delete fec_ND;
    delete fec_CG;
 

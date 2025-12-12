@@ -4,7 +4,7 @@
 
 # dirichlet problem
 #add_executable(${PROJECT_NAME} dualfieldnavierstokes.cpp)
-add_executable(${PROJECT_NAME} MEHC_matrixfree.cpp)
+add_executable(${PROJECT_NAME} Stokes.cpp)
 
 
 
@@ -32,7 +32,7 @@ find_package(Boost REQUIRED COMPONENTS program_options)
 
 
 # link libraries
-target_link_libraries(${PROJECT_NAME} mfem Boost::program_options)
+target_link_libraries(${PROJECT_NAME} boundaryoperatorslib mfem Boost::program_options)
 
 
 

@@ -6,7 +6,7 @@
 #include <boost/program_options.hpp>
 
 #include "mfem.hpp"
-#include <mpi.h>
+#include "BoundaryOperators.h"
 #include "io.h" // SimulationConfig, EnergyCSVLogger
 
 using namespace mfem;
@@ -41,13 +41,7 @@ int main(int argc, char *argv[])
         std::cerr << "Error parsing command line: " << e.what() << "\n";
         return 1;
     }
-
-    // ---- Now start MPI ----
-    MPI_Init(&argc, &argv);
-    MPI_Comm comm = MPI_COMM_WORLD;
-
-    int rank;
-    MPI_Comm_rank(comm, &rank);
+    int rank = 0;
 
     // Optionally only rank 0 prints what config it’s using
     if (rank == 0) {
@@ -56,7 +50,7 @@ int main(int argc, char *argv[])
 
     // ---- Use the parsed config path ----
     SimulationConfig config(config_path);
-    config.InitializeLibrary(rank, comm);
+    config.InitializeLibrary(rank);
 
    // ------------------------------------------------------------------
    // 0. Configuration
@@ -252,7 +246,7 @@ int main(int argc, char *argv[])
 
 #if 1
    auto H1_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_H1_pre, mfem::Array<int>{});
-   auto H1_pre = std::make_unique<CGSolver>(comm);
+   auto H1_pre = std::make_unique<CGSolver>();
    H1_pre->SetMaxIter(100);
    H1_pre->SetAbsTol(1e-10);
    H1_pre->SetPreconditioner(*H1_pre_pre);
@@ -260,7 +254,7 @@ int main(int argc, char *argv[])
    //mfem::DSmoother H1_pre(blf_H1_pre.SpMat());
 
    auto Hcurl_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_Hcurl_pre, mfem::Array<int>{});
-   auto Hcurl_pre = std::make_unique<CGSolver>(comm);
+   auto Hcurl_pre = std::make_unique<CGSolver>();
    Hcurl_pre->SetMaxIter(100);   
    Hcurl_pre->SetAbsTol(1e-10);
    Hcurl_pre->SetPreconditioner(*Hcurl_pre_pre);
@@ -268,7 +262,7 @@ int main(int argc, char *argv[])
    //mfem::DSmoother Hcurl_pre(blf_Hcurl_pre.SpMat());
 
    auto Hdiv_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_Hdiv_pre, mfem::Array<int>{});
-   auto Hdiv_pre = std::make_unique<CGSolver>(comm);
+   auto Hdiv_pre = std::make_unique<CGSolver>();
    Hdiv_pre->SetMaxIter(100);
    Hdiv_pre->SetAbsTol(1e-10);
    Hdiv_pre->SetPreconditioner(*Hdiv_pre_pre);
@@ -276,7 +270,7 @@ int main(int argc, char *argv[])
    //mfem::DSmoother Hdiv_pre(blf_Hdiv_pre.SpMat());
 
    auto L2_pre_pre = std::make_unique<mfem::OperatorJacobiSmoother>(blf_L2_pre, mfem::Array<int>{});
-   auto L2_pre = std::make_unique<CGSolver>(comm);
+   auto L2_pre = std::make_unique<CGSolver>();
    L2_pre->SetMaxIter(100);
    L2_pre->SetAbsTol(1e-10);
    L2_pre->SetPreconditioner(*L2_pre_pre);
@@ -315,8 +309,6 @@ int main(int argc, char *argv[])
 
    Vector zero_vec(dim);
    zero_vec = 0.0;
-   VectorFunctionCoefficient f_coeff(dim, [](const Vector &x, Vector &val)
-                                     { val = 0.0; });
 
    // Rhs containers
    Vector b1(size_1), b1sub(u.Size());
@@ -326,7 +318,7 @@ int main(int argc, char *argv[])
    unique_ptr<IterativeSolver> solver;
    if (solver_type == "MINRES")
    {
-      auto minres = make_unique<MINRESSolver>(comm);
+      auto minres = make_unique<MINRESSolver>();
       minres->SetAbsTol(tol);
       minres->SetRelTol(0.);
       minres->SetMaxIter(10000);
@@ -336,7 +328,7 @@ int main(int argc, char *argv[])
    }
    else if (solver_type == "GMRES")
    {
-      auto minres = make_unique<GMRESSolver>(comm);
+      auto minres = make_unique<GMRESSolver>();
       minres->SetAbsTol(tol);
       minres->SetKDim(300);
       minres->SetRelTol(0.);
@@ -347,7 +339,7 @@ int main(int argc, char *argv[])
    }
    else // CG
    {
-      auto cg = make_unique<CGSolver>(comm);
+      auto cg = make_unique<CGSolver>();
       cg->SetAbsTol(tol);
       cg->SetRelTol(0.);
       cg->SetMaxIter(1000);
@@ -611,6 +603,6 @@ int main(int argc, char *argv[])
    delete fec_RT;
    delete fec_CG;
 
-   MPI_Finalize();
+   //MPI_Finalize();
    return 0;
 }
