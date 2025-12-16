@@ -112,82 +112,7 @@ void GradJumpIntegrator::AssembleFaceMatrix(
 void WouterIntegrator::AssembleElementMatrix(const mfem::FiniteElement &el, mfem::ElementTransformation &Trans,
                                              mfem::DenseMatrix &elmat)
 {
-   const mfem::IntegrationRule *ir = IntRule;
-   ir = &mfem::IntRules.Get(el.GetGeomType(), 4);
-
-   // Extract vertices in physical space
-   mfem::IntegrationPoint ip;
-   mfem::Vector v1, v2;
-   ip.Set2(0., 0.);
-   Trans.Transform(ip, v1);
-   ip.Set2(1., 0.);
-   Trans.Transform(ip, v2);
-   // v1.Print(std::cout);
-   // v2.Print(std::cout);
-
-   // Compute the tangent vector
-   mfem::Vector tan(2);
-   tan.Elem(0) = v2.Elem(0) - v1.Elem(0);
-   tan.Elem(1) = v2.Elem(1) - v1.Elem(1);
-   tan /= tan.Norml2();
-   // std::cout << "tan: ";
-   // tan.Print(std::cout);
-   // std::cout << std::endl;
-
-   // Compute the normal vector
-   mfem::Vector nor(2);
-   nor.Elem(0) = tan.Elem(1);
-   nor.Elem(1) = -tan.Elem(0);
-   // std::cout << "nor: ";
-   // nor.Print(std::cout);
-   // std::cout << std::endl;
-
-   // Approximate size of element
-   mfem::real_t h = Trans.Jacobian().Det();
-
-   elmat.SetSize(el.GetDof(), el.GetDof());
-   elmat = 0.;
-   auto weights = ir->GetWeights();
-   for (int i = 0; i < ir->GetNPoints(); ++i)
-   {
-      ip = ir->IntPoint(i);
-
-      // std::cout << "test\n";
-      Trans.SetIntPoint(&ip);
-      mfem::DenseMatrix shape(el.GetDof(), Trans.GetSpaceDim());
-      mfem::DenseMatrix curl_shape(el.GetDof(), 1);
-      // std::cout << "test\n";
-      el.CalcVShape(Trans, shape);
-      // std::cout << Trans.GetSpaceDim() << "test\n";
-      el.CalcPhysCurlShape(Trans, curl_shape);
-
-      // std::cout << "testq\n";
-      for (int l = 0; l < el.GetDof(); l++)
-         for (int k = 0; k < el.GetDof(); k++)
-         {
-            // Extract u and v
-            mfem::Vector u, v;
-            shape.GetRow(l, u);
-            shape.GetRow(k, v);
-
-            // std::cout << "test3\n";
-            //  Extract curl(u) and curl(v)
-            double curl_u = curl_shape.Elem(l, 0);
-            double curl_v = curl_shape.Elem(k, 0);
-
-            // std::cout << "test4\n";
-            //  (n x u, n x v)
-            elmat.Elem(l, k) += alpha * weights[i] * 1e6 / h * mfem::InnerProduct(u, tan) * mfem::InnerProduct(v, tan);
-
-            // std::cout << "test5\n";
-            //  (n x curl(u), v)
-            elmat.Elem(l, k) += alpha * weights[i] * (nor[1] * curl_u * v.Elem(0) + -nor[0] * curl_u * v.Elem(1));
-
-            // std::cout << "test6\n";
-            //  (u, n x curl(v))
-            elmat.Elem(l, k) += alpha * weights[i] * (nor[1] * curl_u * v.Elem(0) + -nor[0] * curl_u * v.Elem(1));
-         }
-   }
+   return;
 }
 
 void WouterIntegrator::AssembleFaceMatrix(
@@ -196,43 +121,16 @@ void WouterIntegrator::AssembleFaceMatrix(
 {
    MFEM_ASSERT(Trans.Elem2No < 0,
                "support for interior faces is not implemented");
-   mfem::IntegrationPoint ip, ip_face, ip_elem;
-   ip.Set2(.5, 0.);
-   mfem::Vector loc;
-   // Get the face Jacobian and compute the normal vector
-   Trans.SetIntPoint(&ip);
-   Trans.Transform(ip, loc);
 
-   // Compute the Jacobian of the face
-   mfem::DenseMatrix J;
-   J = Trans.Face->Jacobian();
-   // J.Print(std::cout);
+   int dim = el1.GetDim();
+   mfem::Vector normal(dim);
 
-   // For 2D: Normal is orthogonal to the Jacobian rows
-   mfem::Vector nor(2);
-   nor(0) = -J(1, 0); // Swap and negate for orthogonal vector
-   nor(1) = J(0, 0);
+   mfem::IntegrationPoint ip_face;
 
-   // Normalize the normal vector
-   double norm = nor.Norml2();
-   nor /= -norm;
-
-   mfem::Vector tan(2);
-   J.GetColumn(0, tan);
-   mfem::real_t h = tan.Norml2();
-   tan /= h;
-
-   // Print the normal vector
-   // std::cout << "Center boundary: ";
-   // loc.Print(std::cout);
-   // std::cout << "Normal at boundary face ";
-   // nor.Print(std::cout);
-   // std::cout << "Tangent at boundary face ";
-   // tan.Print(std::cout);
-
+   // Build a reasonable quadrature on the actual face geometry
    const mfem::IntegrationRule *ir = IntRule;
-   ir = &mfem::IntRules.Get(mfem::Geometry::Type::SEGMENT, 1);
-   // Approximate size of element
+   ir = &mfem::IntRules.Get(static_cast<mfem::Geometry::Type>(Trans.FaceGeom),
+                            2*el1.GetOrder()+2);
 
    elmat.SetSize(el1.GetDof(), el1.GetDof());
    elmat = 0.;
@@ -241,42 +139,44 @@ void WouterIntegrator::AssembleFaceMatrix(
    {
       ip_face = ir->IntPoint(i);
 
-      Trans.SetIntPoint(&ip_face);
-      Trans.Loc1.Transform(ip_face, ip_elem);
+      // Sync face + element integration points. This ensures ip on the element
+      // matches the face point orientation (important for tangential fields).
+      Trans.SetAllIntPoints(&ip_face);
+      const mfem::IntegrationPoint &ip_elem = Trans.Elem1->GetIntPoint();
+
+      // Face normal at this quadrature point
+      mfem::CalcOrtho(Trans.Face->Jacobian(), normal);
+
       mfem::DenseMatrix shape(el1.GetDof(), Trans.GetSpaceDim());
-      mfem::DenseMatrix curl_shape(el1.GetDof(), 1);
+      mfem::DenseMatrix curl_shape(el1.GetDof(), 3);
 
       mfem::ElementTransformation *tr1 = Trans.Elem1;
-      tr1->SetIntPoint(&ip_elem);
       el1.CalcVShape(*tr1, shape);
       el1.CalcPhysCurlShape(*tr1, curl_shape);
+
+      mfem::Vector temp_out(3);
+      Trans.Transform(ip_face,temp_out);
 
       for (int l = 0; l < el1.GetDof(); l++)
          for (int k = 0; k < el1.GetDof(); k++)
          {
             // Extract u and v
-            mfem::Vector u, v;
+            mfem::Vector u(dim), v(dim);
             shape.GetRow(l, u);
             shape.GetRow(k, v);
 
             // Extract curl(u) and curl(v)
-            double curl_u = curl_shape.Elem(l, 0);
-            double curl_v = curl_shape.Elem(k, 0);
+            mfem::Vector curl_u(dim), curl_v(dim);
+            curl_shape.GetRow(l, curl_u);
+            curl_shape.GetRow(k, curl_v);
 
-            // (n x u, n x v)
-            // std::cout
-            //<< weights[i] << std::endl
-            //<< h << std::endl
-            //<< mfem::InnerProduct(u, tan) << std::endl
-            //<< mfem::InnerProduct(v, tan) << std::endl<< std::endl;
-            elmat.Elem(l, k) += weights[i] * alpha * h * (1e6 / h) * mfem::InnerProduct(u, tan) * mfem::InnerProduct(v, tan);
+            mfem::Vector n_x_curl_u(dim), n_x_curl_v(dim);
+            normal.cross3D(curl_u,n_x_curl_u);
+            normal.cross3D(curl_v,n_x_curl_v);
 
-            // (n x curl(u), v)
-            elmat.Elem(l, k) += weights[i] * alpha * h * (nor[1] * curl_u * v.Elem(0) + -nor[0] * curl_u * v.Elem(1));
+            elmat.Elem(l,k) += weights[i] * (n_x_curl_u * v);
 
-            // (u, n x curl(v))
-            elmat.Elem(l, k) += weights[i] * alpha * h * (nor[1] * curl_v * u.Elem(0) + -nor[0] * curl_v * u.Elem(1));
-         }
+         } 
    }
 }
 
@@ -289,6 +189,10 @@ void WouterLFIntegrator::AssembleRHSElementVect(
 void WouterLFIntegrator::AssembleRHSElementVect(
     const mfem::FiniteElement &el, mfem::FaceElementTransformations &Tr, mfem::Vector &elvect)
 {
+   int dim = el.GetDim();
+   mfem::Vector normal(dim);
+   mfem::CalcOrtho(Tr.Loc2.Transf.Jacobian(), normal);
+
 
    mfem::IntegrationPoint ip, ip_face, ip_elem;
    ip.Set2(.5, 0.);

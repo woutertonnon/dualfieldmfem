@@ -214,7 +214,7 @@ protected:
     mfem::Coefficient *Q;
     mfem::DiagonalMatrixCoefficient *DQ;
     mfem::MatrixCoefficient *MQ;
-    double alpha, beta, gamma;
+    double theta_;
 
     // PA extension
     mfem::Vector pa_data;
@@ -226,7 +226,7 @@ protected:
 
 public:
 
-    WouterIntegrator() : alpha(1.), beta(1.), gamma(1.)
+    WouterIntegrator() : theta_(0.)
     {
         Q = NULL;
         DQ = NULL;
@@ -234,19 +234,13 @@ public:
     }
 
 
-    WouterIntegrator(double eps) : alpha(eps), beta(eps), gamma(eps)
+    WouterIntegrator(double theta) : theta_(theta)
     {
         Q = NULL;
         DQ = NULL;
         MQ = NULL;
     }
 
-    WouterIntegrator(double alpha, double beta, double gamma) : alpha(alpha), beta(beta), gamma(gamma)
-    {
-        Q = NULL;
-        DQ = NULL;
-        MQ = NULL;
-    }
     /// Construct a bilinear form integrator for Nedelec elements
     WouterIntegrator(mfem::Coefficient &q, const mfem::IntegrationRule *ir = NULL) : BilinearFormIntegrator(ir), Q(&q), DQ(NULL), MQ(NULL) {}
     WouterIntegrator(mfem::DiagonalMatrixCoefficient &dq,
