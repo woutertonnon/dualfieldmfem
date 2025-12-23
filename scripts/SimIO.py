@@ -59,12 +59,17 @@ class ExactManipulationsSpace:
         w3 = sp.diff(u2, x) - sp.diff(u1, y)
         return sp.Matrix([w1, w2, w3])
 
+
 class manufacturedStokes(ExactManipulationsSpace):
-    def __init__(self, u, p, nu, coords):
+    def __init__(self, u, p, mass, nu, coords):
         super().__init__(coords)
         self.u = u
         self.p = p
+        self.mass = mass
         self.nu = nu
+
+    def get_mass(self):
+        return self.mass
 
     def get_viscosity(self):
         return self.nu
@@ -76,7 +81,7 @@ class manufacturedStokes(ExactManipulationsSpace):
         return self.curl(self.u)
 
     def get_rhs(self):
-        return self.u - self.nu*self.laplacian_vector(self.u) + self.grad(self.p)
+        return  self.mass*self.u + self.nu*self.curl(self.curl(self.u)) + self.grad(self.p)
 
 class ExactManipulationsSpaceTime(ExactManipulationsSpace):
     
@@ -339,13 +344,14 @@ class StokesSimulationHelper(SimulationHelper):
 
     def base_config_file(self):
         config = {
-            "mesh": "./extern/mfem/data/periodic-cube.mesh",
+            "mesh": "./extern/mfem/data/ref-cube.mesh",
             "solver": "GMRES",
             "visualisation": 0,
             "printlevel": 1,
+            "mass": self.exact_equations.get_mass(),
             "viscosity": self.exact_equations.get_viscosity(),
             "force_data": self.sp_vector_to_str(self.exact_equations.get_rhs()),
-            "exact_data_u": self.sp_vector_to_str(self.exact_equations.get_u())
+            "exact_data_u": self.sp_vector_to_str(self.exact_equations.get_u()),
         }
 
         return config

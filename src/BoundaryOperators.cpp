@@ -130,7 +130,7 @@ void WouterIntegrator::AssembleFaceMatrix(
    // Build a reasonable quadrature on the actual face geometry
    const mfem::IntegrationRule *ir = IntRule;
    ir = &mfem::IntRules.Get(static_cast<mfem::Geometry::Type>(Trans.FaceGeom),
-                            2*el1.GetOrder()+2);
+                            2*el1.GetOrder()+12);
 
    elmat.SetSize(el1.GetDof(), el1.GetDof());
    elmat = 0.;
@@ -146,6 +146,7 @@ void WouterIntegrator::AssembleFaceMatrix(
 
       // Face normal at this quadrature point
       mfem::CalcOrtho(Trans.Face->Jacobian(), normal);
+      double h = sqrt(normal.Norml2());
 
       mfem::DenseMatrix shape(el1.GetDof(), Trans.GetSpaceDim());
       mfem::DenseMatrix curl_shape(el1.GetDof(), 3);
@@ -170,11 +171,15 @@ void WouterIntegrator::AssembleFaceMatrix(
             curl_shape.GetRow(l, curl_u);
             curl_shape.GetRow(k, curl_v);
 
-            mfem::Vector n_x_curl_u(dim), n_x_curl_v(dim);
+            mfem::Vector n_x_curl_u(dim), n_x_curl_v(dim), n_x_u(dim), n_x_v(dim);
             normal.cross3D(curl_u,n_x_curl_u);
             normal.cross3D(curl_v,n_x_curl_v);
+            normal.cross3D(u,n_x_u);
+            normal.cross3D(v,n_x_v);
 
             elmat.Elem(l,k) += weights[i] * (n_x_curl_u * v);
+            elmat.Elem(l,k) += theta_ * weights[i] * (u * n_x_curl_v);
+            elmat.Elem(l,k) += Cw_/h * weights[i]* (n_x_u * n_x_v);
 
          } 
    }
@@ -191,40 +196,13 @@ void WouterLFIntegrator::AssembleRHSElementVect(
 {
    int dim = el.GetDim();
    mfem::Vector normal(dim);
-   mfem::CalcOrtho(Tr.Loc2.Transf.Jacobian(), normal);
 
+   mfem::IntegrationPoint ip_face;
 
-   mfem::IntegrationPoint ip, ip_face, ip_elem;
-   ip.Set2(.5, 0.);
-   mfem::Vector loc;
-   // Get the face Jacobian and compute the normal vector
-   Tr.SetIntPoint(&ip);
-   Tr.Transform(ip, loc);
-
-   // Compute the Jacobian of the face
-   mfem::DenseMatrix J;
-   J = Tr.Face->Jacobian();
-   // J.Print(std::cout);
-
-   // For 2D: Normal is orthogonal to the Jacobian rows
-   mfem::Vector nor(2);
-   nor(0) = -J(1, 0); // Swap and negate for orthogonal vector
-   nor(1) = J(0, 0);
-
-   // Normalize the normal vector
-   double norm = nor.Norml2();
-   nor /= -norm;
-
-   mfem::Vector tan(2);
-   J.GetColumn(0, tan);
-   mfem::real_t h = tan.Norml2();
-   tan /= h;
-
-   int dof = el.GetDof();
-
+   // Build a reasonable quadrature on the actual face geometry
    const mfem::IntegrationRule *ir = IntRule;
-   ir = &mfem::IntRules.Get(mfem::Geometry::Type::SEGMENT, 1);
-   // Approximate size of element
+   ir = &mfem::IntRules.Get(static_cast<mfem::Geometry::Type>(Tr.FaceGeom),
+                            2*el.GetOrder()+12);
 
    elvect.SetSize(el.GetDof());
    elvect = 0.;
@@ -233,49 +211,49 @@ void WouterLFIntegrator::AssembleRHSElementVect(
    {
       ip_face = ir->IntPoint(i);
 
-      Tr.SetIntPoint(&ip_face);
-      Tr.Transform(ip_face, loc);
+      // Sync face + element integration points. This ensures ip on the element
+      // matches the face point orientation (important for tangential fields).
+      Tr.SetAllIntPoints(&ip_face);
+      const mfem::IntegrationPoint &ip_elem = Tr.Elem1->GetIntPoint();
 
+      // Face normal at this quadrature point
+      mfem::CalcOrtho(Tr.Face->Jacobian(), normal);
+      double h = sqrt(normal.Norml2());
 
-
-      mfem::Vector u;
-      Q.Eval(u,Tr,ip_face);
-
-
-
-
-      Tr.SetIntPoint(&ip_face);
-      Tr.Loc1.Transform(ip_face, ip_elem);
       mfem::DenseMatrix shape(el.GetDof(), Tr.GetSpaceDim());
-      mfem::DenseMatrix curl_shape(el.GetDof(), 1);
+      mfem::DenseMatrix curl_shape(el.GetDof(), 3);
 
       mfem::ElementTransformation *tr1 = Tr.Elem1;
-      tr1->SetIntPoint(&ip_elem);
       el.CalcVShape(*tr1, shape);
       el.CalcPhysCurlShape(*tr1, curl_shape);
 
-      for (int l = 0; l < el.GetDof(); l++)
+      mfem::Vector temp_out(3);
+      Tr.Transform(ip_face,temp_out);
+
+
+      mfem::Vector u(3);
+      Q.Eval(u,Tr,ip_face);
+
+      for (int k = 0; k < el.GetDof(); k++)
       {
          // Extract u and v
-         mfem::Vector v;
-         shape.GetRow(l, v);
+         mfem::Vector v(dim);
+         shape.GetRow(k, v);
 
          // Extract curl(u) and curl(v)
-         double curl_v = curl_shape.Elem(l, 0);
+         mfem::Vector curl_v(dim);
+         curl_shape.GetRow(k, curl_v);
 
-         // (n x u, n x v)
-         // std::cout
-         //<< weights[i] << std::endl
-         //<< h << std::endl
-         //<< mfem::InnerProduct(u, tan) << std::endl
-         //<< mfem::InnerProduct(v, tan) << std::endl<< std::endl;
-         elvect.Elem(l) += weights[i] * eps * h * (1e6 / h) * mfem::InnerProduct(u, tan) * mfem::InnerProduct(v, tan);
+         mfem::Vector n_x_curl_v(dim), n_x_v(dim), n_x_u(dim);
+         normal.cross3D(curl_v,n_x_curl_v);
+         normal.cross3D(v,n_x_v);
+         normal.cross3D(u,n_x_u);
 
-         // (n x curl(u), v)
-         //elvect.Elem(l) += weights[i] * h * (nor[1] * curl_u * v.Elem(0) + -nor[0] * curl_u * v.Elem(1));
+         elvect.Elem(k) += theta_ * weights[i] * (u * n_x_curl_v);
+         elvect.Elem(k) += Cw_/h * weights[i]* (n_x_u * n_x_v);
 
-         // (u, n x curl(v))
-         elvect.Elem(l) += weights[i] * eps * h * (nor[1] * curl_v * u.Elem(0) + -nor[0] * curl_v * u.Elem(1));
-      }
+      } 
    }
+
+
 }

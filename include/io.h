@@ -44,7 +44,7 @@ public:
     template <typename T>
     T get_value(std::string variable) { return tree_.get<T>(variable.data()); };
 
-    std::function<void(const mfem::Vector &, double, mfem::Vector &)> get_exact_data(std::string function_name) { return functions_.at(function_name); };
+    std::function<void(const mfem::Vector &, double, mfem::Vector &)>& get_exact_data(std::string function_name) { return functions_.at(function_name); };
 
     void InitializeLibrary(std::initializer_list<std::string> function_names)
     {
@@ -187,6 +187,7 @@ public:
           order(get_value("order", 1)),
           visualisation(get_value("visualisation", 0)),
           tol(get_value("tol", 1e-8)),
+          mass(get_value("mass",0.)),
           viscosity(get_value("viscosity", 0.)),
           printlevel(get_value("printlevel", 0)),
           has_exact_u_solution(!get_value<std::string>("exact_data_u", "").empty())
@@ -196,6 +197,7 @@ public:
     }
 
     // Getter methods for configuration parameters
+    double get_mass() const {return mass;}
     double get_viscosity() const { return viscosity; }
     int get_refinements() const { return refinements; }
     int get_order() const { return order; }
@@ -214,6 +216,7 @@ private:
     std::string solver;
     double dt;
     double T;
+    double mass;
     double viscosity;
     int refinements;
     int order;
