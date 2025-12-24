@@ -177,9 +177,9 @@ void WouterIntegrator::AssembleFaceMatrix(
             normal.cross3D(u,n_x_u);
             normal.cross3D(v,n_x_v);
 
-            elmat.Elem(l,k) += weights[i] * (n_x_curl_u * v);
-            elmat.Elem(l,k) += theta_ * weights[i] * (u * n_x_curl_v);
-            elmat.Elem(l,k) += Cw_/h * weights[i]* (n_x_u * n_x_v);
+            elmat.Elem(l,k) += factor_ * weights[i] * (n_x_curl_u * v);
+            elmat.Elem(l,k) += factor_ * theta_ * weights[i] * (u * n_x_curl_v);
+            elmat.Elem(l,k) += factor_ * Cw_/h * weights[i]* (n_x_u * n_x_v);
 
          } 
    }
@@ -249,8 +249,8 @@ void WouterLFIntegrator::AssembleRHSElementVect(
          normal.cross3D(v,n_x_v);
          normal.cross3D(u,n_x_u);
 
-         elvect.Elem(k) += theta_ * weights[i] * (u * n_x_curl_v);
-         elvect.Elem(k) += Cw_/h * weights[i]* (n_x_u * n_x_v);
+         elvect.Elem(k) += factor_ * theta_ * weights[i] * (u * n_x_curl_v);
+         elvect.Elem(k) += factor_ * Cw_/h * weights[i]* (n_x_u * n_x_v);
 
       } 
    }

@@ -94,21 +94,18 @@ int main(int argc, char *argv[])
 
 
     // A1 blocks:
-    StokesSystem sys(ND, CG, mass, viscosity, theta, Cw);
-    StokesRHS rhs(ND, CG, config.get_exact_data("force_data"),config.get_exact_data("exact_data_u"),theta,Cw);
+
+    // A1 blocks:
+    StokesSystem sys(ND, CG, mass, viscosity, 1., 100.);
+    StokesRHS rhs(ND, CG, config.get_exact_data("force_data"), config.get_exact_data("exact_data_u"),1.,100.,viscosity);
     StokesSolution x(ND, CG);
-    SobolevPreconditioner pre(std::vector<mfem::FiniteElementSpace*>({&ND,&CG}));
-    mfem::VectorFunctionCoefficient exact_u_coef(3,config.get_exact_data("exact_data_u"));
-//    x.get_u().ProjectCoefficient(exact_u_coef);
 
-
+    SobolevPreconditioner pre({&ND,&CG},{mass,.01},{viscosity,1.});
     NitscheStokesCSVLogger csv(config, x.get_u(), num_it_A1);
-    mfem::KLUSolver umfpack;
-    std::cout << "start umfpack solver\n";
-    umfpack.SetOperator(sys.GetBlock(0,0));
-    std::cout << "end umfpack solver\n";
+    //mfem::KLUSolver umfpack;
     
-    std::abort();
+
+;
 
     auto solver = std::make_unique<mfem::GMRESSolver>();
     solver->SetAbsTol(tol);
@@ -116,8 +113,8 @@ int main(int argc, char *argv[])
     solver->SetRelTol(0.);
     solver->SetMaxIter(10000);
     solver->SetPrintLevel(1);
-    //solver->SetPreconditioner(pre);
     solver->SetOperator(sys);
+    solver->SetPreconditioner(pre);
     solver->Mult(rhs,x);
 
     num_it_A1 = solver->GetNumIterations();

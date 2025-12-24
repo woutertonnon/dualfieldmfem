@@ -38,18 +38,17 @@ private:
 
 public:
     StokesSolution(mfem::FiniteElementSpace &ND,
-                        mfem::FiniteElementSpace &CG)
-              : OffsetsHolder({&ND, &CG}),
-                mfem::Vector(offsets_.Last()),
-                u_(&ND,*this,0), p_(&CG,*this,offsets_[1])
-                {
-                    u_ = 0.;
-                    p_ = 0.;
-                }
+                   mfem::FiniteElementSpace &CG)
+        : OffsetsHolder({&ND, &CG}),
+          mfem::Vector(offsets_.Last()),
+          u_(&ND, *this, 0), p_(&CG, *this, offsets_[1])
+    {
+        u_ = 0.;
+        p_ = 0.;
+    }
 
-    mfem::GridFunction& get_u(){return u_;};
-    mfem::GridFunction& get_p(){return p_;};
-
+    mfem::GridFunction &get_u() { return u_; };
+    mfem::GridFunction &get_p() { return p_; };
 };
 
 class StokesRHS
@@ -60,34 +59,34 @@ private:
     mfem::LinearForm f_lf_, g_lf_;
     mfem::VectorFunctionCoefficient f_coef_;
     mfem::VectorFunctionCoefficient tr_u_coef_;
-    double theta_, Cw_;
+    double theta_, Cw_, viscosity_;
 
 public:
     StokesRHS(mfem::FiniteElementSpace &ND,
               mfem::FiniteElementSpace &CG,
-              std::function<void(const mfem::Vector&, double, mfem::Vector&)> f,
-              std::function<void(const mfem::Vector&, double, mfem::Vector&)> tr_u,
+              std::function<void(const mfem::Vector &, double, mfem::Vector &)> f,
+              std::function<void(const mfem::Vector &, double, mfem::Vector &)> tr_u,
               double theta = 1.,
-              double Cw = 100.)
-              : OffsetsHolder({&ND, &CG}),
-                mfem::BlockVector(offsets_),
-                f_lf_(&ND),
-                g_lf_(&CG),
-                f_coef_(CG.GetMesh()->Dimension(), std::move(f)),
-                tr_u_coef_(CG.GetMesh()->Dimension(), std::move(tr_u)),
-                theta_(theta), Cw_(Cw)
-                {
-                    f_lf_.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(f_coef_));
-                    f_lf_.AddBdrFaceIntegrator(new WouterLFIntegrator(theta_, Cw_, tr_u_coef_));
-                    f_lf_.Assemble();
+              double Cw = 100.,
+              double viscosity = 1.)
+        : OffsetsHolder({&ND, &CG}),
+          mfem::BlockVector(offsets_),
+          f_lf_(&ND),
+          g_lf_(&CG),
+          f_coef_(CG.GetMesh()->Dimension(), std::move(f)),
+          tr_u_coef_(CG.GetMesh()->Dimension(), std::move(tr_u)),
+          theta_(theta), Cw_(Cw), viscosity_(viscosity)
+    {
+        f_lf_.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(f_coef_));
+        f_lf_.AddBdrFaceIntegrator(new WouterLFIntegrator(theta_, Cw_, tr_u_coef_,viscosity));
+        f_lf_.Assemble();
 
-                    g_lf_.AddBoundaryIntegrator(new mfem::BoundaryNormalLFIntegrator(tr_u_coef_));
-                    g_lf_.Assemble();
+        g_lf_.AddBoundaryIntegrator(new mfem::BoundaryNormalLFIntegrator(tr_u_coef_));
+        g_lf_.Assemble();
 
-                    GetBlock(0).Set(1.,f_lf_);
-                    GetBlock(1).Set(1.,g_lf_);
-                }
-
+        GetBlock(0).Set(1., f_lf_);
+        GetBlock(1).Set(1., g_lf_);
+    }
 };
 
 class StokesSystem
@@ -98,7 +97,7 @@ private:
     mfem::BilinearForm blf_A;
     mfem::MixedBilinearForm blf_B;
     mfem::TransposeOperator BT;
-    mfem::SparseMatrix* BT_mat;
+    mfem::SparseMatrix *BT_mat;
     double mass_, viscosity_, theta_, Cw_;
 
 public:
@@ -116,7 +115,7 @@ public:
 
         blf_A.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(mass_coef));
         blf_A.AddDomainIntegrator(new mfem::CurlCurlIntegrator(viscosity_coef));
-        blf_A.AddBdrFaceIntegrator(new WouterIntegrator(theta_, Cw_));
+        blf_A.AddBdrFaceIntegrator(new WouterIntegrator(theta_, Cw_,viscosity_));
         blf_A.Assemble();
         blf_A.Finalize(); // only if you need the explicit matrix (SparseMatrix)
 
@@ -139,32 +138,31 @@ class SobolevPreconditioner
 private:
     std::vector<std::unique_ptr<mfem::BilinearForm>> bil_forms_;
     std::vector<std::unique_ptr<mfem::CGSolver>> solvers_;
-    std::vector<std::unique_ptr<mfem::OperatorJacobiSmoother>> smoothers_;
+    std::vector<std::unique_ptr<mfem::GSSmoother>> smoothers_;
+    std::vector<mfem::ConstantCoefficient> mass_weights_, diff_weights_;
 
-    static void AddMassDiffIntegrators(mfem::BilinearForm &blf)
+    static void AddMassDiffIntegrators(mfem::BilinearForm &blf, mfem::Coefficient& mass_weight_coef, mfem::Coefficient& diff_weight_coef)
     {
         using namespace mfem;
-
         const FiniteElementCollection *fec = blf.FESpace()->FEColl();
-
         if (dynamic_cast<const H1_FECollection *>(fec))
         {
-            blf.AddDomainIntegrator(new MassIntegrator());
-            //blf.AddDomainIntegrator(new DiffusionIntegrator());
+            blf.AddDomainIntegrator(new MassIntegrator(mass_weight_coef));
+            blf.AddDomainIntegrator(new DiffusionIntegrator(diff_weight_coef));
         }
         else if (dynamic_cast<const ND_FECollection *>(fec))
         {
-            blf.AddDomainIntegrator(new VectorFEMassIntegrator());
-            //blf.AddDomainIntegrator(new CurlCurlIntegrator());
+            blf.AddDomainIntegrator(new VectorFEMassIntegrator(mass_weight_coef));
+            blf.AddDomainIntegrator(new CurlCurlIntegrator(diff_weight_coef));
         }
         else if (dynamic_cast<const RT_FECollection *>(fec))
         {
-            blf.AddDomainIntegrator(new VectorFEMassIntegrator());
-            blf.AddDomainIntegrator(new DivDivIntegrator());
+            blf.AddDomainIntegrator(new VectorFEMassIntegrator(mass_weight_coef));
+            blf.AddDomainIntegrator(new DivDivIntegrator(diff_weight_coef));
         }
         else if (dynamic_cast<const DG_FECollection *>(fec))
         {
-            blf.AddDomainIntegrator(new MassIntegrator());
+            blf.AddDomainIntegrator(new MassIntegrator(mass_weight_coef));
         }
         else
         {
@@ -173,10 +171,10 @@ private:
     }
 
 public:
-    explicit SobolevPreconditioner(const std::vector<mfem::FiniteElementSpace *> &fes_array)
-        : OffsetsHolder(fes_array) // 1) offsets built first
+    explicit SobolevPreconditioner(const std::vector<mfem::FiniteElementSpace *> &fes_array, const std::vector<double> mass_weights, const std::vector<double> diff_weights)
+        : OffsetsHolder(fes_array), mass_weights_(mass_weights.begin(),mass_weights.end()), diff_weights_(diff_weights.begin(),diff_weights.end())// 1) offsets built first
           ,
-          mfem::BlockDiagonalPreconditioner(offsets_) // 2) MFEM stores MakeRef(offsets)
+          mfem::BlockDiagonalPreconditioner(offsets_)
           ,
           bil_forms_(fes_array.size()), solvers_(fes_array.size()), smoothers_(fes_array.size())
     {
@@ -185,12 +183,11 @@ public:
             auto *fes = fes_array[i];
 
             bil_forms_[i] = std::make_unique<mfem::BilinearForm>(fes);
-            AddMassDiffIntegrators(*bil_forms_[i]);
+            AddMassDiffIntegrators(*bil_forms_[i],mass_weights_[i],diff_weights_[i]);
             bil_forms_[i]->Assemble();
-            bil_forms_[i]->Finalize(); // important for Jacobi diagonal
+            bil_forms_[i]->Finalize(); 
 
-            smoothers_[i] = std::make_unique<mfem::OperatorJacobiSmoother>(*bil_forms_[i],
-                                                                           mfem::Array<int>{});
+            smoothers_[i] = std::make_unique<mfem::GSSmoother>(bil_forms_[i]->SpMat());
 
             solvers_[i] = std::make_unique<mfem::CGSolver>();
             solvers_[i]->SetMaxIter(100);
@@ -198,10 +195,83 @@ public:
             solvers_[i]->SetAbsTol(1e-4);
             solvers_[i]->SetPrintLevel(0);
             solvers_[i]->SetPreconditioner(*smoothers_[i]);
-            solvers_[i]->SetOperator(*bil_forms_[i]);
+            solvers_[i]->SetOperator(bil_forms_[i]->SpMat());
 
             SetDiagonalBlock(i, solvers_[i].get());
         }
+    }
+};
+
+
+
+class SchurPreconditioner
+    : private OffsetsHolder,
+      public mfem::Solver
+{
+private:
+    mfem::BlockMatrix *op_;
+    double mass_, viscosity_;
+    mfem::FiniteElementSpace &ND_, &CG_;
+
+public:
+    SchurPreconditioner(mfem::FiniteElementSpace &ND,
+                        mfem::FiniteElementSpace &CG,
+                        double mass, double viscosity)
+        : mfem::Solver(ND.GetVDim() + CG.GetVDim()), OffsetsHolder({&ND, &CG}), mass_(mass), viscosity_(viscosity), ND_(ND), CG_(CG)
+    {
+    }
+
+    void SetOperator(const mfem::Operator &op)
+    {
+        throw std::invalid_argument("SchurPreconditioner::SetOperator(): expected mfem::BlockOperator.");
+    }
+
+    void SetOperator(mfem::BlockMatrix &op)
+    {
+        MFEM_VERIFY(op.RowOffsets().Size() == op.ColOffsets().Size(), "Operator is not square.");
+        for (int i = 0; i < op.RowOffsets().Size(); i++)
+            MFEM_VERIFY(op.RowOffsets()[i] == op.ColOffsets()[i], "Operator is not square!");
+        MFEM_VERIFY(offsets_.Size() == op.RowOffsets().Size(), "Dimensions do not match.");
+        for (int i = 0; i < op.RowOffsets().Size(); i++)
+            MFEM_VERIFY(op.RowOffsets()[i] == offsets_[i], "Operator size does not match!");
+
+        op_ = &op;
+    }
+
+    void Mult(const mfem::Vector &x, mfem::Vector &y) const override
+    {
+        mfem::Vector x0, x1, y0, y1;
+
+        x0.MakeRef(const_cast<mfem::Vector &>(x), offsets_[0], offsets_[1] - offsets_[0]);
+        x1.MakeRef(const_cast<mfem::Vector &>(x), offsets_[1], offsets_[2] - offsets_[1]);
+
+        y0.MakeRef(y, offsets_[0], offsets_[1] - offsets_[0]);
+        y1.MakeRef(y, offsets_[1], offsets_[2] - offsets_[1]);
+
+        SobolevPreconditioner invA({&ND_},{mass_},{viscosity_});
+        SobolevPreconditioner invS({&CG_},{mass_},{1./viscosity_});
+
+        mfem::Vector invA_f(x0.Size());
+        mfem::Vector BT_invA_f_min_g(x1.Size());
+        mfem::Vector p(x1.Size());
+        mfem::Vector u(x0.Size());
+        mfem::Vector B_p(x0.Size());
+        //y0 = 1.;
+        invA.Mult(x0, invA_f);
+        op_->GetBlock(1,0).Mult(invA_f, BT_invA_f_min_g);
+        BT_invA_f_min_g -= x1;
+        //mfem::ProductOperator invA_B(&invA, &op_->GetBlock(0,1), false, false);
+        //mfem::ProductOperator BT_invA_B(&op_->GetBlock(1,0),&invA_B, false, false);
+
+        invS.Mult(BT_invA_f_min_g,p);
+        mfem::Vector f_min_B_p(x0.Size());
+        f_min_B_p.Set(1.,x0);
+        op_->GetBlock(0,1).AddMult(p,f_min_B_p,-1.);
+
+        invA.Mult(f_min_B_p,u);
+        y0.Set(1.,u);
+        y1.Set(1.,p);
+
     }
 };
 

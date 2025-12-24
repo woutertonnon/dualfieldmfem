@@ -214,7 +214,7 @@ protected:
     mfem::Coefficient *Q;
     mfem::DiagonalMatrixCoefficient *DQ;
     mfem::MatrixCoefficient *MQ;
-    double theta_, Cw_;
+    double factor_, theta_, Cw_;
 
     // PA extension
     mfem::Vector pa_data;
@@ -234,7 +234,7 @@ public:
     }
 
 
-    WouterIntegrator(double theta, double Cw) : theta_(theta), Cw_(Cw)
+    WouterIntegrator(double theta, double Cw, double factor = 1.) : factor_(factor), theta_(theta), Cw_(Cw)
     {
         Q = NULL;
         DQ = NULL;
@@ -298,13 +298,13 @@ class WouterLFIntegrator : public mfem::LinearFormIntegrator
 {
    mfem::Vector shape;
    mfem::VectorCoefficient &Q;
-   double theta_, Cw_;
+   double factor_, theta_, Cw_;
    int oa, ob;
 public:
    /** @brief Constructs a boundary integrator with a given Coefficient @a QG.
        Integration order will be @a a * basis_order + @a b. */
-   WouterLFIntegrator(double theta, double Cw, mfem::VectorCoefficient &QG, int a = 1, int b = 1)
-      : theta_(theta), Cw_(Cw), Q(QG), oa(a), ob(b) { }
+   WouterLFIntegrator(double theta, double Cw, mfem::VectorCoefficient &QG, double factor = 1., int a = 1, int b = 1)
+      : factor_(factor), theta_(theta), Cw_(Cw), Q(QG), oa(a), ob(b) { }
  
 
  
