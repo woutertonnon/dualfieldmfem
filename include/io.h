@@ -97,6 +97,8 @@ public:
                                    return;
                                }});
         }
+	    for (const auto& [key, value] : functions_) 
+        std::cout << key << " => "  << '\n';
     }
 
     ~SimulationConfig()
