@@ -100,24 +100,14 @@ int main(int argc, char *argv[])
     StokesRHS rhs(ND, CG, config.get_exact_data("force_data"), config.get_exact_data("exact_data_u"),1.,100.,viscosity);
     StokesSolution x(ND, CG);
 
-    SobolevPreconditioner pre({&ND,&CG},{mass,.01},{viscosity,1.});
+    SchurSolver solv(ND,CG,mass,viscosity);
     NitscheStokesCSVLogger csv(config, x.get_u(), num_it_A1);
     //mfem::KLUSolver umfpack;
-    
 
-;
+    solv.SetOperator(sys);
+    solv.Mult(rhs,x);
 
-    auto solver = std::make_unique<mfem::GMRESSolver>();
-    solver->SetAbsTol(tol);
-    solver->SetKDim(3000);
-    solver->SetRelTol(0.);
-    solver->SetMaxIter(10000);
-    solver->SetPrintLevel(1);
-    solver->SetOperator(sys);
-    solver->SetPreconditioner(pre);
-    solver->Mult(rhs,x);
-
-    num_it_A1 = solver->GetNumIterations();
+    //num_it_A1 = solver->GetNumIterations();
 
 
     csv.WriteRow();

@@ -203,6 +203,86 @@ public:
 };
 
 
+class SchurSolver
+    : private OffsetsHolder,
+      public mfem::Solver
+{
+private:
+    mfem::BlockMatrix *op_;
+    double mass_, viscosity_;
+    mfem::FiniteElementSpace &ND_, &CG_;
+    mfem::KLUSolver invA;
+
+public:
+    SchurSolver(mfem::FiniteElementSpace &ND,
+                        mfem::FiniteElementSpace &CG,
+                        double mass, double viscosity)
+        : mfem::Solver(ND.GetVDim() + CG.GetVDim()), OffsetsHolder({&ND, &CG}), mass_(mass), viscosity_(viscosity), ND_(ND), CG_(CG), invA()
+    {
+    }
+
+    void SetOperator(const mfem::Operator &op)
+    {
+        throw std::invalid_argument("SchurPreconditioner::SetOperator(): expected mfem::BlockOperator.");
+    }
+
+    void SetOperator(mfem::BlockMatrix &op)
+    {
+        MFEM_VERIFY(op.RowOffsets().Size() == op.ColOffsets().Size(), "Operator is not square.");
+        for (int i = 0; i < op.RowOffsets().Size(); i++)
+            MFEM_VERIFY(op.RowOffsets()[i] == op.ColOffsets()[i], "Operator is not square!");
+        MFEM_VERIFY(offsets_.Size() == op.RowOffsets().Size(), "Dimensions do not match.");
+        for (int i = 0; i < op.RowOffsets().Size(); i++)
+            MFEM_VERIFY(op.RowOffsets()[i] == offsets_[i], "Operator size does not match!");
+
+        op_ = &op;
+        invA.SetOperator(op_->GetBlock(0,0));
+    }
+
+    void Mult(const mfem::Vector &x, mfem::Vector &y) const override
+    {
+        mfem::Vector x0, x1, y0, y1;
+
+        x0.MakeRef(const_cast<mfem::Vector &>(x), offsets_[0], offsets_[1] - offsets_[0]);
+        x1.MakeRef(const_cast<mfem::Vector &>(x), offsets_[1], offsets_[2] - offsets_[1]);
+
+        y0.MakeRef(y, offsets_[0], offsets_[1] - offsets_[0]);
+        y1.MakeRef(y, offsets_[1], offsets_[2] - offsets_[1]);
+
+        SobolevPreconditioner invS_pre({&CG_},{1.},{0.});
+        mfem::GMRESSolver invS;
+
+        mfem::Vector invA_f(x0.Size());
+        mfem::Vector BT_invA_f_min_g(x1.Size());
+        mfem::Vector p(x1.Size());
+        mfem::Vector u(x0.Size());
+        mfem::Vector B_p(x0.Size());
+        //y0 = 1.;
+        invA.Mult(x0, invA_f);
+        op_->GetBlock(1,0).Mult(invA_f, BT_invA_f_min_g);
+        BT_invA_f_min_g -= x1;
+        mfem::ProductOperator invA_B(&invA, &op_->GetBlock(0,1), false, false);
+        mfem::ProductOperator BT_invA_B(&op_->GetBlock(1,0),&invA_B, false, false);
+
+        invS.SetOperator(BT_invA_B);
+	invS.SetKDim(3000);
+        invS.SetPrintLevel(1);
+        invS.SetAbsTol(1e-5);
+        invS.SetRelTol(0.);
+	invS.SetMaxIter(10000);
+	//invS.SetPreconditioner(invS_pre);
+        invS.Mult(BT_invA_f_min_g,p);
+        mfem::Vector f_min_B_p(x0.Size());
+        f_min_B_p.Set(1.,x0);
+        op_->GetBlock(0,1).AddMult(p,f_min_B_p,-1.);
+
+        invA.Mult(f_min_B_p,u);
+        y0.Set(1.,u);
+        y1.Set(1.,p);
+
+    }
+};
+
 
 class SchurPreconditioner
     : private OffsetsHolder,
