@@ -51,8 +51,8 @@ public:
         // Get job ID to get unique name
         auto pid = getpid();
         library_name_ = std::string("config_library_") + std::to_string(pid); // + std::string(".cpp");
-        std::string library_name_cpp = library_name_ + std::string(".cpp");
-        std::string library_name_so  = library_name_ + std::string(".so");
+        std::string library_name_cpp = std::string("./") + library_name_ + std::string(".cpp");
+        std::string library_name_so  = std::string("./") + library_name_ + std::string(".so");
         // Generate C++ code that includes the user-provided function code
         std::ofstream file(library_name_cpp);
         file << R"(#include <cmath>
