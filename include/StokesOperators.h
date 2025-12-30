@@ -231,12 +231,12 @@ private:
     mfem::BlockMatrix *op_;
     double mass_, viscosity_, tol_;
     mfem::FiniteElementSpace &ND_, &CG_;
-    mfem::KLUSolver invA;
+    mfem::UMFPackSolver invA;
 
 public:
     SchurSolver(mfem::FiniteElementSpace &ND,
                 mfem::FiniteElementSpace &CG,
-                double mass, double viscosity, double tol = 1e-5)
+                double mass, double viscosity, double tol = 1e-8)
         : mfem::Solver(ND.GetVDim() + CG.GetVDim()), OffsetsHolder({&ND, &CG}), mass_(mass), viscosity_(viscosity), tol_(tol), ND_(ND), CG_(CG), invA()
     {
     }
