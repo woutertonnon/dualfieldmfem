@@ -231,7 +231,7 @@ private:
     mfem::BlockMatrix *op_;
     double mass_, viscosity_, tol_;
     mfem::FiniteElementSpace &ND_, &CG_;
-    mfem::UMFPackSolver invA;
+    mfem::BiCGSTABSolver invA;
 
 public:
     SchurSolver(mfem::FiniteElementSpace &ND,
@@ -257,6 +257,9 @@ public:
 
         op_ = &op;
         invA.SetOperator(op_->GetBlock(0, 0));
+        invA.SetAbsTol(tol_);
+        invA.SetRelTol(0.);
+        invA.SetMaxIter(10000);
     }
 
     void Mult(const mfem::Vector &x, mfem::Vector &y) const override
