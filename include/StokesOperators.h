@@ -256,7 +256,7 @@ public:
             MFEM_VERIFY(op.RowOffsets()[i] == offsets_[i], "Operator size does not match!");
 
         op_ = &op;
-        //invA.SetOperator(op_->GetBlock(0, 0));
+        invA.SetOperator(op_->GetBlock(0, 0));
         //invA.SetAbsTol(tol_);
         //invA.SetRelTol(0.);
         //invA.SetMaxIter(10000);
