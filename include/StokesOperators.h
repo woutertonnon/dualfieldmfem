@@ -231,7 +231,7 @@ private:
     mfem::BlockMatrix *op_;
     double mass_, viscosity_, tol_;
     mfem::FiniteElementSpace &ND_, &CG_;
-    mfem::BiCGSTABSolver invA;
+    mfem::KLUSolver invA;
 
 public:
     SchurSolver(mfem::FiniteElementSpace &ND,
@@ -256,10 +256,10 @@ public:
             MFEM_VERIFY(op.RowOffsets()[i] == offsets_[i], "Operator size does not match!");
 
         op_ = &op;
-        invA.SetOperator(op_->GetBlock(0, 0));
-        invA.SetAbsTol(tol_);
-        invA.SetRelTol(0.);
-        invA.SetMaxIter(10000);
+        //invA.SetOperator(op_->GetBlock(0, 0));
+        //invA.SetAbsTol(tol_);
+        //invA.SetRelTol(0.);
+        //invA.SetMaxIter(10000);
     }
 
     void Mult(const mfem::Vector &x, mfem::Vector &y) const override
