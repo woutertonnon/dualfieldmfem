@@ -66,8 +66,8 @@ int main(int argc, char *argv[])
     std::string mesh_string = config.get_mesh();
     std::string output_file = config.get_outputfile();
     std::string solver_type = config.get_solver();
-    double theta = -1.;
-    double Cw = 0.;
+    double theta = 1.;
+    double Cw = 100.;
 
     // ------------------------------------------------------------------
     // 1. Mesh and FE spaces (PARALLEL)
@@ -96,15 +96,24 @@ int main(int argc, char *argv[])
     // A1 blocks:
 
     // A1 blocks:
-    StokesSystem sys(ND, CG, mass, viscosity, 1., 100.);
-    StokesRHS rhs(ND, CG, config.get_exact_data("force_data"), config.get_exact_data("exact_data_u"),1.,100.,viscosity);
+    StokesSystem sys(ND, CG, mass, viscosity, theta, Cw);
+    StokesRHS rhs(ND, CG, config.get_exact_data("force_data"), config.get_exact_data("exact_data_u"),theta,Cw,viscosity);
     StokesSolution x(ND, CG);
+    rhs.GetBlock(1) -= rhs.GetBlock(1).Sum()/rhs.GetBlock(1).Size();
+    SobolevPreconditioner pre({&ND,&CG},{mass,1.},{viscosity,1.});
 
     SchurSolver solv(ND,CG,mass,viscosity);
+    //mfem::GMRESSolver solv;
     NitscheStokesCSVLogger csv(config, x.get_u(), num_it_A1);
     //mfem::KLUSolver umfpack;
 
-    solv.SetOperator(sys);
+    solv.SetOperator(sys);        
+    //solv.SetKDim(3000);
+    //solv.SetPrintLevel(1);
+    //solv.SetAbsTol(tol);
+    //solv.SetRelTol(0.);
+    //solv.SetMaxIter(10000);
+    //solv.SetPreconditioner(pre);
     solv.Mult(rhs,x);
 
     //num_it_A1 = solver->GetNumIterations();
