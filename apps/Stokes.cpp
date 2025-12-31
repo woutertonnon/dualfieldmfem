@@ -116,6 +116,11 @@ int main(int argc, char *argv[])
     //solv.SetPreconditioner(pre);
     solv.Mult(rhs,x);
 
+    mfem::Vector temp(x.Size());
+    sys.Mult(x,temp);
+    temp -= rhs;
+    temp.Print(std::cout);
+
     //num_it_A1 = solver->GetNumIterations();
 
 
