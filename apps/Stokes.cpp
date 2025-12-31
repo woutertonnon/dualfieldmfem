@@ -102,7 +102,8 @@ int main(int argc, char *argv[])
     rhs.GetBlock(1) -= rhs.GetBlock(1).Sum()/rhs.GetBlock(1).Size();
     SobolevPreconditioner pre({&ND,&CG},{mass,1.},{viscosity,1.});
 
-    SchurSolver solv(ND,CG,mass,viscosity);
+
+    SchurSolver solv(ND,CG,mass,viscosity,num_it_A1);
     //mfem::GMRESSolver solv;
     NitscheStokesCSVLogger csv(config, x.get_u(), num_it_A1);
     //mfem::KLUSolver umfpack;
@@ -119,8 +120,8 @@ int main(int argc, char *argv[])
     mfem::Vector temp(x.Size());
     sys.Mult(x,temp);
     temp -= rhs;
-    temp.Print(std::cout);
-
+    //temp.Print(std::cout);
+    std::cout << "matrix solve L2 error: " << temp.Norml2() << std::endl;
     //num_it_A1 = solver->GetNumIterations();
 
 

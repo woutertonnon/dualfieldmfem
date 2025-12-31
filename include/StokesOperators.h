@@ -231,14 +231,15 @@ class SchurSolver
 private:
     mfem::BlockMatrix *op_;
     double mass_, viscosity_, tol_;
+    int &iterations_;
     mfem::FiniteElementSpace &ND_, &CG_;
     mfem::KLUSolver invA;
 
 public:
     SchurSolver(mfem::FiniteElementSpace &ND,
                 mfem::FiniteElementSpace &CG,
-                double mass, double viscosity, double tol = 1e-8)
-        : mfem::Solver(ND.GetVDim() + CG.GetVDim()), OffsetsHolder({&ND, &CG}), mass_(mass), viscosity_(viscosity), tol_(tol), ND_(ND), CG_(CG), invA()
+                double mass, double viscosity, int& iterations, double tol = 1e-8)
+        : mfem::Solver(ND.GetVDim() + CG.GetVDim()), OffsetsHolder({&ND, &CG}), mass_(mass), viscosity_(viscosity), iterations_(iterations), tol_(tol), ND_(ND), CG_(CG), invA()
     {
     }
 
@@ -305,14 +306,14 @@ public:
         invS.SetOperator(BT_invA_B);
         invS.SetKDim(3000);
         invS.SetPrintLevel(1);
-        invS.SetAbsTol(tol_);
-        invS.SetRelTol(0.);
+        invS.SetAbsTol(0.);
+        invS.SetRelTol(tol_);
         invS.SetMaxIter(10000);
         //invS.SetPreconditioner(invS_pre);
         std::cout << "test7\n";
         invS.Mult(BT_invA_x0_min_x1, y1);
         std::cout << "test8\n";
-
+        iterations_ = invS.GetNumIterations();
 
         mfem::Vector x0test(x0.Size());
         mfem::Vector x1test(x1.Size());

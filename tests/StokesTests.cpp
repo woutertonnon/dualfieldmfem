@@ -707,7 +707,8 @@ TEST(SchurSolver, test1){
 
     // A1 blocks:
     StokesSystem sys(ND, CG, mass, viscosity, theta, Cw);
-    SchurSolver solver(ND, CG, mass, viscosity, 1e-12);
+    int iterations;
+    SchurSolver solver(ND, CG, mass, viscosity, iterations, 1e-12);
     solver.SetOperator(sys);
 
     solver.Mult(rhs,x);
