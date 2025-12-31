@@ -59,7 +59,7 @@ class StokesRHS
       public mfem::BlockVector
 {
 private:
-    mfem::LinearForm f_lf_, g_lf_;
+    mfem::LinearForm f_lf_, g_lf_, avg_lf_;
     mfem::VectorFunctionCoefficient f_coef_;
     mfem::VectorFunctionCoefficient tr_u_coef_;
     double theta_, Cw_, viscosity_;
@@ -76,6 +76,7 @@ public:
           mfem::BlockVector(offsets_),
           f_lf_(&ND),
           g_lf_(&CG),
+          avg_lf_(&CG),
           f_coef_(CG.GetMesh()->Dimension(), std::move(f)),
           tr_u_coef_(CG.GetMesh()->Dimension(), std::move(tr_u)),
           theta_(theta), Cw_(Cw), viscosity_(viscosity)
@@ -272,8 +273,8 @@ public:
         y0.MakeRef(y, offsets_[0], offsets_[1] - offsets_[0]);
         y1.MakeRef(y, offsets_[1], offsets_[2] - offsets_[1]);
 
-        std::cout << x1.Sum() << std::endl;
-        x1 -= x1.Sum()/x1.Size();
+        std::cout << "x1 RHS: " <<  x1.Norml2() << std::endl;
+        //x1 -= x1.Sum()/x1.Size();
         //x1 -= x1.Sum()/x1.Size();
         //std::cout << x1.Sum() << std::endl;
 
