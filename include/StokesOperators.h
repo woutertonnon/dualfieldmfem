@@ -309,7 +309,7 @@ public:
         invS.SetAbsTol(0.);
         invS.SetRelTol(tol_);
         invS.SetMaxIter(10000);
-        invS.SetPreconditioner(invS_pre);
+        //invS.SetPreconditioner(invS_pre);
         std::cout << "test7\n";
         invS.Mult(BT_invA_x0_min_x1, y1);
         std::cout << "test8\n";
