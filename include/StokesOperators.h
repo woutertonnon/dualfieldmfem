@@ -262,7 +262,7 @@ public:
             MFEM_VERIFY(op.RowOffsets()[i] == offsets_[i], "Operator size does not match!");
 
         op_ = &op;
-        smoother_.SetOperator(mass_bil_);
+        smoother_.SetOperator(mass_bil_.SpMat());
         invA.SetPreconditioner(smoother_);
         invA.SetOperator(op_->GetBlock(0, 0));
         invA.SetAbsTol(1e-15);
