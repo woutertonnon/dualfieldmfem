@@ -263,7 +263,7 @@ public:
 
         op_ = &op;
         smoother_.SetOperator(mass_bil_.SpMat());
-        invA.SetPreconditioner(smoother_);
+        //invA.SetPreconditioner(smoother_);
         invA.SetOperator(op_->GetBlock(0, 0));
         invA.SetAbsTol(1e-15);
         invA.SetRelTol(tol_);
