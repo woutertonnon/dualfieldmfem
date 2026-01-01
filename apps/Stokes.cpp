@@ -117,15 +117,18 @@ int main(int argc, char *argv[])
     //solv.SetPreconditioner(pre);
     solv.Mult(rhs,x);
 
-    mfem::Vector temp(x.Size());
+    csv.WriteRow();
+    StokesSolution temp(ND,CG);
+    temp.get_u() = 0.;
+    temp.get_p() = 0.;
     sys.Mult(x,temp);
     temp -= rhs;
     //temp.Print(std::cout);
-    std::cout << "matrix solve L2 error: " << temp.Norml2() << std::endl;
+    std::cout << "matrix solve L2 error u_block: " << temp.get_u().Norml2() << std::endl;
+    std::cout << "matrix solve L2 error p_block: " << temp.get_p().Norml2() << std::endl;
     //num_it_A1 = solver->GetNumIterations();
 
 
-    csv.WriteRow();
 
     delete fec_ND;
     delete fec_CG;
