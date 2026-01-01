@@ -306,7 +306,7 @@ public:
         invS.SetOperator(BT_invA_B);
         invS.SetKDim(3000);
         invS.SetPrintLevel(1);
-        invS.SetAbsTol(0.);
+        invS.SetAbsTol(1e-15);
         invS.SetRelTol(tol_);
         invS.SetMaxIter(10000);
         //invS.SetPreconditioner(invS_pre);
