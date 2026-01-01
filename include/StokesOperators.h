@@ -233,7 +233,7 @@ private:
     double mass_, viscosity_, tol_;
     int &iterations_;
     mfem::FiniteElementSpace &ND_, &CG_;
-    mfem::CGSolver invA;
+    mfem::GMRESSolver invA;
     mfem::GSSmoother smoother_;
     mfem::BilinearForm mass_bil_;
 
@@ -267,7 +267,7 @@ public:
         invA.SetOperator(op_->GetBlock(0, 0));
         invA.SetAbsTol(1e-15);
         invA.SetRelTol(tol_);
-        invA.SetPrintLevel(1);
+        invA.SetPrintLevel(0);
         invA.SetMaxIter(10000);
     }
 

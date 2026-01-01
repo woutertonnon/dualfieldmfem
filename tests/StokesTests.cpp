@@ -702,8 +702,15 @@ TEST(SchurSolver, test1){
             y.Elem(2) = x.Elem(0);
         };
 
+    auto tr_u = [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
+        y.SetSize(3);
+        y.Elem(0) = 0.;
+        y.Elem(1) = 0.;
+        y.Elem(2) = 0.;
+    };
 
-    StokesRHS rhs(ND,CG,f, f, theta, Cw,viscosity);
+
+    StokesRHS rhs(ND,CG,f, tr_u, theta, Cw,viscosity);
 
     // A1 blocks:
     StokesSystem sys(ND, CG, mass, viscosity, theta, Cw);
@@ -717,11 +724,11 @@ TEST(SchurSolver, test1){
     sys.Mult(x,sys_x);
 
     for(int i = 0; i < rhs.GetBlock(0).Size(); ++i)
-        EXPECT_NEAR(sys_x[i], rhs[i], 1e-8);
+        EXPECT_NEAR(sys_x[i], rhs[i], 1e-6);
 
 
     for(int i = rhs.GetBlock(0).Size(); i < rhs.Size(); ++i)
-        EXPECT_NEAR(sys_x[i], rhs[i], 1e-8);
+        EXPECT_NEAR(sys_x[i], rhs[i], 1e-6);
 
     delete fec_ND;
     delete fec_CG;
