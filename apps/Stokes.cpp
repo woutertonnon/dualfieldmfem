@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
     StokesSystem sys(ND, CG, mass, viscosity, theta, Cw);
     StokesRHS rhs(ND, CG, config.get_exact_data("force_data"), config.get_exact_data("exact_data_u"),theta,Cw,viscosity);
     StokesSolution x(ND, CG);
-    rhs.GetBlock(1) -= rhs.GetBlock(1).Sum()/rhs.GetBlock(1).Size();
+    
     SobolevPreconditioner pre({&ND,&CG},{mass,1.},{viscosity,1.});
 
 
