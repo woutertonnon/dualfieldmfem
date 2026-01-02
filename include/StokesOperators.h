@@ -233,15 +233,16 @@ private:
     double mass_, viscosity_, tol_;
     int &iterations_;
     mfem::FiniteElementSpace &ND_, &CG_;
-    mfem::GMRESSolver invA;
+    mfem::UMFPackSolver invA;
     mfem::GSSmoother smoother_;
+    mfem::CGSolver cgsolver_;
     mfem::BilinearForm mass_bil_;
 
 public:
     SchurSolver(mfem::FiniteElementSpace &ND,
                 mfem::FiniteElementSpace &CG,
                 double mass, double viscosity, int& iterations, double tol = 1e-4)
-        : mfem::Solver(ND.GetVDim() + CG.GetVDim()), OffsetsHolder({&ND, &CG}), mass_(mass), viscosity_(viscosity), iterations_(iterations), tol_(tol), ND_(ND), CG_(CG), invA(), smoother_(), mass_bil_(&ND)
+        : mfem::Solver(ND.GetVDim() + CG.GetVDim()), OffsetsHolder({&ND, &CG}), mass_(mass), viscosity_(viscosity), iterations_(iterations), tol_(tol), ND_(ND), CG_(CG), invA(), smoother_(), cgsolver_(), mass_bil_(&ND)
     {
         mass_bil_.AddDomainIntegrator(new mfem::VectorFEMassIntegrator());
         mass_bil_.Assemble();
@@ -262,13 +263,20 @@ public:
             MFEM_VERIFY(op.RowOffsets()[i] == offsets_[i], "Operator size does not match!");
 
         op_ = &op;
+        
+
+
         smoother_.SetOperator(mass_bil_.SpMat());
-        //invA.SetPreconditioner(smoother_);
+        cgsolver_.SetOperator(mass_bil_);
+        cgsolver_.SetAbsTol(1e-15);
+        cgsolver_.SetRelTol(tol_);
+        
+        //invA.SetPreconditioner(cgsolver_);
         invA.SetOperator(op_->GetBlock(0, 0));
-        invA.SetAbsTol(1e-15);
-        invA.SetRelTol(tol_);
-        invA.SetPrintLevel(0);
-        invA.SetMaxIter(10000);
+        //invA.SetAbsTol(1e-15);
+        //invA.SetRelTol(tol_);
+        //invA.SetPrintLevel(0);
+        //invA.SetMaxIter(10000);
     }
 
     void Mult(const mfem::Vector &x, mfem::Vector &y) const override
