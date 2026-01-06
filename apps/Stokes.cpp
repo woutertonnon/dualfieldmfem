@@ -66,8 +66,8 @@ int main(int argc, char *argv[])
     std::string mesh_string = config.get_mesh();
     std::string output_file = config.get_outputfile();
     std::string solver_type = config.get_solver();
-    double theta = -1.;
-    double Cw = 0.;
+    double theta = 1.;
+    double Cw = 100.;
 
     // ------------------------------------------------------------------
     // 1. Mesh and FE spaces (PARALLEL)
