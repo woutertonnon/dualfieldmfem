@@ -148,6 +148,7 @@ void WouterIntegrator::AssembleFaceMatrix(
       mfem::CalcOrtho(Trans.Face->Jacobian(), normal);
       double h = sqrt(normal.Norml2());
 
+      //std::cout << "h = " << h << std::endl;
       mfem::DenseMatrix shape(el1.GetDof(), Trans.GetSpaceDim());
       mfem::DenseMatrix curl_shape(el1.GetDof(), 3);
 
@@ -179,7 +180,7 @@ void WouterIntegrator::AssembleFaceMatrix(
 
             elmat.Elem(l,k) += factor_ * weights[i] * (n_x_curl_u * v);
             elmat.Elem(l,k) += factor_ * theta_ * weights[i] * (u * n_x_curl_v);
-            elmat.Elem(l,k) += factor_ * Cw_/h * weights[i]* (n_x_u * n_x_v);
+            elmat.Elem(l,k) += factor_ * Cw_/(h*h*h) * weights[i]* (n_x_u * n_x_v);
 
          } 
    }
