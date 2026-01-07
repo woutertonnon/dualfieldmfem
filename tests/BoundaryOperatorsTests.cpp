@@ -243,7 +243,6 @@ TEST(WouterIntegratorTest, ApproximationTestAsymmetricPenalty)
            last_err = std::abs(exact_integrals.at(refinements) - (v * A_u));
            std::cout << "refinement: " << refinements << ", order: " << order << ", error: " << last_err << std::endl;
        }
-       std::cout << last_err << ", " << one_but_last_err << "," << std::pow(0.5,order)+0.01 << (std::pow(0.5,order)+0.01)*one_but_last_err << std::endl;
        EXPECT_LT(last_err, (std::pow(0.5,order)+0.03)*one_but_last_err);
    }
 }
