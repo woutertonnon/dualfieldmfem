@@ -107,7 +107,7 @@ TEST(WouterIntegratorTest, DefaultsHaveNoCoefficient2)
    blf_A.Finalize();
 
    mfem::Vector A_u(ND.GetNDofs());
-   blf_A.MultTranspose(u, A_u);
+   blf_A.Mult(u, A_u);
    ASSERT_FLOAT_EQ(-3. / 4.-1./3., v * A_u);
 }
 
@@ -171,7 +171,7 @@ TEST(WouterIntegratorTest, ApproximationTest)
            blf_A.Finalize();
         
            mfem::Vector A_u(ND.GetNDofs());
-           blf_A.MultTranspose(u, A_u);
+           blf_A.Mult(u, A_u);
            one_but_last_err = last_err;
            last_err = 4.4722583402915601 - (v * A_u);
            std::cout << "refinement: " << refinements << ", order: " << order << ", error: " << last_err << std::endl;
@@ -238,7 +238,7 @@ TEST(WouterIntegratorTest, ApproximationTestAsymmetricPenalty)
            blf_A.Finalize();
         
            mfem::Vector A_u(ND.GetNDofs());
-           blf_A.MultTranspose(u, A_u);
+           blf_A.Mult(u, A_u);
            one_but_last_err = last_err;
            last_err = std::abs(exact_integrals.at(refinements) - (v * A_u));
            std::cout << "refinement: " << refinements << ", order: " << order << ", error: " << last_err << std::endl;
@@ -304,7 +304,7 @@ TEST(WouterIntegratorTest, DefaultsHaveNoCoefficient3)
    blf_A.Finalize();
 
    mfem::Vector A_u(ND.GetNDofs());
-   blf_A.MultTranspose(u, A_u);
+   blf_A.Mult(u, A_u);
    ASSERT_NEAR(0., v * A_u, 1e-12);
 }
 
@@ -350,9 +350,68 @@ TEST(WouterIntegratorTest, DefaultsHaveNoCoefficient4)
    blf_A.Finalize();
 
    mfem::Vector A_u(ND.GetNDofs());
-   blf_A.MultTranspose(u, A_u);
+   blf_A.Mult(u, A_u);
    for(auto val: A_u)
       ASSERT_NEAR(val,0.,1e-10);
+}
+
+
+TEST(WouterIntegratorTest, leftAndRightComparison)
+{
+   // We computed <n x curl(u), v>_boundary for u = (xyz,xxz,xyy) and v=(xx+y,yy+z,zz+x). The exact solution is -3/4
+   int refinements = 1;
+   int order = 1;
+
+   double viscosity = 1.;
+   double theta = -1e8;
+   double Cw = 0e8;
+
+   mfem::Mesh mesh("../extern/mfem/data/ref-cube.mesh", 1, 1);
+   for (int l = 0; l < refinements; l++)
+   {
+      mesh.UniformRefinement();
+   }
+   int dim = mesh.Dimension();
+   
+   auto u_func = [](const mfem::Vector &x, double, mfem::Vector &y) -> void
+   {
+      const double X = x.Elem(0);
+      const double Y = x.Elem(1);
+      const double Z = x.Elem(2);
+
+      // u = (0, 0, X*Y)
+      y.SetSize(3);
+      y.Elem(0) =-Y;
+      y.Elem(1) = X;
+      y.Elem(2) = 0;
+   };
+
+   mfem::VectorFunctionCoefficient u_coef(3, u_func);
+
+   mfem::FiniteElementCollection *fec_ND = new mfem::ND_FECollection(order, dim);
+   mfem::FiniteElementSpace ND(&mesh, fec_ND);
+   mfem::GridFunction u(&ND);
+   u.ProjectCoefficient(u_coef);
+   std::cout << "u = \n";
+   u.Print(std::cout);
+
+   mfem::LinearForm lf(&ND);
+   lf.AddBdrFaceIntegrator(new WouterLFIntegrator(theta,Cw,u_coef,viscosity));
+   lf.Assemble();
+
+   // mfem::ConstantCoefficient mass_coeff(1.), diff_coef(viscosity);
+   mfem::BilinearForm blf_A(&ND);
+   blf_A.AddBdrFaceIntegrator(new WouterIntegrator(theta,Cw,viscosity));
+   blf_A.Assemble();
+   blf_A.Finalize();
+
+
+   mfem::Vector A_u(ND.GetNDofs());
+   blf_A.Mult(u, A_u);
+   A_u -= lf;
+   A_u /= lf.Norml2();
+   for(auto val: A_u)
+      ASSERT_NEAR(val,0.,1e-8);
 }
 
 

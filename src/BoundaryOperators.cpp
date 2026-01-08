@@ -178,9 +178,9 @@ void WouterIntegrator::AssembleFaceMatrix(
             normal.cross3D(u,n_x_u);
             normal.cross3D(v,n_x_v);
 
-            elmat.Elem(l,k) += factor_ * weights[i] * (n_x_curl_u * v);
-            elmat.Elem(l,k) += factor_ * theta_ * weights[i] * (u * n_x_curl_v);
-            elmat.Elem(l,k) += factor_ * Cw_/(h*h*h) * weights[i]* (n_x_u * n_x_v);
+            elmat.Elem(k,l) += factor_ * weights[i] * (n_x_curl_u * v);
+            elmat.Elem(k,l) += factor_ * theta_ * weights[i] * (u * n_x_curl_v);
+            elmat.Elem(k,l) += factor_ * Cw_/(h*h*h) * weights[i]* (n_x_u * n_x_v);
 
          } 
    }
@@ -220,7 +220,6 @@ void WouterLFIntegrator::AssembleRHSElementVect(
       // Face normal at this quadrature point
       mfem::CalcOrtho(Tr.Face->Jacobian(), normal);
       double h = sqrt(normal.Norml2());
-
       mfem::DenseMatrix shape(el.GetDof(), Tr.GetSpaceDim());
       mfem::DenseMatrix curl_shape(el.GetDof(), 3);
 
