@@ -89,20 +89,19 @@ class ExactManipulationsSpaceTime(ExactManipulationsSpace):
         super().__init__(coords)
         self.t = t
 
-
     def time_derivative(self, u, t):
         return sp.diff(u,t)
 
 
-class IBVPNavierStokes(ExactManipulationsSpace):
-    def __init__(self, u_init: sp.Matrix, nu: float, coords, force = sp.Matrix([0, 0, 0])):        
+class IBVPNavierStokes(ExactManipulationsSpaceTime):
+    def __init__(self, u_init: sp.Matrix, nu: float, coords, t, force = sp.Matrix([0, 0, 0])):        
         expected_rows, expected_cols = 3, 1
         if (u_init.rows, u_init.cols) != (expected_rows, expected_cols):
             raise ValueError(
                 f"u\_init must be {expected_rows}x{expected_cols} (a 3-dimensional vector), "
                 f"but got {u.rows}x{u.cols}"
             )
-        super().__init__(coords)
+        super().__init__(coords,t)
         self.nu = nu
         self.u_init = u_init
         self.coords = coords
@@ -118,7 +117,7 @@ class IBVPNavierStokes(ExactManipulationsSpace):
     def get_viscosity(self):
         return self.nu
     
-    def get_rhs(self):
+    def get_force(self):
         return self.force
     
 class IBVPNavierStokesSolution(IBVPNavierStokes):
@@ -126,7 +125,7 @@ class IBVPNavierStokesSolution(IBVPNavierStokes):
         self.t = t
         self.u = u
         self.p = p
-        super().__init__(u.subs(self.t,0), nu, coords, force)
+        super().__init__(u.subs(self.t,0), nu, coords, t, force)
 
     def get_p(self):
         return self.p
@@ -138,8 +137,10 @@ class IBVPNavierStokesSolution(IBVPNavierStokes):
         return self.curl(self.u)
     
 class manufacturedNavierStokes(IBVPNavierStokesSolution):
-    def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t, force = sp.Matrix([0,0,0])):
-        super().__init__(u.subs(self.t,0), p, nu, coords, t, self.navier_stokes_rhs(u,p,nu,t))
+    def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t):
+        super().__init__(u.subs(t,0), p, nu, coords, t)
+        super().__init__(u.subs(t,0), p, nu, coords, t, self.navier_stokes_rhs(u,p,nu,t))
+        
 
     def navier_stokes_rhs(self, u, p, nu,t):
         """
@@ -255,11 +256,10 @@ class SimulationHelper:
 
         return out
 
-    def run_all_configs_euler(self, time="24:00:00", mempercpu="128G", cpuspertask="1"):
+    def run_all_configs_euler(self, time="24:00:00", mempercpu="512G", cpuspertask="1"):
         hostname = "euler.ethz.ch"
         username = "wtonnon"
-        key_path = "/home/wtonnon/.ssh/id_ed25519.pub"
-
+        key_path = os.path.expanduser("~/.ssh/id_ed25519") 
         #key = paramiko.RSAKey.from_private_key_file(key_path)
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -318,9 +318,9 @@ class NavierStokesSimulationHelper(SimulationHelper):
 
     def base_config_file(self):
         config = {
-            "mesh": "./extern/mfem/data/periodic-cube.mesh",
+            "mesh": "./extern/mfem/data/ref-cube.mesh",
             "solver": "GMRES",
-            "visualisation": 0,
+            "visualisation": 1,
             "printlevel": 0,
             "viscosity": self.exact_equations.get_viscosity(),
             "boundary_data_u": "out[0] = 0.;out[1]=0.;out[2]=0.;",
@@ -329,7 +329,7 @@ class NavierStokesSimulationHelper(SimulationHelper):
             "initial_data_w": self.sp_vector_to_str(self.exact_equations.get_vorticity_init()),
         }
 
-        if isinstance(config,IBVPNavierStokesSolution):
+        if isinstance(self.exact_equations,IBVPNavierStokesSolution):
             config["exact_data_u"] = self.sp_vector_to_str(self.exact_equations.get_u())
             config["exact_data_w"] = self.sp_vector_to_str(self.exact_equations.get_vorticity())
         else:
@@ -564,7 +564,7 @@ class SimulationDataProcessor:
     def pull_data_from_euler(self):
         hostname = "euler.ethz.ch"
         username = "wtonnon"
-        key_path = "/home/wtonnon/.ssh/id_ed25519.pub"
+        key_path = os.path.expanduser("~/.ssh/id_ed25519") 
 
         #key = paramiko.RSAKey.from_private_key_file(key_path)
         client = paramiko.SSHClient()

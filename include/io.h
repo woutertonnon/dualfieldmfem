@@ -44,7 +44,13 @@ public:
     template <typename T>
     T get_value(std::string variable) { return tree_.get<T>(variable.data()); };
 
-    std::function<void(const mfem::Vector &, double, mfem::Vector &)>& get_exact_data(std::string function_name) { return functions_.at(function_name); };
+    std::function<void(const mfem::Vector &, double, mfem::Vector &)>& get_exact_data(std::string function_name) { 
+        try{ 
+            return functions_.at(function_name); } 
+        catch (const std::out_of_range& e) {
+            std::cout << "get_exact_data(): data not found!: " << e.what() << std::endl; std::abort();
+        }
+    };
 
     void InitializeLibrary(std::initializer_list<std::string> function_names)
     {
@@ -294,21 +300,23 @@ public:
                        int &cycle,
                        double &t_full,
                        double &t_half,
-                       mfem::Operator &M_op,
-                       mfem::Operator &N_op,
-                       mfem::GridFunction &u,
-                       mfem::GridFunction &v,
-                       mfem::GridFunction &w,
-                       mfem::GridFunction &z,
+                       mfem::FiniteElementSpace *ND,
+                       mfem::FiniteElementSpace *RT,
+                       mfem::GridFunction &u1,
+                       mfem::GridFunction &u2,
+                       mfem::GridFunction &w1,
                        int &num_it_A1,
                        int &num_it_A2)
         : CSVLogger(config.get_outputfile()),
           cycle_(cycle),
           t_full_(t_full),
           t_half_(t_half),
-          M_op_(M_op),
-          N_op_(N_op),
-          u_(u), v_(v), w_(w), z_(z),
+          ND(ND),
+          RT(RT),
+          mass_ND_(ND),
+          mass_RT_(RT),
+          mass_curl_RT_(RT,ND),
+          u_(u1), v_(u2), w_(w1),
           num_it_A1_(num_it_A1),
           num_it_A2_(num_it_A2),
           time_(std::chrono::time_point(std::chrono::steady_clock::now())),
@@ -321,15 +329,30 @@ public:
         }
         get_ofstream() << std::endl;
         get_ofstream().flush();
+
+        mass_ND_.AddDomainIntegrator(new mfem::VectorFEMassIntegrator());
+        mass_ND_.Assemble();
+        mass_ND_.Finalize();
+
+        mass_RT_.AddDomainIntegrator(new mfem::VectorFEMassIntegrator());
+        mass_RT_.Assemble();
+        mass_RT_.Finalize();
+
+        mass_curl_RT_.AddDomainIntegrator(new mfem::MixedVectorWeakCurlIntegrator());
+        mass_curl_RT_.Assemble();
+        mass_curl_RT_.Finalize();
+
+
+
     };
 
     void WriteRow()
     {
         // Inner products as dot products
-        double u1_norm = MatrixConservedVariable(M_op_, u_);  // (u, M u)
-        double u2_norm = MatrixConservedVariable(N_op_, v_);  // (v, N v)
-        double u1w1 = MatrixConservedVariable(u_, M_op_, w_); // (u, M w)
-        double u2w2 = MatrixConservedVariable(v_, N_op_, z_); // (v, N z)
+        double u1_norm = MatrixConservedVariable(mass_ND_, u_);  // (u, M u)
+        double u2_norm = MatrixConservedVariable(mass_RT_, v_);  // (v, N v)
+        double u1w1 = MatrixConservedVariable(u_, mass_ND_, w_); // (u, M w)
+        double u2w2 = MatrixConservedVariable(u_, mass_curl_RT_, v_); // (v, N z)
 
         std::chrono::duration<double> runtime_it = std::chrono::steady_clock::now() - time_;
         time_ = std::chrono::steady_clock::now();
@@ -344,6 +367,7 @@ public:
         {
             mfem::VectorFunctionCoefficient u_exact_coeff(3, config_.get_exact_data("exact_data_u"));
             u_exact_coeff.SetTime(t_full_);
+	    std::cout << "L2 err = " << u_.ComputeL2Error(u_exact_coeff) << std::endl;
             get_ofstream() << "," << u_.ComputeL2Error(u_exact_coeff) << "," << v_.ComputeL2Error(u_exact_coeff);
         }
         get_ofstream() << std::endl;
@@ -354,12 +378,13 @@ private:
     int &cycle_;
     double &t_full_;
     double &t_half_;
-    mfem::Operator &M_op_;
-    mfem::Operator &N_op_;
+    mfem::FiniteElementSpace *ND, *RT;
+    mfem::BilinearForm mass_ND_;
+    mfem::BilinearForm mass_RT_;
+    mfem::MixedBilinearForm mass_curl_RT_;
     mfem::GridFunction &u_;
     mfem::GridFunction &v_;
     mfem::GridFunction &w_;
-    mfem::GridFunction &z_;
     int &num_it_A1_;
     int &num_it_A2_;
     std::chrono::time_point<std::chrono::steady_clock> time_;

@@ -59,7 +59,7 @@ class StokesRHS
       public mfem::BlockVector
 {
 private:
-    mfem::LinearForm f_lf_, g_lf_, avg_lf_;
+    mfem::FiniteElementSpace *ND_, *CG_;
     mfem::VectorFunctionCoefficient f_coef_;
     mfem::VectorFunctionCoefficient tr_u_coef_;
     double theta_, Cw_, viscosity_;
@@ -74,22 +74,46 @@ public:
               double viscosity = 1.)
         : OffsetsHolder({&ND, &CG}),
           mfem::BlockVector(offsets_),
-          f_lf_(&ND),
-          g_lf_(&CG),
-          avg_lf_(&CG),
+          ND_(&ND),
+          CG_(&CG),
           f_coef_(CG.GetMesh()->Dimension(), std::move(f)),
           tr_u_coef_(CG.GetMesh()->Dimension(), std::move(tr_u)),
           theta_(theta), Cw_(Cw), viscosity_(viscosity)
     {
-        f_lf_.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(f_coef_));
-        f_lf_.AddBdrFaceIntegrator(new WouterLFIntegrator(theta_, Cw_, tr_u_coef_, viscosity));
-        f_lf_.Assemble();
+        mfem::LinearForm f_lf(ND_);
+        f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(f_coef_));
+        f_lf.AddBdrFaceIntegrator(new WouterLFIntegrator(theta_, Cw_, tr_u_coef_, viscosity_));
+        f_lf.Assemble();
 
-        g_lf_.AddBoundaryIntegrator(new mfem::BoundaryNormalLFIntegrator(tr_u_coef_));
-        g_lf_.Assemble();
+        mfem::LinearForm g_lf(CG_);
+        g_lf.AddBoundaryIntegrator(new mfem::BoundaryNormalLFIntegrator(tr_u_coef_));
+        g_lf.Assemble();
 
-        GetBlock(0).Set(1., f_lf_);
-        GetBlock(1).Set(1., g_lf_);
+        GetBlock(0).Set(1., f_lf);
+        GetBlock(1).Set(1., g_lf);
+    }
+
+    void Update(mfem::GridFunction& u_prev, double t, double mass)
+    {
+        mfem::VectorGridFunctionCoefficient u_prev_coef(&u_prev);
+        mfem::ScalarVectorProductCoefficient mass_u_prev_coef(mass, u_prev_coef);
+
+        f_coef_.SetTime(t);
+        tr_u_coef_.SetTime(t);
+
+
+        mfem::LinearForm f_lf(ND_);
+        f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(mass_u_prev_coef));
+        f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(f_coef_));
+        f_lf.AddBdrFaceIntegrator(new WouterLFIntegrator(theta_, Cw_, tr_u_coef_, viscosity_));
+        f_lf.Assemble();
+
+        mfem::LinearForm g_lf(CG_);
+        g_lf.AddBoundaryIntegrator(new mfem::BoundaryNormalLFIntegrator(tr_u_coef_));
+        g_lf.Assemble();
+
+        GetBlock(0).Set(1., f_lf);
+        GetBlock(1).Set(1., g_lf);
     }
 };
 
@@ -98,10 +122,11 @@ class StokesSystem
       public mfem::BlockMatrix
 {
 private:
-    mfem::BilinearForm blf_A;
+
+    mfem::FiniteElementSpace *ND_;
     mfem::MixedBilinearForm blf_B;
     mfem::TransposeOperator BT;
-    mfem::SparseMatrix *BT_mat;
+    mfem::SparseMatrix *BT_mat, *A_mat;
     double mass_, viscosity_, theta_, Cw_;
 
 public:
@@ -112,11 +137,12 @@ public:
           ,
           mfem::BlockMatrix(offsets_) // 2) base MakeRef(offsets)
           ,
-          blf_A(&ND), blf_B(&CG, &ND), BT(blf_B), mass_(mass), viscosity_(viscosity), theta_(theta), Cw_(Cw)
+          ND_(&ND), blf_B(&CG, &ND), BT(blf_B), mass_(mass), viscosity_(viscosity), theta_(theta), Cw_(Cw)
     {
         // assemble operators
         mfem::ConstantCoefficient mass_coef(mass_), viscosity_coef(viscosity_);
 
+        mfem::BilinearForm blf_A(ND_);
         blf_A.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(mass_coef));
         blf_A.AddDomainIntegrator(new mfem::CurlCurlIntegrator(viscosity_coef));
         blf_A.AddBdrFaceIntegrator(new WouterIntegrator(theta_, Cw_, viscosity_));
@@ -129,9 +155,35 @@ public:
 
         BT_mat = mfem::Transpose(blf_B.SpMat());
         // hook blocks
-        SetBlock(0, 0, &blf_A.SpMat());
+        A_mat = blf_A.LoseMat();
+        SetBlock(0, 0, A_mat);
         SetBlock(0, 1, &blf_B.SpMat());
         SetBlock(1, 0, BT_mat);
+    }
+
+    void Update(mfem::VectorCoefficient &w_coef)
+    {
+
+        mfem::ConstantCoefficient mass_coef(mass_), viscosity_coef(viscosity_);
+
+        delete A_mat;
+        
+        mfem::BilinearForm blf_A(ND_);
+        blf_A.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(mass_coef));
+        blf_A.AddDomainIntegrator(new mfem::CurlCurlIntegrator(viscosity_coef));
+        //blf_A.AddDomainIntegrator(new mfem::MixedCrossProductIntegrator(w_coef));
+        blf_A.AddBdrFaceIntegrator(new WouterIntegrator(theta_, Cw_, viscosity_));
+        blf_A.Assemble();
+        blf_A.Finalize(); 
+
+        A_mat = blf_A.LoseMat();
+
+        SetBlock(0, 0, A_mat);
+
+    }
+
+    ~StokesSystem() {
+        delete A_mat;
     }
 };
 
@@ -289,10 +341,6 @@ public:
         y0.MakeRef(y, offsets_[0], offsets_[1] - offsets_[0]);
         y1.MakeRef(y, offsets_[1], offsets_[2] - offsets_[1]);
 
-        std::cout << "x1 RHS: " <<  x1.Norml2() << std::endl;
-        //x1 -= x1.Sum()/x1.Size();
-        //x1 -= x1.Sum()/x1.Size();
-        //std::cout << x1.Sum() << std::endl;
 
         mfem::GMRESSolver invS;
 
@@ -304,59 +352,25 @@ public:
         mfem::Vector u(x0.Size());
         mfem::Vector B_p(x0.Size());
         // y0 = 1.;
-        std::cout << "test1\n";
         invA.Mult(x0, invA_x0);
-        std::cout << "test2\n";
         op_->GetBlock(1, 0).Mult(invA_x0, BT_invA_x0_min_x1);
-        std::cout << "test3\n";
         BT_invA_x0_min_x1 -= x1;
 
-        std::cout << BT_invA_x0_min_x1.Sum() << std::endl;
-        std::cout << "test4\n";
         mfem::ProductOperator invA_B(&invA, &op_->GetBlock(0, 1), false, false);
-        std::cout << "test5\n";
         mfem::ProductOperator BT_invA_B(&op_->GetBlock(1, 0), &invA_B, false, false);
-        std::cout << "test6\n";
 
         invS.SetOperator(BT_invA_B);
         invS.SetKDim(3000);
-        invS.SetPrintLevel(1);
+        invS.SetPrintLevel(0);
         invS.SetAbsTol(1e-15);
         invS.SetRelTol(tol_);
         invS.SetMaxIter(10000);
-        //invS.SetPreconditioner(invS_pre);
-        std::cout << "test7\n";
         invS.Mult(BT_invA_x0_min_x1, y1);
-        std::cout << "test8\n";
         iterations_ = invS.GetNumIterations();
-
-        mfem::Vector x0test(x0.Size());
-        mfem::Vector x1test(x1.Size());
-        mfem::Vector x0test2(x0.Size());
-        x0test = 0.;
-        x1test = 0.;
-        x0test2=0.;
-        //op_->GetBlock(0,1).Mult(y1,x0test);
-        //invA.Mult(x0test, x0test2);
-        //op_->GetBlock(1,0).Mult(x0test2,x1test);
-        BT_invA_B.Mult(y1, x1test);
-       // for(int i=0; i<x1test.Size();++i)
-       //     std::cout << x1test[i]-x1[i] << std::endl;
-
-
-
 
         mfem::Vector x0_min_B_y1(x0.Size());
         x0_min_B_y1.Set(1., x0);
         op_->GetBlock(0, 1).AddMult(y1, x0_min_B_y1, -1.);
-
-        // testing
-        //mfem::Vector x0test(x0.Size());
-        //op_->GetBlock(0,0).Mult(y0,x0test);
-        //op_->GetBlock(0,1).AddMult(y1,x0test,1.);
-        //for(int i=0; i<x0test.Size();++i)
-        //    std::cout << x0test[i]-x0[i] << std::endl;
-
 
         invA.Mult(x0_min_B_y1, y0);
     }

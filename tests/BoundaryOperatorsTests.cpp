@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "BoundaryOperators.h"
 #include "mfem.hpp"
+#include <iomanip>
 
 TEST(WouterIntegratorTest, DefaultsHaveNoCoefficient)
 {
@@ -353,6 +354,152 @@ TEST(WouterIntegratorTest, DefaultsHaveNoCoefficient4)
    blf_A.MultTranspose(u, A_u);
    for(auto val: A_u)
       ASSERT_NEAR(val,0.,1e-10);
+}
+
+
+TEST(WouterIntegratorTest, ConsistencyTest)
+{
+   // We computed <n x curl(u), v>_boundary for u = (xyz,xxz,xyy) and v=(xx+y,yy+z,zz+x). The exact solution is -3/4
+   int refinements = 0;
+   int order = 1;
+   double theta = -1.;
+   double Cw = 0e8;
+   for(theta = -1.; theta <= 1.; theta+=1.)
+	   for(Cw = 0.; Cw < 100.; Cw+=10.){
+       mfem::Mesh mesh("../extern/mfem/data/ref-cube.mesh", 1, 1);
+       for (int l = 0; l < refinements; l++)
+       {
+          mesh.UniformRefinement();
+       }
+       int dim = mesh.Dimension();
+       
+       auto u_func = [](const mfem::Vector &x, double, mfem::Vector &y) -> void
+       {
+          const double X = x.Elem(0);
+          const double Y = x.Elem(1);
+          const double Z = x.Elem(2);
+
+          // u = (0, 0, X*Y)
+          y.SetSize(3);
+          y.Elem(0) =-Y;
+          y.Elem(1) = X;
+          y.Elem(2) = 1;
+       };
+
+       mfem::VectorFunctionCoefficient u_coef(3, u_func);
+
+       mfem::FiniteElementCollection *fec_ND = new mfem::ND_FECollection(order, dim);
+       mfem::FiniteElementSpace ND(&mesh, fec_ND);
+       mfem::GridFunction u(&ND), v(&ND);
+       u.ProjectCoefficient(u_coef);
+
+
+
+       // mfem::ConstantCoefficient mass_coeff(1.), diff_coef(viscosity);
+       mfem::BilinearForm blf_A(&ND);
+       blf_A.AddBdrFaceIntegrator(new WouterIntegrator(theta, Cw));
+       blf_A.Assemble();
+       blf_A.Finalize();
+
+       mfem::Vector blf_A_u(blf_A.Height());
+       blf_A.Mult(u,blf_A_u);
+
+       mfem::LinearForm f_lf(&ND);
+       f_lf.AddBdrFaceIntegrator(new WouterLFIntegrator(theta, Cw, u_coef));
+       f_lf.Assemble();
+       std::cout << "projection error: " << u.ComputeL2Error(u_coef) << std::endl;
+       f_lf.Print(std::cout);
+       std::cout << std::endl << std::endl;
+       blf_A_u.Print(std::cout);
+       mfem::Vector dif(f_lf.Size());
+       dif.Set(1.,f_lf);
+       dif -= blf_A_u;
+
+       for(auto val: dif)
+          ASSERT_NEAR(val,0.,10);
+    }
+}
+
+
+TEST(WouterIntegratorTest, rotationVanishingTest)
+{
+   // We computed <n x curl(u), v>_boundary for u = (xyz,xxz,xyy) and v=(xx+y,yy+z,zz+x). The exact solution is -3/4
+   int refinements = 1;
+   int order = 1;
+   double theta = 0.;
+   double Cw = 0.;
+
+    mfem::Mesh mesh = mfem::Mesh::MakeCartesian3D(
+        1, 1, 1,            // nx, ny, nz
+        mfem::Element::HEXAHEDRON,
+        1.0, 1.0, 1.0       // sx, sy, sz (unit cube)
+    );
+   for (int l = 0; l < refinements; l++)
+   {
+      mesh.UniformRefinement();
+   }
+   int dim = mesh.Dimension();
+   
+   auto u_func = [](const mfem::Vector &x, double, mfem::Vector &y) -> void
+   {
+      const double X = x.Elem(0);
+      const double Y = x.Elem(1);
+      const double Z = x.Elem(2);
+
+      // u = (0, 0, X*Y)
+      y.SetSize(3);
+      y.Elem(0) =-Y;
+      y.Elem(1) = X;
+      y.Elem(2) = 0;
+   };
+   
+   auto curl_u_func = [](const mfem::Vector &x, double, mfem::Vector &y) -> void
+   {
+      const double X = x.Elem(0);
+      const double Y = x.Elem(1);
+      const double Z = x.Elem(2);
+
+      y.SetSize(3);
+      y.Elem(0) =-0;
+      y.Elem(1) = 0;
+      y.Elem(2) = 2;
+   };
+
+   mfem::VectorFunctionCoefficient curl_u_coef(3, curl_u_func);
+   mfem::VectorFunctionCoefficient u_coef(3, u_func);
+
+   mfem::FiniteElementCollection *fec_ND = new mfem::ND_FECollection(order, dim);
+   mfem::FiniteElementSpace ND(&mesh, fec_ND);
+   mfem::GridFunction u(&ND);
+   u.ProjectCoefficient(u_coef);
+
+   ASSERT_NEAR(u.ComputeL2Error(u_coef),0.,1e-13);
+
+   mfem::Array<int> bdr_tdofs;
+   ND.GetBoundaryTrueDofs(bdr_tdofs);
+   mfem::Vector is_no_bdof(ND.GetTrueVSize()); // char works well as bool mask
+   is_no_bdof = 1;
+   
+   for (int k = 0; k < bdr_tdofs.Size(); k++)
+   {
+      const int tdof = bdr_tdofs[k];
+      if (0 <= tdof && tdof < is_no_bdof.Size()) { is_no_bdof[tdof] = 0; }
+   }
+
+   mfem::LinearForm lf_f(&ND);
+   lf_f.AddBoundaryIntegrator(new mfem::VectorFEBoundaryTangentLFIntegrator(curl_u_coef));
+   lf_f.Assemble();
+
+   mfem::ConstantCoefficient one_coef(1.);
+   mfem::BilinearForm blf_A(&ND);
+   blf_A.AddDomainIntegrator(new mfem::CurlCurlIntegrator(one_coef));
+   blf_A.AddBdrFaceIntegrator(new WouterIntegrator(0., 0.));
+   blf_A.Assemble();
+   blf_A.Finalize();
+   mfem::Vector blf_curlcurl_u(blf_A.Height()), blf_A_u(blf_A.Height());
+
+   for(auto val: blf_A_u)
+      ASSERT_NEAR(val,0.,1e-13);
 }
 
 

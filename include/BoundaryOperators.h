@@ -226,14 +226,6 @@ protected:
 
 public:
 
-    WouterIntegrator() : theta_(1.), Cw_(100.)
-    {
-        Q = NULL;
-        DQ = NULL;
-        MQ = NULL;
-    }
-
-
     WouterIntegrator(double theta, double Cw, double factor = 1.) : factor_(factor), theta_(theta), Cw_(Cw)
     {
         Q = NULL;
@@ -242,10 +234,6 @@ public:
     }
 
     /// Construct a bilinear form integrator for Nedelec elements
-    WouterIntegrator(mfem::Coefficient &q, const mfem::IntegrationRule *ir = NULL) : BilinearFormIntegrator(ir), Q(&q), DQ(NULL), MQ(NULL) {}
-    WouterIntegrator(mfem::DiagonalMatrixCoefficient &dq,
-                     const mfem::IntegrationRule *ir = NULL) : BilinearFormIntegrator(ir), Q(NULL), DQ(&dq), MQ(NULL) {}
-    WouterIntegrator(mfem::MatrixCoefficient &mq, const mfem::IntegrationRule *ir = NULL) : BilinearFormIntegrator(ir), Q(NULL), DQ(NULL), MQ(&mq) {}
 
     /* Given a particular Finite Element, compute the
        element curl-curl matrix elmat */
