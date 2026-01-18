@@ -733,3 +733,73 @@ TEST(SchurSolver, test1){
     delete fec_ND;
     delete fec_CG;
 }
+
+
+
+TEST(StokesSystemAndRHS, CompareLHSandRHS){
+       // ------------------------------------------------------------------
+    // 0. Configuration
+    // ------------------------------------------------------------------
+    double viscosity = 1.;
+    double mass = 0.;
+    int refinements = 1;
+    int order = 1;
+    int printlevel = 0;
+    double tol = 1e-5;
+    double Cw = 0.;
+    double theta = -1e8;
+    std::string mesh_string = std::string("../extern/mfem/data/ref-cube.mesh");
+
+    // ------------------------------------------------------------------
+    // 1. Mesh and FE spaces (PARALLEL)
+    // ------------------------------------------------------------------
+    Mesh mesh(mesh_string.c_str(), 1, 1);
+    std::cout << mesh.GetNE() << std::endl;
+    for (int l = 0; l < refinements; l++)
+    {
+        mesh.UniformRefinement();
+    }
+    std::cout << mesh.GetNE() << std::endl;
+    int dim = mesh.Dimension();
+
+    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
+    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
+    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
+
+    FiniteElementSpace ND(&mesh, fec_ND);
+    FiniteElementSpace CG(&mesh, fec_CG);
+
+
+
+    auto f = [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
+            y.SetSize(3);
+            y.Elem(0) = 0.;
+            y.Elem(1) = 0.;
+            y.Elem(2) = 0.;
+        };
+
+    auto tr_u = [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
+        y.SetSize(3);
+        y.Elem(0) = -x.Elem(1);
+        y.Elem(1) = x.Elem(0);
+        y.Elem(2) = 0.;
+    };
+    mfem::VectorFunctionCoefficient u_coef(3, tr_u);
+    mfem::GridFunction u(&ND);
+    u.ProjectCoefficient(u_coef);
+
+
+    StokesRHS rhs(ND,CG,f, tr_u, theta, Cw,viscosity);
+
+
+    // A1 blocks:
+    StokesSystem sys(ND, CG, mass, viscosity, theta, Cw);
+    mfem::Vector sys_u(sys.GetBlock(0,0).Height());
+    sys.GetBlock(0,0).Mult(u,sys_u);
+
+    for(int i = 0; i < rhs.GetBlock(0).Size(); ++i)
+        EXPECT_NEAR(sys_u[i], rhs[i], rhs.Norml2()*1e-7);
+    
+    delete fec_ND;
+    delete fec_CG;
+}

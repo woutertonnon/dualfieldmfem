@@ -108,7 +108,7 @@ TEST(WouterIntegratorTest, DefaultsHaveNoCoefficient2)
    blf_A.Finalize();
 
    mfem::Vector A_u(ND.GetNDofs());
-   blf_A.MultTranspose(u, A_u);
+   blf_A.Mult(u, A_u);
    ASSERT_FLOAT_EQ(-3. / 4.-1./3., v * A_u);
 }
 
@@ -172,7 +172,7 @@ TEST(WouterIntegratorTest, ApproximationTest)
            blf_A.Finalize();
         
            mfem::Vector A_u(ND.GetNDofs());
-           blf_A.MultTranspose(u, A_u);
+           blf_A.Mult(u, A_u);
            one_but_last_err = last_err;
            last_err = 4.4722583402915601 - (v * A_u);
            std::cout << "refinement: " << refinements << ", order: " << order << ", error: " << last_err << std::endl;
@@ -239,7 +239,7 @@ TEST(WouterIntegratorTest, ApproximationTestAsymmetricPenalty)
            blf_A.Finalize();
         
            mfem::Vector A_u(ND.GetNDofs());
-           blf_A.MultTranspose(u, A_u);
+           blf_A.Mult(u, A_u);
            one_but_last_err = last_err;
            last_err = std::abs(exact_integrals.at(refinements) - (v * A_u));
            std::cout << "refinement: " << refinements << ", order: " << order << ", error: " << last_err << std::endl;
@@ -305,7 +305,7 @@ TEST(WouterIntegratorTest, DefaultsHaveNoCoefficient3)
    blf_A.Finalize();
 
    mfem::Vector A_u(ND.GetNDofs());
-   blf_A.MultTranspose(u, A_u);
+   blf_A.Mult(u, A_u);
    ASSERT_NEAR(0., v * A_u, 1e-12);
 }
 
@@ -351,7 +351,7 @@ TEST(WouterIntegratorTest, DefaultsHaveNoCoefficient4)
    blf_A.Finalize();
 
    mfem::Vector A_u(ND.GetNDofs());
-   blf_A.MultTranspose(u, A_u);
+   blf_A.Mult(u, A_u);
    for(auto val: A_u)
       ASSERT_NEAR(val,0.,1e-10);
 }
