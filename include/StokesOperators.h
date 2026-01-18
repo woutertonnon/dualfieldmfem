@@ -171,7 +171,7 @@ public:
         mfem::BilinearForm blf_A(ND_);
         blf_A.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(mass_coef));
         blf_A.AddDomainIntegrator(new mfem::CurlCurlIntegrator(viscosity_coef));
-        //blf_A.AddDomainIntegrator(new mfem::MixedCrossProductIntegrator(w_coef));
+        blf_A.AddDomainIntegrator(new mfem::MixedCrossProductIntegrator(w_coef));
         blf_A.AddBdrFaceIntegrator(new WouterIntegrator(theta_, Cw_, viscosity_));
         blf_A.Assemble();
         blf_A.Finalize(); 
@@ -293,7 +293,7 @@ private:
 public:
     SchurSolver(mfem::FiniteElementSpace &ND,
                 mfem::FiniteElementSpace &CG,
-                double mass, double viscosity, int& iterations, double tol = 1e-4)
+                double mass, double viscosity, int& iterations, double tol = 1e-8)
         : mfem::Solver(ND.GetVDim() + CG.GetVDim()), OffsetsHolder({&ND, &CG}), mass_(mass), viscosity_(viscosity), iterations_(iterations), tol_(tol), ND_(ND), CG_(CG), invA(), smoother_(), cgsolver_(), mass_bil_(&ND)
     {
         mass_bil_.AddDomainIntegrator(new mfem::VectorFEMassIntegrator());

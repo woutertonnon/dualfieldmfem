@@ -172,7 +172,7 @@ class SimulationHelper:
             out_str = out_str + "out["+str(idx) +"] = " + str(comp) + ";"
         return out_str
 
-    def generate_config_files(self, T: float, dt: float, refinements: Callable[int,Iterable[int]], orders: List[int], tol=1e-5):
+    def generate_config_files(self, T: float, dt: Callable[[int,int],float], refinements: Callable[int,Iterable[int]], orders: List[int], tol=1e-8):
         directory = Path("./data/config/"+self.name)
         
         shutil.rmtree(directory, ignore_errors=True)
@@ -185,7 +185,7 @@ class SimulationHelper:
                 filename_no_extension = self.name + "_conv_order"+str(order)+"_ref"+str(refinement)
                 config = self.base_config_file()
                 config["outputfile"] = self.name + "/" + filename_no_extension
-                config["dt"] = dt
+                config["dt"] = dt(order,refinement)
                 config["T"] = T
                 config["refinements"] = refinement 
                 config["order"] = order
@@ -201,7 +201,7 @@ class SimulationHelper:
         raise NotImplementedError("Error: base_config_file() was not implemented for the class SimulationHelper!")
 
 
-    def run_convergence(self, T: float, dt: float, refinements: Callable[int,Iterable[int]], orders: List[int], tol=1e-5):
+    def run_convergence(self, T: float, dt: Callable[[int,int],float], refinements: Callable[int,Iterable[int]], orders: List[int], tol=1e-8):
         self.generate_config_files(T,dt,refinements,orders,tol)
         self.run_all_configs()
 
