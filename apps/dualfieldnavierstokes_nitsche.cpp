@@ -111,10 +111,10 @@ int main(int argc, char *argv[])
 
     mfem::GridFunction u2(&RT);
     mfem::GridFunction w1(&ND);
-	//mfem::CurlGridFunctionCoefficient w2(&x.get_u());
-    mfem::GridFunction w2(&RT);
-    mfem::VectorFunctionCoefficient w_exact_coeff(3, config.get_exact_data("exact_data_w"));
-    w2.ProjectCoefficient(w_exact_coeff);
+    mfem::CurlGridFunctionCoefficient w2(&x.get_u());
+   // mfem::GridFunction w2(&RT);
+   // mfem::VectorFunctionCoefficient w_exact_coeff(3, config.get_exact_data("exact_data_w"));
+   // w2.ProjectCoefficient(w_exact_coeff);
 
     double t = 0.;
     int cycle = 0;
@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
 
         csv.WriteRow();
 
-        sys.Update(w_exact_coeff);
+        sys.Update(w2);
         rhs.Update(x.get_u(),t,1./dt);
 
 
