@@ -82,7 +82,7 @@ public:
     {
         mfem::LinearForm f_lf(ND_);
         f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(f_coef_));
-        f_lf.AddBdrFaceIntegrator(new WouterLFIntegrator(theta_, Cw_, tr_u_coef_, viscosity_));
+        f_lf.AddBdrFaceIntegrator(new ND_NitscheLFIntegrator(theta_, Cw_, tr_u_coef_, viscosity_));
         f_lf.Assemble();
 
         mfem::LinearForm g_lf(CG_);
@@ -105,7 +105,7 @@ public:
         mfem::LinearForm f_lf(ND_);
         f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(mass_u_prev_coef));
         f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(f_coef_));
-        f_lf.AddBdrFaceIntegrator(new WouterLFIntegrator(theta_, Cw_, tr_u_coef_, viscosity_));
+        f_lf.AddBdrFaceIntegrator(new ND_NitscheLFIntegrator(theta_, Cw_, tr_u_coef_, viscosity_));
         f_lf.Assemble();
 
         mfem::LinearForm g_lf(CG_);
@@ -145,7 +145,7 @@ public:
         mfem::BilinearForm blf_A(ND_);
         blf_A.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(mass_coef));
         blf_A.AddDomainIntegrator(new mfem::CurlCurlIntegrator(viscosity_coef));
-        blf_A.AddBdrFaceIntegrator(new WouterIntegrator(theta_, Cw_, viscosity_));
+        blf_A.AddBdrFaceIntegrator(new ND_NitscheIntegrator(theta_, Cw_, viscosity_));
         blf_A.Assemble();
         blf_A.Finalize(); // only if you need the explicit matrix (SparseMatrix)
 
@@ -172,7 +172,7 @@ public:
         blf_A.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(mass_coef));
         blf_A.AddDomainIntegrator(new mfem::CurlCurlIntegrator(viscosity_coef));
         blf_A.AddDomainIntegrator(new mfem::MixedCrossProductIntegrator(w_coef));
-        blf_A.AddBdrFaceIntegrator(new WouterIntegrator(theta_, Cw_, viscosity_));
+        blf_A.AddBdrFaceIntegrator(new ND_NitscheIntegrator(theta_, Cw_, viscosity_));
         blf_A.Assemble();
         blf_A.Finalize(); 
 

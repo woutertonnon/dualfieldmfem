@@ -1,39 +1,5 @@
-
-
-
-
-# dirichlet problem
-#add_executable(${PROJECT_NAME} dualfieldnavierstokes.cpp)
-add_executable(${PROJECT_NAME} dualfieldnavierstokes_nitsche.cpp)
-
-
-
-
-
-
-
-# links MFEM directory
-target_include_directories(${PROJECT_NAME} PUBLIC extern/mfem)
-target_link_directories(${PROJECT_NAME} PRIVATE extern/mfem)
-
-# Good defaults for perf + perfanno
-target_compile_options(${PROJECT_NAME} PRIVATE
-#    -O2                     # optimize
-    -g                      # debug symbols
-    -fno-omit-frame-pointer # keep frame pointers for better stack traces
-    -fno-optimize-sibling-calls # helps with nicer call stacks
-)
-
-target_link_options(${PROJECT_NAME} PRIVATE
-    -fno-omit-frame-pointer
-)
-
-find_package(Boost REQUIRED COMPONENTS program_options)
-
-
-# link libraries
-target_link_libraries(${PROJECT_NAME} boundaryoperatorslib mfem Boost::program_options)
-
+add_executable(singlefield_navierstokes_nitsche dualfieldnavierstokes_nitsche.cpp)
+target_link_libraries(singlefield_navierstokes_nitsche PRIVATE boundaryoperatorslib mfem Boost::program_options dualfield_project_options)
 
 
 
