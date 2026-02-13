@@ -103,9 +103,9 @@ int main(int argc, char *argv[])
 
     // A1 blocks:
     StokesSystem sys(ND, CG, 1./dt, viscosity, theta, Cw);
-    StokesRHS rhs(ND, CG, config.get_exact_data("force_data"), config.get_exact_data("exact_data_u"),theta,Cw,viscosity);
+    StokesRHS rhs(ND, CG, config.get_exact_data("force_data"), config.get_exact_data("boundary_data_u"),theta,Cw,viscosity);
     StokesSolution x(ND, CG);
-    mfem::VectorFunctionCoefficient u_exact(3, config.get_exact_data("exact_data_u"));
+    mfem::VectorFunctionCoefficient u_exact(3, config.get_exact_data("initial_data_u"));
     u_exact.SetTime(0.);
     x.get_u().ProjectCoefficient(u_exact);
 
@@ -140,7 +140,6 @@ int main(int argc, char *argv[])
 
         sys.Update(w2);
         rhs.Update(x.get_u(),t,1./dt);
-
 
 
         SchurSolver solv(ND,CG,1./dt,viscosity,num_it_A1,tol);

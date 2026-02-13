@@ -148,7 +148,7 @@ public:
           printlevel(get_value("printlevel", 0)),
           has_exact_u_solution(!get_value<std::string>("exact_data_u", "").empty())
     {
-        std::initializer_list<std::string> function_names({"force_data", "initial_data_u", "initial_data_w", "exact_data_u", "exact_data_w"});
+        std::initializer_list<std::string> function_names({"force_data", "initial_data_u", "initial_data_w", "exact_data_u", "exact_data_w", "boundary_data_u"});
         InitializeLibrary(function_names);
     }
 

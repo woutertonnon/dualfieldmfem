@@ -95,7 +95,7 @@ class ExactManipulationsSpaceTime(ExactManipulationsSpace):
 
 
 class IBVPNavierStokes(ExactManipulationsSpaceTime):
-    def __init__(self, u_init: sp.Matrix, nu: float, coords, t, force = sp.Matrix([0, 0, 0])):        
+    def __init__(self, u_init: sp.Matrix, nu: float, coords, t, u_boundary = sp.Matrix([0,0,0]), force = sp.Matrix([0, 0, 0])):        
         expected_rows, expected_cols = 3, 1
         if (u_init.rows, u_init.cols) != (expected_rows, expected_cols):
             raise ValueError(
@@ -105,12 +105,15 @@ class IBVPNavierStokes(ExactManipulationsSpaceTime):
         super().__init__(coords,t)
         self.nu = nu
         self.u_init = u_init
-        self.coords = coords
+        self.u_boundary = u_boundary
         self.force = force
         self.vorticity_init = self.curl(u_init)
 
     def get_u_init(self):
         return self.u_init
+
+    def get_u_boundary(self):
+        return self.u_boundary
 
     def get_vorticity_init(self):
         return self.vorticity_init
@@ -122,11 +125,11 @@ class IBVPNavierStokes(ExactManipulationsSpaceTime):
         return self.force
     
 class IBVPNavierStokesSolution(IBVPNavierStokes):
-    def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t, force = sp.Matrix([0,0,0])):
+    def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t, u_boundary = sp.Matrix([0,0,0]), force = sp.Matrix([0,0,0])):
         self.t = t
         self.u = u
         self.p = p
-        super().__init__(u.subs(self.t,0), nu, coords, t, force)
+        super().__init__(u.subs(self.t,0), nu, coords, t, u_boundary, force)
 
     def get_p(self):
         return self.p
@@ -140,7 +143,7 @@ class IBVPNavierStokesSolution(IBVPNavierStokes):
 class manufacturedNavierStokes(IBVPNavierStokesSolution):
     def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t):
         super().__init__(u.subs(t,0), p, nu, coords, t)
-        super().__init__(u.subs(t,0), p, nu, coords, t, self.navier_stokes_rhs(u,p,nu,t))
+        super().__init__(u.subs(t,0), p, nu, coords, t, u, self.navier_stokes_rhs(u,p,nu,t))
         
 
     def navier_stokes_rhs(self, u, p, nu,t):
@@ -313,22 +316,29 @@ class SimulationHelper:
             client.close()
 
 class NavierStokesSimulationHelper(SimulationHelper):
-    def __init__(self, exact_equations: IBVPNavierStokes, name: str):
+    def __init__(self, exact_equations: IBVPNavierStokes, name: str, mesh = "./extern/mfem/data/ref-cube.mesh", visualisation = 1, printlevel=0):
         super().__init__(name)
         self.exact_equations = exact_equations
+        self.mesh = mesh
+        self.visualisation = visualisation
+        self.printlevel = printlevel
 
     def base_config_file(self):
         config = {
-            "mesh": "./extern/mfem/data/ref-cube.mesh",
+            "mesh": self.mesh,
             "solver": "GMRES",
-            "visualisation": 1,
-            "printlevel": 0,
+            "visualisation": self.visualisation,
+            "printlevel": self.printlevel,
             "viscosity": self.exact_equations.get_viscosity(),
-            "boundary_data_u": "out[0] = 0.;out[1]=0.;out[2]=0.;",
             "force_data": self.sp_vector_to_str(self.exact_equations.get_force()),
             "initial_data_u": self.sp_vector_to_str(self.exact_equations.get_u_init()),
             "initial_data_w": self.sp_vector_to_str(self.exact_equations.get_vorticity_init()),
         }
+
+        if isinstance(self.exact_equations,IBVPNavierStokes):
+            config["boundary_data_u"] = self.sp_vector_to_str(self.exact_equations.get_u_boundary())
+        else:
+            print("Warning: boundary data for u is not given. We continue without!")
 
         if isinstance(self.exact_equations,IBVPNavierStokesSolution):
             config["exact_data_u"] = self.sp_vector_to_str(self.exact_equations.get_u())
