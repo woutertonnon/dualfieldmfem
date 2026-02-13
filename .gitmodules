@@ -1,3 +1,6 @@
 [submodule "extern/mfem"]
 	path = extern/mfem
 	url = https://github.com/mfem/mfem.git
+[submodule "extern/boundaryintegrallib"]
+	path = extern/boundaryintegrallib
+	url = https://github.com/woutertonnon/BoundaryIntegralLib.git
