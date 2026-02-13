@@ -1,12 +1,10 @@
-# dualfieldmfem (cleanup)
+# dualfieldmfem (in active development)
 
-A mass-, energy-, and helicity-conserving dual-field discretization of
-the incompressible Navier--Stokes problem, implemented with MFEM and
-inspired by the MEHC dual-field formulation described in:
+A discretization of the incompressible Navier--Stokes problem, 
+implemented with MFEM and inspired by the MEHC dual-field formulation 
+described in:
 
 https://arxiv.org/abs/2104.13023
-
-This repository is a fork of `markusrenoldner/MEHCscheme`.
 
 ------------------------------------------------------------------------
 
@@ -32,7 +30,8 @@ This repository is a fork of `markusrenoldner/MEHCscheme`.
 ### Required system libraries
 
 -   Boost (program_options, filesystem)
--   SuiteSparse (if enabled in MFEM)
+-   SuiteSparse
+-   Metis 5
 
 ### Optional
 
@@ -89,9 +88,7 @@ Defaults:
 -   MFEM_USE_SUITESPARSE = ON
 -   MFEM_USE_MPI = OFF
 
-Override example:
-
-    cmake -S . -B build -DMFEM_USE_MPI=ON -DMFEM_USE_SUITESPARSE=OFF
+Note that Metis 5 and SuiteSparse are used and can thus not be disabled.
 
 ------------------------------------------------------------------------
 
