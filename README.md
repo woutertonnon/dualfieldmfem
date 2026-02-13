@@ -1,60 +1,106 @@
-# MEHCscheme
+# dualfieldmfem (cleanup)
 
-A mass, energy, and helicty conserving dual-field Galerkin finite element discretization of the incompressible Navier-Stokes problem based on this paper [https://arxiv.org/abs/2104.13023](https://arxiv.org/abs/2104.13023) implemented in MFEM, see [https://mfem.org/](https://mfem.org/)
+A mass-, energy-, and helicity-conserving dual-field discretization of
+the incompressible Navier--Stokes problem, implemented with MFEM and
+inspired by the MEHC dual-field formulation described in:
 
-## CMake and Make
+https://arxiv.org/abs/2104.13023
 
-- download and unpack mfem and glvis into the extern folder
-- install it there as described on mfem.org
-- run the `build.sh` file to cmake, the `compile.sh` file to make, the `run.sh` file to run 
-- run `clean.sh` to delete the mesh and solution files afterwards
+This repository is a fork of `markusrenoldner/MEHCscheme`.
 
+------------------------------------------------------------------------
 
-## file tree (simplified)
+## What's in this branch
 
-```
-MEHCscheme
-├── extern/                     # MFEM and glvis
-│   ├── CMakeLists.txt
-│   ├── mfem
-│   └── glvis
-├── build/                      # appears after building
-├── out/                        # data output
-├── scripts/                    # plot files
-├── src/                        # main FEM code
-│   ├── examples-edited/        # simplified MFEM examples
-│   │   └── ex1simple.cpp       
-│   ├── examples-mfem/          # original MFEM examples
-│   │   └── ex1.cpp         
-│   ├── CMakeLists.txt          # for build process
-│   ├── curlcurl.cpp
-│   ├── dirichlet-cons.cpp      # main simulation
-│   ├── dirichlet-conv.cpp      # main simulation
-│   └── utils.cpp               # helper functions
-├── symbolic_math/              # mathematica code
-├── build.sh                    
-├── clean.sh                    
-├── compile.sh
-├── LICENSE
-└── README.md
-```
+-   CMake-based build (CMake ≥ 3.20, C++17)
+-   Bundled dependencies via submodules:
+    -   MFEM (extern/mfem)
+    -   BoundaryIntegralLib (extern/boundaryintegrallib)
+-   Application target:
+    -   singlefield_navierstokes_nitsche
+-   Optional tests using GoogleTest
 
-## run the scheme:
+------------------------------------------------------------------------
 
-1. select the cpp file in src/CMakeLists.txt :
-    * `periodic-conv.cpp`
-    * `periodic-cons.cpp`
-    * `dirichlet-[placeholder].cpp`
-2. run ./build.sh
-3. run ./compilerun.sh
-4. produce a visualization using `scripts/*.ipynb`
-5. find the visualizsations in out/plots
-6. find the raw data in out/rawdata
+## Requirements
 
-## thesis PDF
+### Build tools
 
-see either of the following links
+-   CMake 3.20+
+-   C++ compiler with C++17 support
 
-- https://people.math.ethz.ch/~hiptmair/StudentProjects/Renoldner.Markus/MScThesis.pdf
-- https://repositum.tuwien.at/handle/20.500.12708/177634
-- https://doi.org/10.34726/hss.2023.110820
+### Required system libraries
+
+-   Boost (program_options, filesystem)
+-   SuiteSparse (if enabled in MFEM)
+
+### Optional
+
+-   GoogleTest (for tests)
+
+------------------------------------------------------------------------
+
+## Clone (with submodules, non-recursive)
+
+Clone the repository and initialize submodules:
+
+    git clone --branch cleanup --recurse-submodules https://github.com/woutertonnon/dualfieldmfem.git
+
+If you already cloned without submodules:
+
+    git submodule update --init
+
+------------------------------------------------------------------------
+
+## Build
+
+From the repository root:
+
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+    cmake --build build -j
+
+------------------------------------------------------------------------
+
+## Run the application
+
+    ./build/singlefield_navierstokes_nitsche --help
+
+------------------------------------------------------------------------
+
+## Tests
+
+Enable and run tests:
+
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+    cmake --build build -j
+    ctest --test-dir build --output-on-failure
+
+If GoogleTest is not installed, tests are skipped.
+
+------------------------------------------------------------------------
+
+## MFEM configuration
+
+MFEM is configured via CMake cache variables in extern/CMakeLists.txt.
+
+Defaults:
+
+-   MFEM_USE_METIS_5 = ON
+-   MFEM_USE_SUITESPARSE = ON
+-   MFEM_USE_MPI = OFF
+
+Override example:
+
+    cmake -S . -B build -DMFEM_USE_MPI=ON -DMFEM_USE_SUITESPARSE=OFF
+
+------------------------------------------------------------------------
+
+## Project layout
+
+-   apps/ -- application executables
+-   extern/ -- submodules (MFEM, BoundaryIntegralLib)
+-   include/ -- project headers
+-   tests/ -- test targets
+-   scripts/ -- helper scripts (if present)
+
+------------------------------------------------------------------------
