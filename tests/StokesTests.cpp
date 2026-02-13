@@ -1,69 +1,53 @@
 #include <gtest/gtest.h>
 
-#include "mfem.hpp"
+#include <cmath>
+#include <iostream>
+#include <memory>
+#include <numeric>
+#include <string>
+
 #include "StokesOperators.h"
+#include "mfem.hpp"
 
 using namespace mfem;
 
-namespace
+TEST(StokesSystem, PeriodicConstantField_TransposeGivesZero)
 {
-    Mesh MakeTestMesh()
-    {
-        return Mesh::MakeCartesian2D(1, 1, Element::QUADRILATERAL, true);
-    }
-} // namespace
+    // Applies Stokes operator transpose to a constant velocity field on a periodic mesh.
+    // Uses ND for velocity and CG for pressure with zero mass contribution in this configuration.
+    // Expects the resulting vector to be (numerically) zero.
 
-TEST(StokesSystem, ConstantVectorFieldPeriodic)
-{
-    // ------------------------------------------------------------------
-    // 0. Configuration
-    // ------------------------------------------------------------------
-    double viscosity = 1.;
-    int refinements = 2;
-    int order = 1;
-    int printlevel = 0;
-    double tol = 1e-10;
-    std::string mesh_string = std::string("../extern/mfem/data/periodic-cube.mesh");
+    const double viscosity = 1.0;
+    const int refinements = 2;
+    const int order = 1;
+    const double tol = 1e-10;
+    const std::string mesh_string = "../extern/mfem/data/periodic-cube.mesh";
 
-    // ------------------------------------------------------------------
-    // 1. Mesh and FE spaces (PARALLEL)
-    // ------------------------------------------------------------------
     Mesh mesh(mesh_string.c_str(), 1, 1);
-    std::cout << mesh.GetNE() << std::endl;
-    for (int l = 0; l < refinements; l++)
-    {
-        mesh.UniformRefinement();
-    }
-    std::cout << mesh.GetNE() << std::endl;
-    int dim = mesh.Dimension();
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
 
-    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
-    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
-    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
 
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace CG(&mesh, fec_CG);
 
-    // ------------------------------------------------------------------
-    // 2. Unknowns and gridfunctions (PARALLEL)
-    // ------------------------------------------------------------------
     GridFunction u(&ND);
     GridFunction p(&CG);
 
-    // Initial data from user-provided functions
-    {
-        mfem::VectorFunctionCoefficient vec1_coef(3,[](mfem::Vector x, mfem::Vector &y) -> void
-                                        {y.SetSize(3); y.Elem(0)=1.;y.Elem(1)=1.;y.Elem(2)=1.; });
-        u.ProjectCoefficient(vec1_coef);
-        p = 0.;
-    }
+    mfem::VectorFunctionCoefficient vec1_coef(
+        3, [](mfem::Vector, mfem::Vector &y) -> void
+        {
+            y.SetSize(3);
+            y.Elem(0) = 1.0;
+            y.Elem(1) = 1.0;
+            y.Elem(2) = 1.0;
+        });
+    u.ProjectCoefficient(vec1_coef);
+    p = 0.0;
 
-    // ------------------------------------------------------------------
-    // 3. System sizes and block layout
-    //    NOTE: Sizes are local DOFs per rank.
-    // ------------------------------------------------------------------
-    int size_1 = u.Size() + p.Size();
-
+    const int size_1 = u.Size() + p.Size();
     Vector x(size_1);
     x = 0.0;
 
@@ -71,75 +55,58 @@ TEST(StokesSystem, ConstantVectorFieldPeriodic)
     std::iota(u_dofs.begin(), u_dofs.end(), 0);
     std::iota(p_dofs.begin(), p_dofs.end(), u.Size());
 
-
     x.SetSubVector(u_dofs, u);
     x.SetSubVector(p_dofs, p);
 
-
-    // A1 blocks:
-    StokesSystem sys(ND, CG, 0., viscosity, 1., 100.);
+    StokesSystem sys(ND, CG, 0.0, viscosity, 1.0, 100.0);
 
     mfem::Vector y(x.Size());
-    sys.MultTranspose(x,y);
+    sys.MultTranspose(x, y);
 
     y.Abs();
-    EXPECT_NEAR(y.Max(),0.,1e-10);
+    EXPECT_NEAR(y.Max(), 0.0, tol);
 
     delete fec_ND;
     delete fec_CG;
 }
 
-TEST(StokesSystem, ConstantVectorFieldPeriodicForce)
+TEST(StokesSystem, PeriodicConstantField_TransposeMatchesRHS)
 {
-    // ------------------------------------------------------------------
-    // 0. Configuration
-    // ------------------------------------------------------------------
-    double viscosity = 1.;
-    int refinements = 2;
-    int order = 1;
-    int printlevel = 0;
-    double tol = 1e-10;
-    std::string mesh_string = std::string("../extern/mfem/data/periodic-cube.mesh");
+    // Compares Stokes operator transpose applied to a constant field against an assembled RHS.
+    // Uses periodic mesh with ND/CG spaces and constant forcing/traction-like data.
+    // Expects componentwise equality between operator result and RHS within tolerance.
 
-    // ------------------------------------------------------------------
-    // 1. Mesh and FE spaces (PARALLEL)
-    // ------------------------------------------------------------------
+    const double viscosity = 1.0;
+    const int refinements = 2;
+    const int order = 1;
+    const double tol = 1e-10;
+    const std::string mesh_string = "../extern/mfem/data/periodic-cube.mesh";
+
     Mesh mesh(mesh_string.c_str(), 1, 1);
-    std::cout << mesh.GetNE() << std::endl;
-    for (int l = 0; l < refinements; l++)
-    {
-        mesh.UniformRefinement();
-    }
-    std::cout << mesh.GetNE() << std::endl;
-    int dim = mesh.Dimension();
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
 
-    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
-    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
-    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
 
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace CG(&mesh, fec_CG);
 
-    // ------------------------------------------------------------------
-    // 2. Unknowns and gridfunctions (PARALLEL)
-    // ------------------------------------------------------------------
     GridFunction u(&ND);
     GridFunction p(&CG);
 
-    // Initial data from user-provided functions
-    {
-        mfem::VectorFunctionCoefficient vec1_coef(3,[](mfem::Vector x, mfem::Vector &y) -> void
-                                        {y.SetSize(3); y.Elem(0)=1.;y.Elem(1)=1.;y.Elem(2)=1.; });
-        u.ProjectCoefficient(vec1_coef);
-        p = 0.;
-    }
+    mfem::VectorFunctionCoefficient vec1_coef(
+        3, [](mfem::Vector, mfem::Vector &y) -> void
+        {
+            y.SetSize(3);
+            y.Elem(0) = 1.0;
+            y.Elem(1) = 1.0;
+            y.Elem(2) = 1.0;
+        });
+    u.ProjectCoefficient(vec1_coef);
+    p = 0.0;
 
-    // ------------------------------------------------------------------
-    // 3. System sizes and block layout
-    //    NOTE: Sizes are local DOFs per rank.
-    // ------------------------------------------------------------------
-    int size_1 = u.Size() + p.Size();
-
+    const int size_1 = u.Size() + p.Size();
     Vector x(size_1);
     x = 0.0;
 
@@ -147,207 +114,161 @@ TEST(StokesSystem, ConstantVectorFieldPeriodicForce)
     std::iota(u_dofs.begin(), u_dofs.end(), 0);
     std::iota(p_dofs.begin(), p_dofs.end(), u.Size());
 
-
     x.SetSubVector(u_dofs, u);
     x.SetSubVector(p_dofs, p);
 
-    auto f = [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
-            y.SetSize(3);
-            y.Elem(0) = 1.;
-            y.Elem(1) = 1.;
-            y.Elem(2) = 1.;
-        };
+    auto f = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = 1.0;
+        y.Elem(1) = 1.0;
+        y.Elem(2) = 1.0;
+    };
 
-
-    StokesRHS rhs(ND,CG,f, f);
-
-    // A1 blocks:
-    StokesSystem sys(ND, CG, 1., viscosity, 1., 100.);
+    StokesRHS rhs(ND, CG, f, f);
+    StokesSystem sys(ND, CG, 1.0, viscosity, 1.0, 100.0);
 
     mfem::Vector y(x.Size());
-    sys.MultTranspose(x,y);
+    sys.MultTranspose(x, y);
 
     ASSERT_EQ(y.Size(), rhs.Size());
-    for (int i = 0; i < y.Size(); ++i)
-    {
-        EXPECT_NEAR(y[i], rhs[i], tol);
-    }
+    for (int i = 0; i < y.Size(); ++i) { EXPECT_NEAR(y[i], rhs[i], tol); }
 
     delete fec_ND;
     delete fec_CG;
 }
 
-
-TEST(StokesSystem, ConstantVectorFieldPeriodicSolver)
+TEST(StokesSystem, PeriodicConstantField_SolvesToExactConstant)
 {
-    // ------------------------------------------------------------------
-    // 0. Configuration
-    // ------------------------------------------------------------------
-    double viscosity = 1.;
-    int refinements = 1;
-    int order = 1;
-    int printlevel = 0;
-    double tol = 1e-10;
-    std::string mesh_string = std::string("../extern/mfem/data/periodic-cube.mesh");
+    // Solves the Stokes system on a periodic mesh with a constant exact velocity solution.
+    // Uses GMRES on the coupled operator with RHS assembled from matching constant data.
+    // Expects the computed velocity to match the exact constant field with near-zero L2 error.
 
-    // ------------------------------------------------------------------
-    // 1. Mesh and FE spaces (PARALLEL)
-    // ------------------------------------------------------------------
+    const double viscosity = 1.0;
+    const int refinements = 1;
+    const int order = 1;
+    const double tol = 1e-10;
+    const std::string mesh_string = "../extern/mfem/data/periodic-cube.mesh";
+
     Mesh mesh(mesh_string.c_str(), 1, 1);
-    std::cout << mesh.GetNE() << std::endl;
-    for (int l = 0; l < refinements; l++)
-    {
-        mesh.UniformRefinement();
-    }
-    std::cout << mesh.GetNE() << std::endl;
-    int dim = mesh.Dimension();
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
 
-    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
-    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
-    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
 
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace CG(&mesh, fec_CG);
 
+    auto f = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = 1.0;
+        y.Elem(1) = 1.0;
+        y.Elem(2) = 1.0;
+    };
 
-    auto f =
-        [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
-            y.SetSize(3);
-            y.Elem(0) = 1.;
-            y.Elem(1) = 1.;
-            y.Elem(2) = 1.;
-        };
-
-
-
-    // A1 blocks:
-    StokesSystem sys(ND, CG, 1., viscosity, 1., 100.);
+    StokesSystem sys(ND, CG, 1.0, viscosity, 1.0, 100.0);
     StokesRHS rhs(ND, CG, f, f);
     StokesSolution x(ND, CG);
 
     auto solver = std::make_unique<mfem::GMRESSolver>();
     solver->SetAbsTol(tol);
     solver->SetKDim(3000);
-    solver->SetRelTol(0.);
+    solver->SetRelTol(0.0);
     solver->SetMaxIter(10000);
     solver->SetPrintLevel(1);
     solver->SetOperator(sys);
-    solver->Mult(rhs,x);
+    solver->Mult(rhs, x);
 
-    
-
-    mfem::VectorFunctionCoefficient exact_u(3,f);
-    EXPECT_NEAR(x.get_u().ComputeL2Error(exact_u),0.,1e-10);
+    mfem::VectorFunctionCoefficient exact_u(3, f);
+    EXPECT_NEAR(x.get_u().ComputeL2Error(exact_u), 0.0, tol);
 
     delete fec_ND;
     delete fec_CG;
 }
 
-
-TEST(StokesSystem, ConstantVectorFieldCube)
+TEST(StokesSystem, CubeConstantField_TransposeGivesZeroVelocityBlock)
 {
-    // ------------------------------------------------------------------
-    // 0. Configuration
-    // ------------------------------------------------------------------
-    double viscosity = 100.;
-    int refinements = 0;
-    int order = 1;
-    int printlevel = 0;
-    double tol = 1e-10;
-    std::string mesh_string = std::string("../extern/mfem/data/ref-cube.mesh");
+    // Applies Stokes operator transpose to a constant velocity field on a non-periodic cube mesh.
+    // Uses ND/CG spaces with zero mass and no stabilization terms enabled in this configuration.
+    // Expects the velocity block of the result to be (numerically) zero for this setup.
 
-    // ------------------------------------------------------------------
-    // 1. Mesh and FE spaces (PARALLEL)
-    // ------------------------------------------------------------------
+    const double viscosity = 100.0;
+    const int refinements = 0;
+    const int order = 1;
+    const double tol = 1e-10;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
+
     Mesh mesh(mesh_string.c_str(), 1, 1);
-    std::cout << mesh.GetNE() << std::endl;
-    for (int l = 0; l < refinements; l++)
-    {
-        mesh.UniformRefinement();
-    }
-    std::cout << mesh.GetNE() << std::endl;
-    int dim = mesh.Dimension();
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
 
-    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
-    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
-    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
 
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace CG(&mesh, fec_CG);
 
-    // ------------------------------------------------------------------
-    // 2. Unknowns and gridfunctions (PARALLEL)
-    // ------------------------------------------------------------------
-    StokesSolution x(ND,CG);
-    mfem::VectorFunctionCoefficient vec1_coef(3,[](mfem::Vector x, mfem::Vector &y) -> void
-                                {y.SetSize(3); y.Elem(0)=1.;y.Elem(1)=1.;y.Elem(2)=1.; });
+    StokesSolution x(ND, CG);
+    mfem::VectorFunctionCoefficient vec1_coef(
+        3, [](mfem::Vector, mfem::Vector &y) -> void
+        {
+            y.SetSize(3);
+            y.Elem(0) = 1.0;
+            y.Elem(1) = 1.0;
+            y.Elem(2) = 1.0;
+        });
     x.get_u().ProjectCoefficient(vec1_coef);
 
-    // A1 blocks:
-    StokesSystem sys(ND, CG, 0., viscosity, 0., 0.);
+    StokesSystem sys(ND, CG, 0.0, viscosity, 0.0, 0.0);
 
-    StokesSolution y(ND,CG);
-    sys.MultTranspose(x,y);
-    
-    y.get_u().Print(std::cout);
-    for(auto com : y.get_u())
-        EXPECT_NEAR(com,0.,1e-10);
+    StokesSolution y(ND, CG);
+    sys.MultTranspose(x, y);
+
+    for (auto com : y.get_u()) { EXPECT_NEAR(com, 0.0, tol); }
 
     delete fec_ND;
     delete fec_CG;
 }
 
-TEST(StokesSystem, ConstantVectorFieldCubeForce)
+TEST(StokesSystem, CubeConstantField_TransposeMatchesRHS)
 {
-    // ------------------------------------------------------------------
-    // 0. Configuration
-    // ------------------------------------------------------------------
-    double viscosity = 10.;
-    int refinements = 2;
-    int order = 1;
-    int printlevel = 0;
-    double tol = 1e-10;
-    std::string mesh_string = std::string("../extern/mfem/data/ref-cube.mesh");
+    // Compares Stokes operator transpose on a constant field against an assembled RHS on a cube mesh.
+    // Uses ND/CG spaces with viscosity and stabilization parameters passed consistently to RHS/system.
+    // Expects componentwise agreement between operator result and RHS within tolerance.
 
-    // ------------------------------------------------------------------
-    // 1. Mesh and FE spaces (PARALLEL)
-    // ------------------------------------------------------------------
+    const double viscosity = 10.0;
+    const int refinements = 2;
+    const int order = 1;
+    const double tol = 1e-10;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
+
     Mesh mesh(mesh_string.c_str(), 1, 1);
-    std::cout << mesh.GetNE() << std::endl;
-    for (int l = 0; l < refinements; l++)
-    {
-        mesh.UniformRefinement();
-    }
-    std::cout << mesh.GetNE() << std::endl;
-    int dim = mesh.Dimension();
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
 
-    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
-    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
-    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
 
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace CG(&mesh, fec_CG);
 
-    // ------------------------------------------------------------------
-    // 2. Unknowns and gridfunctions (PARALLEL)
-    // ------------------------------------------------------------------
     GridFunction u(&ND);
     GridFunction p(&CG);
 
-    // Initial data from user-provided functions
-    {
-        mfem::VectorFunctionCoefficient vec1_coef(3,[](mfem::Vector x, mfem::Vector &y) -> void
-                                        {y.SetSize(3); y.Elem(0)=1.;y.Elem(1)=1.;y.Elem(2)=1.; });
-        u.ProjectCoefficient(vec1_coef);
-        p = 0.;
-    }
+    mfem::VectorFunctionCoefficient vec1_coef(
+        3, [](mfem::Vector, mfem::Vector &y) -> void
+        {
+            y.SetSize(3);
+            y.Elem(0) = 1.0;
+            y.Elem(1) = 1.0;
+            y.Elem(2) = 1.0;
+        });
+    u.ProjectCoefficient(vec1_coef);
+    p = 0.0;
 
-    // ------------------------------------------------------------------
-    // 3. System sizes and block layout
-    //    NOTE: Sizes are local DOFs per rank.
-    // ------------------------------------------------------------------
-    int size_1 = u.Size() + p.Size();
-
+    const int size_1 = u.Size() + p.Size();
     Vector x(size_1);
     x = 0.0;
 
@@ -355,230 +276,177 @@ TEST(StokesSystem, ConstantVectorFieldCubeForce)
     std::iota(u_dofs.begin(), u_dofs.end(), 0);
     std::iota(p_dofs.begin(), p_dofs.end(), u.Size());
 
-
     x.SetSubVector(u_dofs, u);
     x.SetSubVector(p_dofs, p);
 
-    auto f = [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
-            y.SetSize(3);
-            y.Elem(0) = 1.;
-            y.Elem(1) = 1.;
-            y.Elem(2) = 1.;
-        };
+    auto f = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = 1.0;
+        y.Elem(1) = 1.0;
+        y.Elem(2) = 1.0;
+    };
 
+    StokesRHS rhs(ND, CG, f, f, 1.0, 100.0, viscosity);
+    StokesSystem sys(ND, CG, 1.0, viscosity, 1.0, 100.0);
 
-    StokesRHS rhs(ND,CG,f, f,1.,100.,viscosity);
-
-    // A1 blocks:
-    StokesSystem sys(ND, CG, 1., viscosity, 1., 100.);
-
-    StokesSolution y(ND,CG);
-    sys.MultTranspose(x,y);
-
-        y.get_p().Print(std::cout);
+    StokesSolution y(ND, CG);
+    sys.MultTranspose(x, y);
 
     ASSERT_EQ(y.Size(), rhs.Size());
-    for (int i = 0; i < y.Size(); ++i)
-    {
-        EXPECT_NEAR(y[i], rhs[i], tol);
-    }
+    for (int i = 0; i < y.Size(); ++i) { EXPECT_NEAR(y[i], rhs[i], tol); }
 
     delete fec_ND;
     delete fec_CG;
 }
 
-
-TEST(StokesSystem, ConstantVectorFieldCubeSolver)
+TEST(StokesSystem, CubeConstantField_SolvesToExactConstant)
 {
-    // ------------------------------------------------------------------
-    // 0. Configuration
-    // ------------------------------------------------------------------
-    double viscosity = 1.;
-    int refinements = 1;
-    int order = 1;
-    int printlevel = 0;
-    double tol = 1e-10;
-    std::string mesh_string = std::string("../extern/mfem/data/ref-cube.mesh");
+    // Solves the Stokes system on a cube mesh where the exact velocity is constant.
+    // Uses GMRES on the coupled system with RHS assembled from the same constant field.
+    // Expects the numerical velocity solution to match the exact field in L2 norm.
 
-    // ------------------------------------------------------------------
-    // 1. Mesh and FE spaces (PARALLEL)
-    // ------------------------------------------------------------------
+    const double viscosity = 1.0;
+    const int refinements = 1;
+    const int order = 1;
+    const double tol = 1e-10;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
+
     Mesh mesh(mesh_string.c_str(), 1, 1);
-    std::cout << mesh.GetNE() << std::endl;
-    for (int l = 0; l < refinements; l++)
-    {
-        mesh.UniformRefinement();
-    }
-    std::cout << mesh.GetNE() << std::endl;
-    int dim = mesh.Dimension();
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
 
-    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
-    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
-    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
 
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace CG(&mesh, fec_CG);
 
+    auto f = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = 1.0;
+        y.Elem(1) = 1.0;
+        y.Elem(2) = 1.0;
+    };
 
-    auto f =
-        [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
-            y.SetSize(3);
-            y.Elem(0) = 1.;
-            y.Elem(1) = 1.;
-            y.Elem(2) = 1.;
-        };
-
-
-
-    // A1 blocks:
-    StokesSystem sys(ND, CG, 1., viscosity, 1., 100.);
+    StokesSystem sys(ND, CG, 1.0, viscosity, 1.0, 100.0);
     StokesRHS rhs(ND, CG, f, f);
     StokesSolution x(ND, CG);
 
     auto solver = std::make_unique<mfem::GMRESSolver>();
     solver->SetAbsTol(tol);
     solver->SetKDim(3000);
-    solver->SetRelTol(0.);
+    solver->SetRelTol(0.0);
     solver->SetMaxIter(10000);
     solver->SetPrintLevel(1);
     solver->SetOperator(sys);
-    solver->Mult(rhs,x);
+    solver->Mult(rhs, x);
 
-    
-
-    mfem::VectorFunctionCoefficient exact_u(3,f);
-    EXPECT_NEAR(x.get_u().ComputeL2Error(exact_u),0.,1e-10);
+    mfem::VectorFunctionCoefficient exact_u(3, f);
+    EXPECT_NEAR(x.get_u().ComputeL2Error(exact_u), 0.0, tol);
 
     delete fec_ND;
     delete fec_CG;
 }
 
-
-TEST(StokesSystem, VortexVectorFieldCubeSolver)
+TEST(StokesSystem, CubeVortexTrace_SolvesToExactVortex)
 {
-    // ------------------------------------------------------------------
-    // 0. Configuration
-    // ------------------------------------------------------------------
-    double mass = 0.;
-    double viscosity = .1;
-    int refinements = 1;
-    int order = 1;
-    int printlevel = 0;
-    double tol = 1e-10;
-    std::string mesh_string = std::string("../extern/mfem/data/ref-cube.mesh");
+    // Solves a Stokes problem on a cube mesh with a vortex-like exact velocity trace.
+    // Uses zero body force and imposes a rotational trace field via the RHS construction.
+    // Expects the recovered velocity to match the prescribed trace field in L2 norm.
 
-    // ------------------------------------------------------------------
-    // 1. Mesh and FE spaces (PARALLEL)
-    // ------------------------------------------------------------------
+    const double mass = 0.0;
+    const double viscosity = 0.1;
+    const int refinements = 1;
+    const int order = 1;
+    const double tol = 1e-10;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
+
     Mesh mesh(mesh_string.c_str(), 1, 1);
-    std::cout << mesh.GetNE() << std::endl;
-    for (int l = 0; l < refinements; l++)
-    {
-        mesh.UniformRefinement();
-    }
-    std::cout << mesh.GetNE() << std::endl;
-    int dim = mesh.Dimension();
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
 
-    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
-    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
-    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
 
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace CG(&mesh, fec_CG);
 
+    auto f = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = 0.0;
+        y.Elem(1) = 0.0;
+        y.Elem(2) = 0.0;
+    };
 
-    auto f =
-        [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
-            y.SetSize(3);
-            y.Elem(0) = 0.;
-            y.Elem(1) = 0.;
-            y.Elem(2) = 0.;
-        };    
-    auto tr_u =
-        [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
-            y.SetSize(3);
-            y.Elem(0) = -x.Elem(1);
-            y.Elem(1) = x.Elem(0);
-            y.Elem(2) = 0.;
-        };
+    auto tr_u = [](const mfem::Vector &x, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = -x.Elem(1);
+        y.Elem(1) = x.Elem(0);
+        y.Elem(2) = 0.0;
+    };
 
-
-
-    // A1 blocks:
-    StokesSystem sys(ND, CG, mass, viscosity, 1., 100.);
-    StokesRHS rhs(ND, CG, f, tr_u,1.,100.,viscosity);
+    StokesSystem sys(ND, CG, mass, viscosity, 1.0, 100.0);
+    StokesRHS rhs(ND, CG, f, tr_u, 1.0, 100.0, viscosity);
     StokesSolution x(ND, CG);
 
     auto solver = std::make_unique<mfem::GMRESSolver>();
     solver->SetAbsTol(tol);
     solver->SetKDim(3000);
-    solver->SetRelTol(0.);
+    solver->SetRelTol(0.0);
     solver->SetMaxIter(10000);
     solver->SetPrintLevel(1);
     solver->SetOperator(sys);
-    solver->Mult(rhs,x);
+    solver->Mult(rhs, x);
 
-    
-
-    mfem::VectorFunctionCoefficient exact_u(3,tr_u);
-    EXPECT_NEAR(x.get_u().ComputeL2Error(exact_u),0.,1e-10);
+    mfem::VectorFunctionCoefficient exact_u(3, tr_u);
+    EXPECT_NEAR(x.get_u().ComputeL2Error(exact_u), 0.0, tol);
 
     delete fec_ND;
     delete fec_CG;
 }
 
+TEST(SchurPreconditioner, CubeSmoothRHS_GMRESWithSchurPreconditionerRuns)
+{
+    // Runs GMRES on the coupled Stokes system using a Schur-complement preconditioner.
+    // Assembles RHS from a smooth, non-constant vector field on a refined cube mesh.
+    // Confirms the solve completes with the provided tolerance and configuration.
 
-TEST(SchurPreconditioner, test1){
-       // ------------------------------------------------------------------
-    // 0. Configuration
-    // ------------------------------------------------------------------
-    double viscosity = .02;
-    double mass = 1.;
-    int refinements = 2;
-    int order = 1;
-    int printlevel = 0;
-    double tol = 1e-5;
-    std::string mesh_string = std::string("../extern/mfem/data/ref-cube.mesh");
+    const double viscosity = 0.02;
+    const double mass = 1.0;
+    const int refinements = 2;
+    const int order = 1;
+    const double tol = 1e-5;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
 
-    // ------------------------------------------------------------------
-    // 1. Mesh and FE spaces (PARALLEL)
-    // ------------------------------------------------------------------
     Mesh mesh(mesh_string.c_str(), 1, 1);
-    std::cout << mesh.GetNE() << std::endl;
-    for (int l = 0; l < refinements; l++)
-    {
-        mesh.UniformRefinement();
-    }
-    std::cout << mesh.GetNE() << std::endl;
-    int dim = mesh.Dimension();
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
 
-    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
-    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
-    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
 
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace CG(&mesh, fec_CG);
 
-    // ------------------------------------------------------------------
-    // 2. Unknowns and gridfunctions (PARALLEL)
-    // ------------------------------------------------------------------
     GridFunction u(&ND);
     GridFunction p(&CG);
 
-    // Initial data from user-provided functions
-    {
-        mfem::VectorFunctionCoefficient vec1_coef(3,[](mfem::Vector x, mfem::Vector &y) -> void
-                                        {y.SetSize(3); y.Elem(0)=1.;y.Elem(1)=1.;y.Elem(2)=1.; });
-        u.ProjectCoefficient(vec1_coef);
-        p = 0.;
-    }
+    mfem::VectorFunctionCoefficient vec1_coef(
+        3, [](mfem::Vector, mfem::Vector &y) -> void
+        {
+            y.SetSize(3);
+            y.Elem(0) = 1.0;
+            y.Elem(1) = 1.0;
+            y.Elem(2) = 1.0;
+        });
+    u.ProjectCoefficient(vec1_coef);
+    p = 0.0;
 
-    // ------------------------------------------------------------------
-    // 3. System sizes and block layout
-    //    NOTE: Sizes are local DOFs per rank.
-    // ------------------------------------------------------------------
-    int size_1 = u.Size() + p.Size();
-
+    const int size_1 = u.Size() + p.Size();
     Vector x(size_1);
     x = 0.0;
 
@@ -586,104 +454,76 @@ TEST(SchurPreconditioner, test1){
     std::iota(u_dofs.begin(), u_dofs.end(), 0);
     std::iota(p_dofs.begin(), p_dofs.end(), u.Size());
 
-
     x.SetSubVector(u_dofs, u);
     x.SetSubVector(p_dofs, p);
 
-    auto f = [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
-            y.SetSize(3);
-            y.Elem(0) = x.Elem(0)*sin(x.Elem(1));
-            y.Elem(1) = x.Elem(1)*x.Elem(2);
-            y.Elem(2) = x.Elem(0);
-        };
+    auto f = [](const mfem::Vector &x, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = x.Elem(0) * std::sin(x.Elem(1));
+        y.Elem(1) = x.Elem(1) * x.Elem(2);
+        y.Elem(2) = x.Elem(0);
+    };
 
+    StokesRHS rhs(ND, CG, f, f, -1.0, 0.0);
+    SchurPreconditioner pre(ND, CG, mass, viscosity);
 
-    StokesRHS rhs(ND,CG,f, f, -1., 0.);
-    SchurPreconditioner pre(ND,CG,mass,viscosity);
-
-    // A1 blocks:
-    StokesSystem sys(ND, CG, mass, viscosity, -1., 0.);
+    StokesSystem sys(ND, CG, mass, viscosity, -1.0, 0.0);
     pre.SetOperator(sys);
 
-    //StokesSolution x(ND,CG);
     auto solver = std::make_unique<mfem::GMRESSolver>();
     solver->SetAbsTol(tol);
     solver->SetKDim(3000);
-    solver->SetRelTol(0.);
+    solver->SetRelTol(0.0);
     solver->SetMaxIter(10000);
     solver->SetPrintLevel(1);
     solver->SetOperator(sys);
     solver->SetPreconditioner(pre);
-    solver->Mult(rhs,x);
-
-    //sys.MultTranspose(x,y);
-
-      //  y.get_p().Print(std::cout);
-
-    //ASSERT_EQ(y.Size(), rhs.Size());
-    //for (int i = 0; i < y.Size(); ++i)
-   // {
-    //    EXPECT_NEAR(y[i], rhs[i], tol);
-   // }
+    solver->Mult(rhs, x);
 
     delete fec_ND;
     delete fec_CG;
 }
 
+TEST(SchurSolver, CubeSmoothRHS_SchurSolverReproducesRHSUnderOperator)
+{
+    // Solves the Stokes system using a custom Schur solver and verifies operator consistency.
+    // Builds RHS with a smooth forcing and zero trace, then solves on a refined cube mesh.
+    // Applies the system operator to the computed solution and compares to RHS entrywise.
 
-TEST(SchurSolver, test1){
-       // ------------------------------------------------------------------
-    // 0. Configuration
-    // ------------------------------------------------------------------
-    double viscosity = 1.;
-    double mass = 1.;
-    int refinements = 2;
-    int order = 1;
-    int printlevel = 0;
-    double tol = 1e-5;
-    double Cw = 0.;
-    double theta = -1.;
-    std::string mesh_string = std::string("../extern/mfem/data/ref-cube.mesh");
+    const double viscosity = 1.0;
+    const double mass = 1.0;
+    const int refinements = 2;
+    const int order = 1;
+    const double theta = -1.0;
+    const double Cw = 0.0;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
 
-    // ------------------------------------------------------------------
-    // 1. Mesh and FE spaces (PARALLEL)
-    // ------------------------------------------------------------------
     Mesh mesh(mesh_string.c_str(), 1, 1);
-    std::cout << mesh.GetNE() << std::endl;
-    for (int l = 0; l < refinements; l++)
-    {
-        mesh.UniformRefinement();
-    }
-    std::cout << mesh.GetNE() << std::endl;
-    int dim = mesh.Dimension();
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
 
-    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
-    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
-    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
 
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace CG(&mesh, fec_CG);
 
-    // ------------------------------------------------------------------
-    // 2. Unknowns and gridfunctions (PARALLEL)
-    // ------------------------------------------------------------------
     GridFunction u(&ND);
     GridFunction p(&CG);
 
-    // Initial data from user-provided functions
-    {
-        mfem::VectorFunctionCoefficient vec1_coef(3,[](mfem::Vector x, mfem::Vector &y) -> void
-                                        {y.SetSize(3); y.Elem(0)=1.;y.Elem(1)=1.;y.Elem(2)=1.; });
-        u.ProjectCoefficient(vec1_coef);
-        p = 0.;
-    }
+    mfem::VectorFunctionCoefficient vec1_coef(
+        3, [](mfem::Vector, mfem::Vector &y) -> void
+        {
+            y.SetSize(3);
+            y.Elem(0) = 1.0;
+            y.Elem(1) = 1.0;
+            y.Elem(2) = 1.0;
+        });
+    u.ProjectCoefficient(vec1_coef);
+    p = 0.0;
 
-    // ------------------------------------------------------------------
-    // 3. System sizes and block layout
-    //    NOTE: Sizes are local DOFs per rank.
-    // ------------------------------------------------------------------
-    int size_1 = u.Size() + p.Size();
-
+    const int size_1 = u.Size() + p.Size();
     Vector x(size_1);
     x = 0.0;
 
@@ -691,115 +531,98 @@ TEST(SchurSolver, test1){
     std::iota(u_dofs.begin(), u_dofs.end(), 0);
     std::iota(p_dofs.begin(), p_dofs.end(), u.Size());
 
-
     x.SetSubVector(u_dofs, u);
     x.SetSubVector(p_dofs, p);
 
-    auto f = [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
-            y.SetSize(3);
-            y.Elem(0) = x.Elem(0)*sin(x.Elem(1));
-            y.Elem(1) = x.Elem(1)*x.Elem(2);
-            y.Elem(2) = x.Elem(0);
-        };
-
-    auto tr_u = [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
+    auto f = [](const mfem::Vector &x, double, mfem::Vector &y) -> void
+    {
         y.SetSize(3);
-        y.Elem(0) = 0.;
-        y.Elem(1) = 0.;
-        y.Elem(2) = 0.;
+        y.Elem(0) = x.Elem(0) * std::sin(x.Elem(1));
+        y.Elem(1) = x.Elem(1) * x.Elem(2);
+        y.Elem(2) = x.Elem(0);
     };
 
+    auto tr_u = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = 0.0;
+        y.Elem(1) = 0.0;
+        y.Elem(2) = 0.0;
+    };
 
-    StokesRHS rhs(ND,CG,f, tr_u, theta, Cw,viscosity);
-
-    // A1 blocks:
+    StokesRHS rhs(ND, CG, f, tr_u, theta, Cw, viscosity);
     StokesSystem sys(ND, CG, mass, viscosity, theta, Cw);
-    int iterations;
+
+    int iterations = 0;
     SchurSolver solver(ND, CG, mass, viscosity, iterations, 1e-12);
     solver.SetOperator(sys);
-
-    solver.Mult(rhs,x);
+    solver.Mult(rhs, x);
 
     mfem::Vector sys_x(sys.NumRows());
-    sys.Mult(x,sys_x);
+    sys.Mult(x, sys_x);
 
-    for(int i = 0; i < rhs.GetBlock(0).Size(); ++i)
-        EXPECT_NEAR(sys_x[i], rhs[i], 1e-6);
-
-
-    for(int i = rhs.GetBlock(0).Size(); i < rhs.Size(); ++i)
-        EXPECT_NEAR(sys_x[i], rhs[i], 1e-6);
+    for (int i = 0; i < rhs.GetBlock(0).Size(); ++i) { EXPECT_NEAR(sys_x[i], rhs[i], 1e-6); }
+    for (int i = rhs.GetBlock(0).Size(); i < rhs.Size(); ++i) { EXPECT_NEAR(sys_x[i], rhs[i], 1e-6); }
 
     delete fec_ND;
     delete fec_CG;
 }
 
+TEST(StokesSystemAndRHS, CubeVortexTrace_VelocityBlockMatchesRHSVelocityBlock)
+{
+    // Checks consistency between the velocity-block operator application and assembled RHS velocity block.
+    // Uses a vortex-like trace field with zero forcing on a refined cube mesh and strong theta penalty.
+    // Expects the operator-applied velocity to match the RHS velocity block within a relative tolerance.
 
+    const double viscosity = 1.0;
+    const double mass = 0.0;
+    const int refinements = 1;
+    const int order = 1;
+    const double theta = -1e8;
+    const double Cw = 0.0;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
 
-TEST(StokesSystemAndRHS, CompareLHSandRHS){
-       // ------------------------------------------------------------------
-    // 0. Configuration
-    // ------------------------------------------------------------------
-    double viscosity = 1.;
-    double mass = 0.;
-    int refinements = 1;
-    int order = 1;
-    int printlevel = 0;
-    double tol = 1e-5;
-    double Cw = 0.;
-    double theta = -1e8;
-    std::string mesh_string = std::string("../extern/mfem/data/ref-cube.mesh");
-
-    // ------------------------------------------------------------------
-    // 1. Mesh and FE spaces (PARALLEL)
-    // ------------------------------------------------------------------
     Mesh mesh(mesh_string.c_str(), 1, 1);
-    std::cout << mesh.GetNE() << std::endl;
-    for (int l = 0; l < refinements; l++)
-    {
-        mesh.UniformRefinement();
-    }
-    std::cout << mesh.GetNE() << std::endl;
-    int dim = mesh.Dimension();
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
 
-    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
-    FiniteElementCollection *fec_ND = new ND_FECollection(order, dim);
-    FiniteElementCollection *fec_CG = new H1_FECollection(order, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
 
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace CG(&mesh, fec_CG);
 
+    auto f = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = 0.0;
+        y.Elem(1) = 0.0;
+        y.Elem(2) = 0.0;
+    };
 
-
-    auto f = [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
-            y.SetSize(3);
-            y.Elem(0) = 0.;
-            y.Elem(1) = 0.;
-            y.Elem(2) = 0.;
-        };
-
-    auto tr_u = [](const mfem::Vector& x, double, mfem::Vector& y) -> void{
+    auto tr_u = [](const mfem::Vector &x, double, mfem::Vector &y) -> void
+    {
         y.SetSize(3);
         y.Elem(0) = -x.Elem(1);
         y.Elem(1) = x.Elem(0);
-        y.Elem(2) = 0.;
+        y.Elem(2) = 0.0;
     };
+
     mfem::VectorFunctionCoefficient u_coef(3, tr_u);
     mfem::GridFunction u(&ND);
     u.ProjectCoefficient(u_coef);
 
-
-    StokesRHS rhs(ND,CG,f, tr_u, theta, Cw,viscosity);
-
-
-    // A1 blocks:
+    StokesRHS rhs(ND, CG, f, tr_u, theta, Cw, viscosity);
     StokesSystem sys(ND, CG, mass, viscosity, theta, Cw);
-    mfem::Vector sys_u(sys.GetBlock(0,0).Height());
-    sys.GetBlock(0,0).Mult(u,sys_u);
 
-    for(int i = 0; i < rhs.GetBlock(0).Size(); ++i)
-        EXPECT_NEAR(sys_u[i], rhs[i], rhs.Norml2()*1e-7);
-    
+    mfem::Vector sys_u(sys.GetBlock(0, 0).Height());
+    sys.GetBlock(0, 0).Mult(u, sys_u);
+
+    for (int i = 0; i < rhs.GetBlock(0).Size(); ++i)
+    {
+        EXPECT_NEAR(sys_u[i], rhs[i], rhs.Norml2() * 1e-7);
+    }
+
     delete fec_ND;
     delete fec_CG;
 }
