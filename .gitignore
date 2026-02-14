@@ -1,7 +1,2 @@
 build
 
-extern/mfem
-extern/boundaryintegrallib
-
-git config submodule.extern/mfem.ignore all
-git config submodule.extern/boundaryintegrallib.ignore all
