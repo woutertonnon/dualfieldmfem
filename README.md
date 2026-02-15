@@ -92,12 +92,20 @@ Note that Metis 5 and SuiteSparse are used and can thus not be disabled.
 
 ------------------------------------------------------------------------
 
+## Documentation
+
+For now, only documentation for the python libraries controlling the "testbench" and the IO with the C++ code are documented:
+
+[https://woutertonnon.github.io/dualfieldmfem/api.html#](https://woutertonnon.github.io/dualfieldmfem/api.html#)
+
+------------------------------------------------------------------------
+
 ## Project layout
 
 -   apps/ -- application executables
 -   extern/ -- submodules (MFEM, BoundaryIntegralLib)
 -   include/ -- project headers
--   tests/ -- test targets
--   scripts/ -- helper scripts (if present)
+-   tests/ -- GTest files
+-   scripts/ -- benchmark and IO library (python)
 
 ------------------------------------------------------------------------
