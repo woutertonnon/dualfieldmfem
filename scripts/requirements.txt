@@ -1,0 +1,10 @@
+# Sphinx (docs builder)
+sphinx>=9.0
+
+# Core dependencies used by your modules
+sympy
+numpy
+pandas
+matplotlib
+paramiko
+gmsh
