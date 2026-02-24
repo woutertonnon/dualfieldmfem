@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
     std::string output_file = config.get_outputfile();
     std::string solver_type = config.get_solver();
     double theta = -1.;
-    double Cw = 0.;
+    double Cw = 100.;
     double dt = config.get_dt();
     double T = config.get_T();
 
@@ -98,20 +98,29 @@ int main(int argc, char *argv[])
     num_it_A1  = 0;
     num_it_A2 = 0;
 
+    mfem::Array<int> ess_bdr(mesh.bdr_attributes.Max());
+    ess_bdr = 0;
+    ess_bdr[0] = 1; // attribute 1 is essential
 
-    // A1 blocks:
+    mfem::Array<int> ess_tdof;
+    RT.GetEssentialTrueDofs(ess_bdr, ess_tdof);
 
-    // A1 blocks:
-    StokesSystem sys(ND, CG, 1./dt, viscosity, theta, Cw);
-    StokesRHS rhs(ND, CG, config.get_exact_data("force_data"), config.get_exact_data("boundary_data_u"),theta,Cw,viscosity);
-    StokesSolution x(ND, CG);
-    mfem::VectorFunctionCoefficient u_exact(3, config.get_exact_data("initial_data_u"));
-    u_exact.SetTime(0.);
-    x.get_u().ProjectCoefficient(u_exact);
 
-    mfem::GridFunction u2(&RT);
-    mfem::GridFunction w1(&ND);
-    mfem::CurlGridFunctionCoefficient w2(&x.get_u());
+    hdiv::StokesSystem hdiv_sys(RT,ND,DG, ess_tdof, 1./dt, viscosity);
+    hdiv::StokesRHS hdiv_rhs(RT, ND, DG, ess_tdof, config.get_exact_data("force_data"), config.get_exact_data("boundary_data_u"));
+    hdiv::StokesSolution hdiv_x(RT, ND, DG);
+
+    hcurl::StokesSystem hcurl_sys(ND, CG, 1./dt, viscosity, theta, Cw);
+    hcurl::StokesRHS hcurl_rhs(ND, CG, config.get_exact_data("force_data"), config.get_exact_data("boundary_data_u"),theta,Cw,viscosity);
+    hcurl::StokesSolution hcurl_x(ND, CG);
+
+    mfem::VectorFunctionCoefficient u_init(3, config.get_exact_data("initial_data_u"));
+    u_init.SetTime(0.);
+    hdiv_x.get_u().ProjectCoefficient(u_init);
+    hcurl_x.get_u().ProjectCoefficient(u_init);
+
+    mfem::VectorGridFunctionCoefficient w1(&hdiv_x.get_w());
+    mfem::CurlGridFunctionCoefficient w2(&hcurl_x.get_u());
    // mfem::GridFunction w2(&RT);
    // mfem::VectorFunctionCoefficient w_exact_coeff(3, config.get_exact_data("exact_data_w"));
    // w2.ProjectCoefficient(w_exact_coeff);
@@ -122,29 +131,52 @@ int main(int argc, char *argv[])
     mfem::ParaViewDataCollection vtk_dc("./data/visualisation/paraview/" + output_file, &mesh);
     if (visualisation > 0)
     {
-        vtk_dc.RegisterField("u1", &x.get_u()); // Register field for visualization
-        //vtk_dc.RegisterField("u2", &v); // Register field for visualization
-        //vtk_dc.RegisterField("w1", &w); // Register field for visualization
+        vtk_dc.RegisterField("u1", &hcurl_x.get_u()); // Register field for visualization
+        vtk_dc.RegisterField("u2", &hdiv_x.get_u()); // Register field for visualization
+        vtk_dc.RegisterField("w1", &hdiv_x.get_w()); // Register field for visualization
         //vtk_dc.RegisterField("w2", &w2); // Register field for visualization
-        vtk_dc.RegisterField("p0", &x.get_p()); // Register field for visualization
-        //vtk_dc.RegisterField("p3", &q); // Register field for visualization
+        vtk_dc.RegisterField("p0", &hcurl_x.get_p()); // Register field for visualization
+        vtk_dc.RegisterField("p3", &hdiv_x.get_p()); // Register field for visualization
         vtk_dc.SetCycle(0);             // Set initial cycle
         vtk_dc.SetTime(0.0);            // Set initial time
         vtk_dc.Save();                  // Save initial data
     }
 
-    DualFieldCSVLogger csv(config,cycle, t, t, &ND, &RT, x.get_u(), u2, w1, num_it_A1, num_it_A2);
-    for(t=0; t<T+tol; t+=dt){
+    DualFieldCSVLogger csv(config,cycle, t, t, &ND, &RT, hcurl_x.get_u(), hdiv_x.get_u(), hdiv_x.get_w(), num_it_A1, num_it_A2);
+    for(t=dt, cycle=1; t<T+tol; t+=dt, cycle++){
 
         csv.WriteRow();
 
-        sys.Update(w2);
-        rhs.Update(x.get_u(),t,1./dt);
+        // Solve H(curl) system
+        hcurl_sys.Update(w1);
+        hcurl_rhs.Update(hcurl_x.get_u(),t,1./dt);
 
 
-        SchurSolver solv(ND,CG,1./dt,viscosity,num_it_A1,tol);
-        solv.SetOperator(sys);    
-        solv.Mult(rhs,x);
+        hcurl::SchurSolver hcurl_solv(ND,CG,1./dt,viscosity,num_it_A1,tol);
+        hcurl_solv.SetOperator(hcurl_sys);    
+        hcurl_solv.Mult(hcurl_rhs,hcurl_x);
+
+
+        // Solve H(div) system
+
+        hdiv_sys.Update(w2);
+        hdiv_rhs.Update(hdiv_x.get_u(),t,1./dt);
+
+        mfem::GMRESSolver hdiv_solv;
+        //std::cout << "test17\n";
+        //mfem::SparseMatrix *mono_mat = sys.CreateMonolithic();
+        //std::cout << "test18\n";
+        hdiv_solv.SetOperator(hdiv_sys);
+        hdiv_solv.SetPrintLevel(1);
+        hdiv_solv.SetRelTol(1e-5);
+        hdiv_solv.SetAbsTol(1e-12);
+        hdiv_solv.SetKDim(300);
+        hdiv_solv.SetMaxIter(1000000);
+
+        //X.Print(std::cout);
+        //B.Print(std::cout);
+        hdiv_solv.Mult(hdiv_rhs,hdiv_x);
+        num_it_A2 = hdiv_solv.GetNumIterations();
 	//rhs.get_p().Print(std::cout);
 
 
@@ -158,9 +190,10 @@ int main(int argc, char *argv[])
 
     }
 
-
+    delete fec_RT;
     delete fec_ND;
     delete fec_CG;
+    delete fec_DG;
 
     return 0;
 }

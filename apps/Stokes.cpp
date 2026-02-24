@@ -96,14 +96,14 @@ int main(int argc, char *argv[])
     // A1 blocks:
 
     // A1 blocks:
-    StokesSystem sys(ND, CG, mass, viscosity, theta, Cw);
-    StokesRHS rhs(ND, CG, config.get_exact_data("force_data"), config.get_exact_data("exact_data_u"),theta,Cw,viscosity);
-    StokesSolution x(ND, CG);
+    hcurl::StokesSystem sys(ND, CG, mass, viscosity, theta, Cw);
+    hcurl::StokesRHS rhs(ND, CG, config.get_exact_data("force_data"), config.get_exact_data("exact_data_u"),theta,Cw,viscosity);
+    hcurl::StokesSolution x(ND, CG);
     
     SobolevPreconditioner pre({&ND,&CG},{mass,1.},{viscosity,1.});
 
 
-    SchurSolver solv(ND,CG,mass,viscosity,num_it_A1);
+    hcurl::SchurSolver solv(ND,CG,mass,viscosity,num_it_A1);
     //mfem::GMRESSolver solv;
     NitscheStokesCSVLogger csv(config, x.get_u(), num_it_A1);
     //mfem::KLUSolver umfpack;
@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
     solv.Mult(rhs,x);
 
     csv.WriteRow();
-    StokesSolution temp(ND,CG);
+    hcurl::StokesSolution temp(ND,CG);
     temp.get_u() = 0.;
     temp.get_p() = 0.;
     sys.Mult(x,temp);

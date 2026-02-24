@@ -378,13 +378,10 @@ class IBVPNavierStokesSolution(IBVPNavierStokes):
     """
     Symbolic exact solution of the incompressible Navier–Stokes IBVP.
 
-    This class represents a fully specified velocity–pressure pair
-    :math:`(\\mathbf{u}, p)` depending on space and time. The initial
-    condition is automatically extracted as
-
-    .. math::
-
-        \\mathbf{u}_0 = \\mathbf{u}(\\cdot, 0).
+    This class contains a fully specified velocity–pressure solution pair
+    :math:`(\\mathbf{u}, p)` depending on space and time. The initial,
+    boundary, and force data is specified separately, so the error can
+    be computed w.r.t. the solution pair.  
 
     The class inherits the Navier–Stokes IBVP structure from
     :class:`IBVPNavierStokes`.
@@ -399,6 +396,9 @@ class IBVPNavierStokesSolution(IBVPNavierStokes):
     :type coords: list[sympy.Symbol]
     :param t: Time symbol.
     :type t: sympy.Symbol
+    :param u_init: Prescribed initial condition.
+                       Defaults to zero.
+    :type u_boundary: sympy.Matrix
     :param u_boundary: Prescribed boundary velocity.
                        Defaults to zero.
     :type u_boundary: sympy.Matrix
@@ -406,14 +406,14 @@ class IBVPNavierStokesSolution(IBVPNavierStokes):
                   Defaults to zero.
     :type force: sympy.Matrix
     """
-    def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t, u_boundary = sp.Matrix([0,0,0]), force = sp.Matrix([0,0,0])):
+    def __init__(self, u: sp.Matrix, p: sp.Expr, nu: float, coords, t, u_init = sp.Matrix([0,0,0]), u_boundary = sp.Matrix([0,0,0]), force = sp.Matrix([0,0,0])):
         """
         Initialize the symbolic Navier–Stokes solution.
         """
         self.t = t
         self.u = u
         self.p = p
-        super().__init__(u.subs(self.t,0), nu, coords, t, u_boundary, force)
+        super().__init__(u_init, nu, coords, t, u_boundary, force)
 
     def get_p(self):
         """
@@ -683,13 +683,13 @@ class SimulationHelper:
 
         Uses the executable::
 
-            ./build/MEHCscheme
+            ./build/dualfield_navierstokes_nitsche
 
         :raises RuntimeError: If the executable cannot be found or executed.
         :returns: None
         :rtype: None
         """
-        EXECUTABLE = "./build/MEHCscheme"
+        EXECUTABLE = "./build/dualfieldnavierstokes_nitsche"
         config_directory = "./data/config/" + self.name +"/"
         out_directory = "./out/data/" + self.name + "/"
         os.makedirs(out_directory, exist_ok=True)
@@ -804,7 +804,7 @@ class SimulationHelper:
             exec("cd dualfieldmfem/build && make")
             print(stderr.read().decode())
 
-            EXECUTABLE = "./build/MEHCscheme"
+            EXECUTABLE = "./build/dualfield_navierstokes_nitsche"
             config_directory = "data/config/" + self.name +"/"
             out_directory = "out/data/" + self.name + "/"
             
@@ -820,8 +820,8 @@ class SimulationHelper:
                 local_path = "./" + config_directory + file
                 remote_path = "/cluster/home/wtonnon/dualfieldmfem/" + config_directory + file
                 sftp.put(local_path,remote_path)
-                print("cd dualfieldmfem && sbatch --cpus-per-task="+cpuspertask+" --time="+time+" --mem-per-cpu="+mempercpu+" --wrap=\"./build/MEHCscheme -c /cluster/home/wtonnon/dualfieldmfem/" + config_directory + file +"\"")
-                exec("cd dualfieldmfem && sbatch --cpus-per-task="+cpuspertask+" --time="+time+" --mem-per-cpu="+mempercpu+" --wrap=\"./build/MEHCscheme -c /cluster/home/wtonnon/dualfieldmfem/" + config_directory + file +"\"")
+                print("cd dualfieldmfem && sbatch --cpus-per-task="+cpuspertask+" --time="+time+" --mem-per-cpu="+mempercpu+" --wrap=\"./build/dualfield_navierstokes_nitsche -c /cluster/home/wtonnon/dualfieldmfem/" + config_directory + file +"\"")
+                exec("cd dualfieldmfem && sbatch --cpus-per-task="+cpuspertask+" --time="+time+" --mem-per-cpu="+mempercpu+" --wrap=\"./build/dualfield_navierstokes_nitsche -c /cluster/home/wtonnon/dualfieldmfem/" + config_directory + file +"\"")
         finally:
             client.close()
 
@@ -1273,7 +1273,7 @@ class SimulationDataProcessor:
                 timeout=10,
             )
 
-            EXECUTABLE = "./build/MEHCscheme"
+            EXECUTABLE = "./build/dualfield_navierstokes_nitsche"
             config_directory = "data/config/" + self.name +"/"
             out_directory = "out/data/" + self.name + "/"
 
