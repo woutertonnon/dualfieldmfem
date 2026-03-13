@@ -1,0 +1,181 @@
+#include <fstream>
+#include <iostream>
+#include <algorithm>
+#include <chrono>
+#include <iomanip>
+#include <boost/program_options.hpp>
+
+#include "mfem.hpp"
+#include "BoundaryOperators.h"
+#include "io.h" // SimulationConfig, EnergyCSVLogger
+#include "StokesOperators.h"
+
+using namespace mfem;
+using namespace std;
+namespace po = boost::program_options;
+
+int main(int argc, char *argv[])
+{
+    // ---- Parse command-line options with Boost BEFORE MPI_Init (recommended) ----
+    std::string config_path;
+
+    try
+    {
+        po::options_description desc("Allowed options");
+        desc.add_options()("help,h", "produce help message")("config,c",
+                                                             po::value<std::string>(&config_path)
+                                                                 ->default_value("../data/config/StokesTest/StokesTest_conv_order1_ref2.json"),
+                                                             "path to JSON configuration file");
+
+        po::variables_map vm;
+        po::store(po::parse_command_line(argc, argv, desc), vm);
+        po::notify(vm);
+
+        if (vm.count("help"))
+        {
+            // Just print from rank 0 later, but we don't know rank yet.
+            // For now, print unconditionally (or move this after MPI_Init).
+            std::cout << desc << "\n";
+            return 0;
+        }
+    }
+    catch (const std::exception &e)
+    {
+        std::cerr << "Error parsing command line: " << e.what() << "\n";
+        return 1;
+    }
+
+    // Optionally only rank 0 prints what config it’s using
+    std::cout << "Using config file: " << config_path << std::endl;
+
+    // ---- Use the parsed config path ----
+    DualFieldConfig config(config_path);
+    config.PrintTree(config.get_tree());
+
+    // ------------------------------------------------------------------
+    // 0. Configuration
+    // ------------------------------------------------------------------
+    double viscosity = config.get_viscosity();
+    int refinements = config.get_refinements();
+    int order = config.get_order();
+    int visualisation = config.get_visualisation();
+    int printlevel = config.get_printlevel();
+    double tol = config.get_tol();
+    bool has_exact_u = config.has_exact_u();
+    std::string mesh_string = config.get_mesh();
+    std::string output_file = config.get_outputfile();
+    std::string solver_type = config.get_solver();
+    double theta = -1.;
+    double Cw = 100.;
+    double dt = config.get_dt();
+    double T = config.get_T();
+
+  
+    // ------------------------------------------------------------------
+    // 1. Mesh and FE spaces (PARALLEL)
+    // ------------------------------------------------------------------
+    Mesh mesh(mesh_string.c_str(), 1, 1);
+    std::cout << mesh.GetNE() << std::endl;
+    for (int l = 0; l < refinements; l++)
+    {
+        mesh.UniformRefinement();
+    }
+    std::cout << mesh.GetNE() << std::endl;
+    int dim = mesh.Dimension();
+
+    // FE spaces: DG subset L2, ND subset Hcurl, RT subset Hdiv, CG subset H1
+    mfem::FiniteElementCollection *fec_DG = new mfem::L2_FECollection(order - 1, dim);
+    mfem::FiniteElementCollection *fec_ND = new mfem::ND_FECollection(order, dim);
+    mfem::FiniteElementCollection *fec_RT = new mfem::RT_FECollection(order - 1, dim);
+    mfem::FiniteElementCollection *fec_CG = new mfem::H1_FECollection(order, dim);
+    mfem::FiniteElementSpace DG(&mesh, fec_DG);
+    mfem::FiniteElementSpace ND(&mesh, fec_ND);
+    mfem::FiniteElementSpace RT(&mesh, fec_RT);
+    mfem::FiniteElementSpace CG(&mesh, fec_CG);
+
+
+    int num_it_A1, num_it_A2;
+    num_it_A1  = 0;
+    num_it_A2 = 0;
+
+    // ---- Boundary attribute marker (optional) ------------------------------
+    mfem::Array<int> lid_marker;
+    const mfem::Array<int> *lid_marker_ptr = nullptr;
+    if (config.has_lid_attributes())
+    {
+        lid_marker = config.get_lid_marker(mesh.bdr_attributes.Max());
+        lid_marker_ptr = &lid_marker;
+        std::cout << "Lid-driven cavity mode: nonzero BCs on attributes";
+        for (int i = 0; i < lid_marker.Size(); i++)
+            if (lid_marker[i]) std::cout << " " << i+1;
+        std::cout << std::endl;
+    }
+
+    mfem::Array<int> ess_bdr(mesh.bdr_attributes.Max());
+    ess_bdr = 1; // all boundaries are essential for RT
+
+    mfem::Array<int> ess_tdof;
+    RT.GetEssentialTrueDofs(ess_bdr, ess_tdof);
+
+    hdiv::StokesSystem sys(RT,ND,DG, ess_tdof, 1./dt, viscosity);
+    hdiv::StokesRHS rhs(RT, ND, DG, ess_tdof, config.get_exact_data("force_data"), config.get_exact_data("boundary_data_u"), viscosity, lid_marker_ptr);
+    hdiv::StokesSolution x(RT, ND, DG);
+    mfem::VectorFunctionCoefficient u_exact(3, config.get_exact_data("initial_data_u"));
+    u_exact.SetTime(0.);
+    x.get_u().ProjectCoefficient(u_exact);
+
+    mfem::GridFunction u1(&ND);
+    mfem::CurlGridFunctionCoefficient w2(&x.get_u());
+   // mfem::GridFunction w2(&RT);
+   // mfem::VectorFunctionCoefficient w_exact_coeff(3, config.get_exact_data("exact_data_w"));
+   // w2.ProjectCoefficient(w_exact_coeff);
+
+    double t = 0.;
+    int cycle = 0;
+
+    mfem::ParaViewDataCollection vtk_dc("./data/visualisation/paraview/" + output_file, &mesh);
+    if (visualisation > 0)
+    {
+        vtk_dc.RegisterField("u2", &x.get_u()); // Register field for visualization
+        //vtk_dc.RegisterField("u2", &v); // Register field for visualization
+        //vtk_dc.RegisterField("w1", &w); // Register field for visualization
+        //vtk_dc.RegisterField("w2", &w2); // Register field for visualization
+        vtk_dc.RegisterField("p3", &x.get_p()); // Register field for visualization
+        //vtk_dc.RegisterField("p3", &q); // Register field for visualization
+        vtk_dc.SetCycle(0);             // Set initial cycle
+        vtk_dc.SetTime(0.0);            // Set initial time
+        vtk_dc.Save();                  // Save initial data
+    }
+
+    mfem::VectorGridFunctionCoefficient w1(&x.get_w());
+    DualFieldCSVLogger csv(config,cycle, t, t, &ND, &RT, u1, x.get_u(), x.get_w(), num_it_A1, num_it_A2);
+    for(t=dt, cycle=1; t<T+tol; t+=dt, cycle++){
+
+        csv.WriteRow();
+
+        sys.Update(w1);
+        rhs.Update(x.get_u(),t,1./dt);
+
+        hdiv::DirectSolver solver(RT,ND,DG,num_it_A2);
+        solver.SetOperator(sys);
+        solver.Mult(rhs,x);
+	//rhs.get_p().Print(std::cout);
+
+
+        //if (visualisation > 0)
+        {
+            vtk_dc.SetCycle(cycle);     // Update cycle in ParaView
+            vtk_dc.SetTime(t); // Update time in ParaView
+            vtk_dc.Save();              // Save data
+        }
+
+
+    }
+
+    delete fec_RT;
+    delete fec_ND;
+    delete fec_CG;
+    delete fec_DG;
+
+    return 0;
+}
