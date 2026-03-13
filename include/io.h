@@ -484,6 +484,77 @@ private:
     DualFieldConfig config_;
 };
 
+// CSV logger for the H(div)-H(div) dual-field Navier-Stokes system.
+//
+// Both velocity fields u1, u2 live in the same RT (H(div)) space.  The
+// quantities logged are the kinetic energies ||u1||^2 and ||u2||^2 (via the
+// RT mass matrix), the L2 error against the exact solution (when available),
+// and per-system iteration counts.
+class HDivDualFieldCSVLogger : public CSVLogger
+{
+public:
+    HDivDualFieldCSVLogger(DualFieldConfig &config,
+                           int &cycle,
+                           double &t,
+                           mfem::FiniteElementSpace *RT,
+                           mfem::GridFunction &u1,
+                           mfem::GridFunction &u2,
+                           int &num_it1,
+                           int &num_it2)
+        : CSVLogger(config.get_outputfile()),
+          cycle_(cycle), t_(t),
+          RT_(RT),
+          mass_RT_(RT),
+          u1_(u1), u2_(u2),
+          num_it1_(num_it1), num_it2_(num_it2),
+          time_(std::chrono::steady_clock::now()),
+          config_(config)
+    {
+        get_ofstream() << "runtime_it,cycle,time,num_it1,num_it2,||u1||,||u2||";
+        if (config.has_exact_u())
+            get_ofstream() << ",u1_err_L2,u2_err_L2";
+        get_ofstream() << std::endl;
+        get_ofstream().flush();
+
+        mass_RT_.AddDomainIntegrator(new mfem::VectorFEMassIntegrator());
+        mass_RT_.Assemble();
+        mass_RT_.Finalize();
+    }
+
+    void WriteRow() override
+    {
+        double u1_norm = MatrixConservedVariable(mass_RT_, u1_);
+        double u2_norm = MatrixConservedVariable(mass_RT_, u2_);
+
+        std::chrono::duration<double> runtime_it = std::chrono::steady_clock::now() - time_;
+        time_ = std::chrono::steady_clock::now();
+
+        get_ofstream() << runtime_it.count() << "," << cycle_ << ","
+                       << std::setprecision(15) << std::fixed << t_ << ","
+                       << num_it1_ << "," << num_it2_ << ","
+                       << u1_norm << "," << u2_norm;
+        if (config_.has_exact_u())
+        {
+            mfem::VectorFunctionCoefficient u_exact(3, config_.get_exact_data("exact_data_u"));
+            u_exact.SetTime(t_);
+            get_ofstream() << "," << u1_.ComputeL2Error(u_exact)
+                           << "," << u2_.ComputeL2Error(u_exact);
+        }
+        get_ofstream() << std::endl;
+        get_ofstream().flush();
+    }
+
+private:
+    int &cycle_;
+    double &t_;
+    mfem::FiniteElementSpace *RT_;
+    mfem::BilinearForm mass_RT_;
+    mfem::GridFunction &u1_, &u2_;
+    int &num_it1_, &num_it2_;
+    std::chrono::time_point<std::chrono::steady_clock> time_;
+    DualFieldConfig config_;
+};
+
 class NitscheStokesCSVLogger : public CSVLogger
 {
 public:

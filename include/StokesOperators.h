@@ -632,7 +632,7 @@ namespace hdiv{
         mfem::BilinearForm blf_D_;
         mfem::TransposeOperator BT, CT;
         mfem::SparseMatrix *BT_mat, *CT_mat, *A_mat;
-        double mass_, viscosity_, sigma_;
+        double mass_, viscosity_, sigma_, gamma_, Cw_;
         mfem::ConstantCoefficient minus_one_coef_, viscosity_coef_;
         const mfem::Array<int> &ess_tdof_list_;
 
@@ -641,12 +641,12 @@ namespace hdiv{
                     mfem::FiniteElementSpace &ND,
                     mfem::FiniteElementSpace &DG,
                     const mfem::Array<int> &ess_tdof_list,
-                    double mass, double viscosity, double sigma = 2.0)
+                    double mass, double viscosity, double sigma = 2.0, double Cw = 0.0, double gamma = 0.0)
             : OffsetsHolder({&RT, &ND, &DG}) // 1) offsets constructed first
             ,
             mfem::BlockMatrix(offsets_) // 2) base MakeRef(offsets)
             ,
-            RT_(&RT), blf_B(&RT, &ND), blf_BT(&ND,&RT), blf_CT(&RT,&DG), blf_C(&RT,&DG), blf_D_(&ND), BT(blf_B), CT(blf_C), ess_tdof_list_(ess_tdof_list), mass_(mass), viscosity_(viscosity), sigma_(sigma), minus_one_coef_(-1.), viscosity_coef_(viscosity_)
+            RT_(&RT), blf_B(&RT, &ND), blf_BT(&ND,&RT), blf_CT(&RT,&DG), blf_C(&RT,&DG), blf_D_(&ND), BT(blf_B), CT(blf_C), ess_tdof_list_(ess_tdof_list), mass_(mass), viscosity_(viscosity), sigma_(sigma), gamma_(gamma), Cw_(Cw), minus_one_coef_(-1.), viscosity_coef_(viscosity_)
         {
             // assemble operators
             mfem::ConstantCoefficient mass_coef(mass_), viscosity_coef(viscosity_);
@@ -654,10 +654,14 @@ namespace hdiv{
             mfem::BilinearForm blf_A(RT_);
             blf_A.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(mass_coef));
             blf_A.AddInteriorFaceIntegrator(new RT_DGPenaltyIntegrator(sigma_, viscosity_));
+            blf_A.AddInteriorFaceIntegrator(new RT_DivJumpIntegrator(gamma_, viscosity_));
+            if (Cw_ > 0.0)
+                blf_A.AddBdrFaceIntegrator(new RT_BdrTangentPenaltyIntegrator(Cw_));
             blf_A.Assemble();
             blf_A.Finalize(); // only if you need the explicit matrix (SparseMatrix)
 
             blf_B.AddDomainIntegrator(new mfem::MixedVectorWeakCurlIntegrator());
+            blf_B.AddBdrFaceIntegrator(new RT_ND_BdrCrossProductIntegrator());
             blf_B.Assemble();
             blf_B.Finalize(); // only if you need the explicit matrix
 
@@ -715,6 +719,9 @@ namespace hdiv{
                 blf_A.AddDomainIntegrator(conv);
             }
             blf_A.AddInteriorFaceIntegrator(new RT_DGPenaltyIntegrator(sigma_, viscosity_));
+            blf_A.AddInteriorFaceIntegrator(new RT_DivJumpIntegrator(gamma_, viscosity_));
+            if (Cw_ > 0.0)
+                blf_A.AddBdrFaceIntegrator(new RT_BdrTangentPenaltyIntegrator(Cw_));
             blf_A.Assemble();
             blf_A.Finalize();
 
@@ -742,7 +749,7 @@ namespace hdiv{
         const mfem::Array<int> &ess_tdof_list_;
         mfem::Array<int> ess_tdof_lid_;  // DOFs on lid (get tr_u values)
         mfem::Array<int> bdr_marker_;   // boundary attribute marker for lid faces
-        double viscosity_;
+        double viscosity_, Cw_;
         bool has_lid_;
 
     public:
@@ -755,7 +762,8 @@ namespace hdiv{
                 std::function<void(const mfem::Vector &, double, mfem::Vector &)> f,
                 std::function<void(const mfem::Vector &, double, mfem::Vector &)> tr_u,
                 double viscosity = 1.,
-                const mfem::Array<int> *bdr_marker = nullptr)
+                const mfem::Array<int> *bdr_marker = nullptr,
+                double Cw = 0.0)
             : OffsetsHolder({&RT, &ND, &DG}),
             mfem::BlockVector(offsets_),
             RT_(&RT),
@@ -765,6 +773,7 @@ namespace hdiv{
             f_coef_(DG.GetMesh()->Dimension(), std::move(f)),
             tr_u_coef_(DG.GetMesh()->Dimension(), std::move(tr_u)),
             viscosity_(viscosity),
+            Cw_(Cw),
             has_lid_(bdr_marker != nullptr)
         {
             if (has_lid_)
@@ -792,6 +801,13 @@ namespace hdiv{
             mfem::LinearForm f_lf(RT_);
             f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(mass_u_prev_coef));
             f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(f_coef_));
+            if (Cw_ > 0.0)
+            {
+                if (has_lid_)
+                    f_lf.AddBdrFaceIntegrator(new RT_BdrTangentPenaltyLFIntegrator(Cw_, tr_u_coef_), bdr_marker_);
+                else
+                    f_lf.AddBdrFaceIntegrator(new RT_BdrTangentPenaltyLFIntegrator(Cw_, tr_u_coef_));
+            }
             f_lf.Assemble();
 
             if (has_lid_)

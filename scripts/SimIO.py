@@ -756,7 +756,7 @@ class SimulationHelper:
 
         return out
 
-    def run_all_configs_euler(self, time="24:00:00", mempercpu="512G", cpuspertask="1"):        
+    def run_all_configs_euler(self, time="24:00:00", mempercpu="2048G", cpuspertask="1"):        
         """
         Submit all generated configuration files to the Euler cluster via SSH.
 
@@ -812,9 +812,19 @@ class SimulationHelper:
             config_directory = "data/config/" + self.name +"/"
             out_directory = "out/data/" + self.name + "/"
 
-            exec("cd dualfieldmfem && [ -d \"./" + config_directory + "\" ] && echo \"exists\" || mkdir "+config_directory)
-            exec("cd dualfieldmfem && [ -d \"./out/data\" ] && echo \"exists\" || mkdir \"./out/data\"")
-            exec("cd dualfieldmfem && [ -d \"./" + out_directory + "\" ] && echo \"exists\" || mkdir "+out_directory)
+            exec("cd dualfieldmfem && mkdir -p " + config_directory)
+            exec("cd dualfieldmfem && mkdir -p out/data")
+            exec("cd dualfieldmfem && mkdir -p " + out_directory)
+
+            # Upload mesh file if it exists locally
+            if hasattr(self, 'mesh') and self.mesh and os.path.isfile(self.mesh):
+                remote_mesh_dir = "/cluster/home/wtonnon/dualfieldmfem/" + os.path.dirname(self.mesh)
+                exec("cd dualfieldmfem && mkdir -p " + os.path.dirname(self.mesh))
+                sftp_mesh = client.open_sftp()
+                remote_mesh_path = "/cluster/home/wtonnon/dualfieldmfem/" + self.mesh
+                print(f"Uploading mesh: {self.mesh} -> {remote_mesh_path}")
+                sftp_mesh.put(self.mesh, remote_mesh_path)
+                sftp_mesh.close()
 
             files = os.listdir(config_directory)
             print(files)

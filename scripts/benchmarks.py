@@ -290,8 +290,8 @@ class LidDrivenCavity3DExact(benchmark):
             SimulationDataProcessor=SimulationDataProcessor,
             dts=lambda order, refinements: .1,
             T=T,
-            refinements=lambda order: [2] if order == 1 else [0],
-            orders=[1])
+            refinements=lambda order: [0] if order == 1 else [0],
+            orders=[2])
 
 
 class ConstantField(benchmark):
@@ -385,6 +385,6 @@ class RigidRotation(benchmark):
 
 
 if __name__ == "__main__":
-    bench = LidDrivenCavity3DExact("./build/hcurl_dualfieldnavierstokes_nitsche")
+    bench = LidDrivenCavity3DExact("./build/dualfieldnavierstokes_nitsche")
     #bench = RigidRotation()
     bench.run_local()
