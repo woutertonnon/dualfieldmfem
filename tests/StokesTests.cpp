@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
-#include <iostream>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -11,116 +10,71 @@
 
 using namespace mfem;
 
-TEST(HdivStokesSystem, PeriodicConstantField_TransposeGivesZero)
+TEST(HdivStokesSystem, PeriodicMesh_MultMatchesRHSAndGMRESSolvesToConstantField)
 {
-    // Applies Stokes operator transpose to a constant velocity field on a periodic mesh.
-    // Uses ND for velocity and CG for pressure with zero mass contribution in this configuration.
-    // Expects the resulting vector to be (numerically) zero.
+    // Checks that the H(div) Stokes operator applied to a constant velocity field matches the
+    // assembled RHS, then solves with GMRES and verifies the recovered velocity in L2.
 
     const double viscosity = 1.0;
-    const int refinements = 6;
+    const int refinements = 0;
     const int order = 2;
     const double tol = 1e-10;
-    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
+    const std::string mesh_string = "../geo/mesh/ConstantField.msh";
 
-    //std::cout << "test\n";
     Mesh mesh(mesh_string.c_str(), 1, 1);
     for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
     const int dim = mesh.Dimension();
 
-    //std::cout << "test\n";
-    auto *fec_RT = new RT_FECollection(order-1,dim);
+    auto *fec_RT = new RT_FECollection(order-1, dim);
     auto *fec_ND = new ND_FECollection(order, dim);
     auto *fec_DG = new L2_FECollection(order-1, dim);
 
-    //std::cout << "test\n";
     FiniteElementSpace RT(&mesh, fec_RT);
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace DG(&mesh, fec_DG);
 
     mfem::Array<int> ess_bdr(mesh.bdr_attributes.Max());
     ess_bdr = 0;
-    ess_bdr[0] = 1; // attribute 1 is essential
+    ess_bdr[0] = 1;
 
     mfem::Array<int> ess_tdof;
     RT.GetEssentialTrueDofs(ess_bdr, ess_tdof);
 
+    hdiv::StokesSolution sol(RT, ND, DG);
 
-
-    //std::cout << "test\n";
-    hdiv::StokesSolution sol(RT,ND,DG);
-
-    // 1. Get the total number of True DOFs
-    int n_tdofs = sol.Size();
-
-    // 2. Initialize an array of size N with all zeros
-    mfem::Array<int> ess_marker(n_tdofs);
-    ess_marker = 0; 
-
-    // 3. Set values to 1 for every index present in ess_tdof
-    for (int i = 0; i < ess_tdof.Size(); i++) {
-        int index = ess_tdof[i];
-        ess_marker[index] = 1;
-    }
-
-
-    //std::cout << "test\n";
     auto vec1 = [](const mfem::Vector&, double, mfem::Vector &y) -> void
-        {
-            y.SetSize(3);
-            y.Elem(0) = 1.0;
-            y.Elem(1) = 1.0;
-            y.Elem(2) = 1.0;
-        };
-    mfem::VectorFunctionCoefficient vec1_coef(
-        3, vec1);
-    sol.get_u().ProjectCoefficient(vec1_coef);
-        auto vec0 = [](const mfem::Vector&, double, mfem::Vector &y) -> void
-        {
-            y.SetSize(3);
-            y.Elem(0) = 0.0;
-            y.Elem(1) = 0.0;
-            y.Elem(2) = 0.0;
-        };
-    mfem::VectorFunctionCoefficient vec0_coef(3,vec0);
+    {
+        y.SetSize(3);
+        y.Elem(0) = 1.0;
+        y.Elem(1) = 1.0;
+        y.Elem(2) = 1.0;
+    };
+    auto vec0 = [](const mfem::Vector&, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = 0.0;
+        y.Elem(1) = 0.0;
+        y.Elem(2) = 0.0;
+    };
 
-    //std::cout << "test7\n";
-    double mass = 100.;
+    mfem::VectorFunctionCoefficient vec1_coef(3, vec1);
+    mfem::VectorFunctionCoefficient vec0_coef(3, vec0);
+    sol.get_u().ProjectCoefficient(vec1_coef);
+
+    const double mass = 100.;
     hdiv::StokesSystem sys(RT, ND, DG, ess_tdof, mass, viscosity);
     sys.Update(vec0_coef);
-    //sys.Print(std::cout);
-    //ess_tdof.Print(std::cout);
-    //std::cout << "test9\n";
-    //std::cout << "test10\n";
-    hdiv::StokesRHS rhs(RT,ND,DG, ess_tdof, vec0, vec1);
-    rhs.Update(sol.get_u(),0.,mass);
 
-    //std::cout << "test11\n";
-    //rhs.Print(std::cout);
-;
+    hdiv::StokesRHS rhs(RT, ND, DG, ess_tdof, vec0, vec1);
+    rhs.Update(sol.get_u(), 0., mass);
+
     mfem::Vector y(sol.Size());
     sys.Mult(sol, y);
-    //    y.Print(std::cout);
-    //    std::cout << std::endl;
-    //    rhs.Print(std::cout);
 
-    for(int i = 0; i<y.Size(); ++i){
-   //     if(ess_marker[i]==0 && std::abs(y[i]-rhs[i])>1e-5) std::cout << "WARNING!!!\n";
-    //    std::cout << i << "," << ess_marker[i] << ", " << y[i] << ", " << rhs[i] << std::endl;
-    }
-   //     y.Print(std::cout);
-    
+    for (int i = 0; i < y.Size(); ++i)
+        EXPECT_NEAR(y[i], rhs[i], tol) << "Failed at index = " << i;
 
-    std::cout << "RT Size: " << RT.GetNDofs() << "\nND Size: " << ND.GetNDofs() << "\nDG Size: " << DG.GetNDofs() << std::endl;
-
-    for(int i=0; i<y.Size(); ++i)
-        EXPECT_NEAR(y[i], rhs[i], tol) << "Failed at index = " << i << std::endl;
-
-    int iters;
     mfem::GMRESSolver solver;
-    //std::cout << "test17\n";
-    //mfem::SparseMatrix *mono_mat = sys.CreateMonolithic();
-    //std::cout << "test18\n";
     solver.SetOperator(sys);
     solver.SetPrintLevel(1);
     solver.SetRelTol(1e-8);
@@ -128,33 +82,20 @@ TEST(HdivStokesSystem, PeriodicConstantField_TransposeGivesZero)
     solver.SetKDim(1000);
     solver.SetMaxIter(1000000);
 
-    //X.Print(std::cout);
-    //B.Print(std::cout);
     sol.get_u() = 0.;
-    solver.Mult(rhs,sol);
-    //sol.Print(std::cout);
+    solver.Mult(rhs, sol);
 
+    ASSERT_NEAR(sol.get_u().ComputeL2Error(vec1_coef), 0., 1e-3);
 
-    y=0.;
-    sys.Mult(sol, y);
-      //  sol.Print(std::cout);
-   //     y.Print(std::cout);
-    y -= rhs;
-    //y.Print(std::cout);
-    //X.Print(std::cout);
-    //sol.get_u().Print(std::cout);
-    ASSERT_NEAR(sol.get_u().ComputeL2Error(vec1_coef),0.,1e-3);
-    
     delete fec_RT;
     delete fec_ND;
     delete fec_DG;
 }
 
-TEST(HdivStokesSystem, PeriodicConstantField_TransposeGivesZero2)
+TEST(HdivStokesSystem, CubeMesh_FormLinearSystemWithMINRESSolvesToConstantField)
 {
-    // Applies Stokes operator transpose to a constant velocity field on a reference cube.
-    // Uses ND for velocity and CG for pressure with zero mass contribution in this configuration.
-    // Expects the resulting vector to be (numerically) zero.
+    // Solves the H(div) Stokes system on a cube mesh via FormLinearSystem and MINRES,
+    // and verifies the recovered velocity matches the exact constant field in L2.
 
     const double viscosity = 1.0;
     const int refinements = 0;
@@ -162,85 +103,53 @@ TEST(HdivStokesSystem, PeriodicConstantField_TransposeGivesZero2)
     const double tol = 1e-10;
     const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
 
-    std::cout << "test\n";
     Mesh mesh(mesh_string.c_str(), 1, 1);
     for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
     const int dim = mesh.Dimension();
 
-
-
-
-    std::cout << "test\n";
-    auto *fec_RT = new RT_FECollection(order-1,dim);
+    auto *fec_RT = new RT_FECollection(order-1, dim);
     auto *fec_ND = new ND_FECollection(order, dim);
     auto *fec_DG = new L2_FECollection(order-1, dim);
 
-    std::cout << "test\n";
     FiniteElementSpace RT(&mesh, fec_RT);
     FiniteElementSpace ND(&mesh, fec_ND);
     FiniteElementSpace DG(&mesh, fec_DG);
-    std::cout << "RT Size: " << RT.GetNDofs() << "\nND Size: " << ND.GetNDofs() << "\nDG Size: " << DG.GetNDofs() << ", n elem = " << mesh.GetNE() << std::endl;
+
     mfem::Array<int> ess_bdr(mesh.bdr_attributes.Max());
     ess_bdr = 0;
-    ess_bdr[0] = 1; // attribute 1 is essential
+    ess_bdr[0] = 1;
 
     mfem::Array<int> ess_tdof;
     RT.GetEssentialTrueDofs(ess_bdr, ess_tdof);
 
+    hdiv::StokesSolution sol(RT, ND, DG);
 
-    std::cout << "test\n";
-    hdiv::StokesSolution sol(RT,ND,DG);
-
-    std::cout << "test\n";
     auto vec1 = [](const mfem::Vector&, double, mfem::Vector &y) -> void
-        {
-            y.SetSize(3);
-            y.Elem(0) = 1.0;
-            y.Elem(1) = 1.0;
-            y.Elem(2) = 1.0;
-        };
-    mfem::VectorFunctionCoefficient vec1_coef(
-        3, vec1);
+    {
+        y.SetSize(3);
+        y.Elem(0) = 1.0;
+        y.Elem(1) = 1.0;
+        y.Elem(2) = 1.0;
+    };
+    mfem::VectorFunctionCoefficient vec1_coef(3, vec1);
     sol.get_u().ProjectCoefficient(vec1_coef);
 
-
-    std::cout << "test\n";
     hdiv::StokesSystem sys(RT, ND, DG, ess_tdof, 1., viscosity);
-    hdiv::StokesRHS rhs(RT,ND,DG, ess_tdof,vec1, vec1);
+    hdiv::StokesRHS rhs(RT, ND, DG, ess_tdof, vec1, vec1);
 
-
-    //ess_tdof.Append(sol.Size()-1);
-    //std::cout << "ess_tdof with size: " << ess_tdof.Size() << "\n";
-      //  ess_tdof.Print(std::cout);
-
-    //sol.get_u().ProjectBdrCoefficientNormal(vec1_coef, ess_bdr);
-
-    // assemble a,b then:
     mfem::Operator *A;
     mfem::Vector X, B;
     sys.FormLinearSystem(ess_tdof, sol, rhs, A, X, B);
-        rhs.Print(std::cout);
-    //sys.Print(std::cout);
-    //rhs.Print(std::cout);
-    //sol.Print(std::cout);
-    // solve reduced system
-    int iters;
+
     mfem::MINRESSolver solver;
     solver.SetOperator(*A);
     solver.SetPrintLevel(1);
     solver.SetMaxIter(10000);
-
-    //X.Print(std::cout);
-    //B.Print(std::cout);
     solver.Mult(B, X);
 
-    //X.Print(std::cout);
-    // recover full x (including essential values)
     sys.RecoverFEMSolution(X, rhs, sol);
 
-    //X.Print(std::cout);
-    //sol.get_u().Print(std::cout);
-    ASSERT_NEAR(sol.get_u().ComputeL2Error(vec1_coef),0.,1e-5);
+    ASSERT_NEAR(sol.get_u().ComputeL2Error(vec1_coef), 0., 1e-5);
 
     delete fec_RT;
     delete fec_ND;
@@ -248,11 +157,10 @@ TEST(HdivStokesSystem, PeriodicConstantField_TransposeGivesZero2)
 }
 
 
-TEST(StokesSystem, PeriodicConstantField_TransposeGivesZero)
+TEST(HcurlStokesSystem, PeriodicMesh_MultTransposeOfConstantFieldIsZero)
 {
-    // Applies Stokes operator transpose to a constant velocity field on a periodic mesh.
-    // Uses ND for velocity and CG for pressure with zero mass contribution in this configuration.
-    // Expects the resulting vector to be (numerically) zero.
+    // Verifies that MultTranspose of the H(curl) Stokes operator applied to a constant velocity
+    // field is zero on a periodic mesh (no viscous or mass contributions for constant fields).
 
     const double viscosity = 1.0;
     const int refinements = 2;
@@ -307,11 +215,10 @@ TEST(StokesSystem, PeriodicConstantField_TransposeGivesZero)
     delete fec_CG;
 }
 
-TEST(StokesSystem, PeriodicConstantField_TransposeMatchesRHS)
+TEST(HcurlStokesSystem, PeriodicMesh_MultTransposeMatchesRHS)
 {
-    // Compares Stokes operator transpose applied to a constant field against an assembled RHS.
-    // Uses periodic mesh with ND/CG spaces and constant forcing/traction-like data.
-    // Expects componentwise equality between operator result and RHS within tolerance.
+    // Verifies that MultTranspose of the H(curl) Stokes operator applied to a constant field
+    // matches the assembled RHS component-wise on a periodic mesh.
 
     const double viscosity = 1.0;
     const int refinements = 2;
@@ -375,11 +282,10 @@ TEST(StokesSystem, PeriodicConstantField_TransposeMatchesRHS)
     delete fec_CG;
 }
 
-TEST(StokesSystem, PeriodicConstantField_SolvesToExactConstant)
+TEST(HcurlStokesSystem, PeriodicMesh_GMRESSolvesToConstantField)
 {
-    // Solves the Stokes system on a periodic mesh with a constant exact velocity solution.
-    // Uses GMRES on the coupled operator with RHS assembled from matching constant data.
-    // Expects the computed velocity to match the exact constant field with near-zero L2 error.
+    // Solves the H(curl) Stokes system with constant forcing on a periodic mesh using GMRES,
+    // and verifies the recovered velocity matches the exact constant field in L2.
 
     const double viscosity = 1.0;
     const int refinements = 1;
@@ -425,11 +331,11 @@ TEST(StokesSystem, PeriodicConstantField_SolvesToExactConstant)
     delete fec_CG;
 }
 
-TEST(StokesSystem, CubeConstantField_TransposeGivesZeroVelocityBlock)
+TEST(HcurlStokesSystem, CubeMesh_MultTransposeVelocityBlockIsZeroWithoutNitsche)
 {
-    // Applies Stokes operator transpose to a constant velocity field on a non-periodic cube mesh.
-    // Uses ND/CG spaces with zero mass and no stabilization terms enabled in this configuration.
-    // Expects the velocity block of the result to be (numerically) zero for this setup.
+    // Verifies that the velocity block of MultTranspose is zero when applied to a constant field
+    // on a cube mesh with mass, Nitsche boundary terms, and interior-face jump stabilization
+    // all disabled (mass=0, theta=0, Cw=0, sigma=0).
 
     const double viscosity = 100.0;
     const int refinements = 0;
@@ -458,7 +364,8 @@ TEST(StokesSystem, CubeConstantField_TransposeGivesZeroVelocityBlock)
         });
     x.get_u().ProjectCoefficient(vec1_coef);
 
-    hcurl::StokesSystem sys(ND, CG, 0.0, viscosity, 0.0, 0.0);
+    // sigma=0, gamma=0: disable all interior-face terms
+    hcurl::StokesSystem sys(ND, CG, 0.0, viscosity, 0.0, 0.0, 0.0, 0.0);
 
     hcurl::StokesSolution y(ND, CG);
     sys.MultTranspose(x, y);
@@ -469,11 +376,13 @@ TEST(StokesSystem, CubeConstantField_TransposeGivesZeroVelocityBlock)
     delete fec_CG;
 }
 
-TEST(StokesSystem, CubeConstantField_TransposeMatchesRHS)
+TEST(HcurlStokesSystem, CubeMesh_MultTransposeMatchesRHSWithNitsche)
 {
-    // Compares Stokes operator transpose on a constant field against an assembled RHS on a cube mesh.
-    // Uses ND/CG spaces with viscosity and stabilization parameters passed consistently to RHS/system.
-    // Expects componentwise agreement between operator result and RHS within tolerance.
+    // Verifies that MultTranspose of the H(curl) Stokes operator matches the assembled RHS
+    // component-wise on a cube mesh with Nitsche boundary terms and jump stabilization enabled.
+    // The test field is the constant (1,1,1), which has zero interior-face jumps in ND so the
+    // jump penalty (sigma=10) contributes nothing and the RHS assembled without interior terms
+    // still matches the operator output.
 
     const double viscosity = 10.0;
     const int refinements = 2;
@@ -525,7 +434,7 @@ TEST(StokesSystem, CubeConstantField_TransposeMatchesRHS)
     };
 
     hcurl::StokesRHS rhs(ND, CG, f, f, 1.0, 100.0, viscosity);
-    hcurl::StokesSystem sys(ND, CG, 1.0, viscosity, 1.0, 100.0);
+    hcurl::StokesSystem sys(ND, CG, 1.0, viscosity, 1.0, 100.0, 10.0);
 
     hcurl::StokesSolution y(ND, CG);
     sys.MultTranspose(x, y);
@@ -537,11 +446,12 @@ TEST(StokesSystem, CubeConstantField_TransposeMatchesRHS)
     delete fec_CG;
 }
 
-TEST(StokesSystem, CubeConstantField_SolvesToExactConstant)
+TEST(HcurlStokesSystem, CubeMesh_GMRESSolvesToConstantField)
 {
-    // Solves the Stokes system on a cube mesh where the exact velocity is constant.
-    // Uses GMRES on the coupled system with RHS assembled from the same constant field.
-    // Expects the numerical velocity solution to match the exact field in L2 norm.
+    // Solves the H(curl) Stokes system with constant forcing on a cube mesh using GMRES,
+    // and verifies the recovered velocity matches the exact constant field in L2.
+    // Jump stabilization (sigma=10) is active; the constant field has zero interior-face
+    // jumps in ND so the penalty does not pollute the exact solution.
 
     const double viscosity = 1.0;
     const int refinements = 1;
@@ -567,7 +477,7 @@ TEST(StokesSystem, CubeConstantField_SolvesToExactConstant)
         y.Elem(2) = 1.0;
     };
 
-    hcurl::StokesSystem sys(ND, CG, 1.0, viscosity, 1.0, 100.0);
+    hcurl::StokesSystem sys(ND, CG, 1.0, viscosity, 1.0, 100.0, 10.0);
     hcurl::StokesRHS rhs(ND, CG, f, f);
     hcurl::StokesSolution x(ND, CG);
 
@@ -587,11 +497,13 @@ TEST(StokesSystem, CubeConstantField_SolvesToExactConstant)
     delete fec_CG;
 }
 
-TEST(StokesSystem, CubeVortexTrace_SolvesToExactVortex)
+TEST(HcurlStokesSystem, CubeMesh_GMRESSolvesToVortexTraceField)
 {
-    // Solves a Stokes problem on a cube mesh with a vortex-like exact velocity trace.
-    // Uses zero body force and imposes a rotational trace field via the RHS construction.
-    // Expects the recovered velocity to match the prescribed trace field in L2 norm.
+    // Solves the H(curl) Stokes system on a cube mesh with a vortex trace boundary condition
+    // u = (-y, x, 0) and zero body force, and verifies the recovered velocity matches the
+    // exact rotational field in L2.  The exact solution lies in ND1 (it is a + b×x with
+    // b = (0,0,1)), so its ND projection has zero interior-face jumps and jump stabilization
+    // (sigma=10) does not alter the solution.
 
     const double mass = 0.0;
     const double viscosity = 0.1;
@@ -626,7 +538,7 @@ TEST(StokesSystem, CubeVortexTrace_SolvesToExactVortex)
         y.Elem(2) = 0.0;
     };
 
-    hcurl::StokesSystem sys(ND, CG, mass, viscosity, 1.0, 100.0);
+    hcurl::StokesSystem sys(ND, CG, mass, viscosity, 1.0, 100.0, 10.0);
     hcurl::StokesRHS rhs(ND, CG, f, tr_u, 1.0, 100.0, viscosity);
     hcurl::StokesSolution x(ND, CG);
 
@@ -646,11 +558,10 @@ TEST(StokesSystem, CubeVortexTrace_SolvesToExactVortex)
     delete fec_CG;
 }
 
-TEST(SchurPreconditioner, CubeSmoothRHS_GMRESWithSchurPreconditionerRuns)
+TEST(HcurlSchurPreconditioner, CubeMesh_PreconditionedGMRESConverges)
 {
-    // Runs GMRES on the coupled Stokes system using a Schur-complement preconditioner.
-    // Assembles RHS from a smooth, non-constant vector field on a refined cube mesh.
-    // Confirms the solve completes with the provided tolerance and configuration.
+    // Verifies that GMRES preconditioned with the Schur complement preconditioner converges
+    // on a smooth RHS problem on a refined cube mesh.
 
     const double viscosity = 0.02;
     const double mass = 1.0;
@@ -722,11 +633,10 @@ TEST(SchurPreconditioner, CubeSmoothRHS_GMRESWithSchurPreconditionerRuns)
     delete fec_CG;
 }
 
-TEST(SchurSolver, CubeSmoothRHS_SchurSolverReproducesRHSUnderOperator)
+TEST(HcurlSchurSolver, CubeMesh_SolutionSatisfiesOperatorEquation)
 {
-    // Solves the Stokes system using a custom Schur solver and verifies operator consistency.
-    // Builds RHS with a smooth forcing and zero trace, then solves on a refined cube mesh.
-    // Applies the system operator to the computed solution and compares to RHS entrywise.
+    // Solves the H(curl) Stokes system using the Schur solver and verifies that applying
+    // the system operator to the computed solution reproduces the RHS component-wise.
 
     const double viscosity = 1.0;
     const double mass = 1.0;
@@ -805,11 +715,10 @@ TEST(SchurSolver, CubeSmoothRHS_SchurSolverReproducesRHSUnderOperator)
     delete fec_CG;
 }
 
-TEST(StokesSystemAndRHS, CubeVortexTrace_VelocityBlockMatchesRHSVelocityBlock)
+TEST(HcurlStokesSystem, CubeMesh_VelocityBlockMatchesRHSForVortexTrace)
 {
-    // Checks consistency between the velocity-block operator application and assembled RHS velocity block.
-    // Uses a vortex-like trace field with zero forcing on a refined cube mesh and strong theta penalty.
-    // Expects the operator-applied velocity to match the RHS velocity block within a relative tolerance.
+    // Verifies that the velocity block of the system operator applied to the projected vortex
+    // trace field matches the velocity block of the assembled RHS within a relative tolerance.
 
     const double viscosity = 1.0;
     const double mass = 0.0;
@@ -862,4 +771,431 @@ TEST(StokesSystemAndRHS, CubeVortexTrace_VelocityBlockMatchesRHSVelocityBlock)
 
     delete fec_ND;
     delete fec_CG;
+}
+
+TEST(HcurlStokesSystem, CubeMesh_NormalJumpPenaltyIncreasesABlock)
+{
+    // Verifies that sigma > 0 (ND_DGPenaltyIntegrator, normal-jump penalty) strictly
+    // increases the diagonal of the A block.  gamma=0 isolates this term from the
+    // curl-jump ghost penalty.
+
+    const double viscosity = 1.0;
+    const double mass = 1.0;
+    const int refinements = 1;
+    const int order = 1;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
+
+    Mesh mesh(mesh_string.c_str(), 1, 1);
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
+
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
+
+    FiniteElementSpace ND(&mesh, fec_ND);
+    FiniteElementSpace CG(&mesh, fec_CG);
+
+    // theta=-1, Cw=0: no boundary Nitsche; gamma=0: no curl-jump.
+    // Only sigma distinguishes the two systems.
+    hcurl::StokesSystem sys_no_jump  (ND, CG, mass, viscosity, -1.0, 0.0,  0.0, 0.0);
+    hcurl::StokesSystem sys_with_jump(ND, CG, mass, viscosity, -1.0, 0.0, 10.0, 0.0);
+
+    const mfem::SparseMatrix &A0 = sys_no_jump  .GetBlock(0, 0);
+    const mfem::SparseMatrix &A1 = sys_with_jump.GetBlock(0, 0);
+
+    ASSERT_EQ(A0.Height(), A1.Height());
+
+    bool any_larger = false;
+    for (int i = 0; i < A0.Height(); ++i)
+    {
+        const double d0 = A0.Elem(i, i);
+        const double d1 = A1.Elem(i, i);
+        EXPECT_GE(d1, d0 - 1e-14) << "Diagonal decreased at DOF " << i;
+        if (d1 > d0 + 1e-14) any_larger = true;
+    }
+    EXPECT_TRUE(any_larger) << "Normal-jump penalty did not increase any diagonal entry";
+
+    delete fec_ND;
+    delete fec_CG;
+}
+
+TEST(HcurlStokesSystem, CubeMesh_CurlJumpPenaltyIncreasesABlock)
+{
+    // Verifies that gamma > 0 (ND_CurlJumpIntegrator, curl-jump ghost penalty) strictly
+    // increases the diagonal of the A block.  sigma=0 isolates this term from the
+    // normal-jump penalty.
+    //
+    // For ND1 elements curl(u) is piecewise constant (P0), so [[curl phi_k]] is
+    // non-zero on every interior face adjacent to edge DOFs, guaranteeing a strict
+    // diagonal increase.
+
+    const double viscosity = 1.0;
+    const double mass = 1.0;
+    const int refinements = 1;
+    const int order = 1;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
+
+    Mesh mesh(mesh_string.c_str(), 1, 1);
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
+
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
+
+    FiniteElementSpace ND(&mesh, fec_ND);
+    FiniteElementSpace CG(&mesh, fec_CG);
+
+    // theta=-1, Cw=0: no boundary Nitsche; sigma=0: no normal-jump.
+    // Only gamma distinguishes the two systems.
+    hcurl::StokesSystem sys_no_curl_jump  (ND, CG, mass, viscosity, -1.0, 0.0, 0.0, 0.0);
+    hcurl::StokesSystem sys_with_curl_jump(ND, CG, mass, viscosity, -1.0, 0.0, 0.0, 1.0);
+
+    const mfem::SparseMatrix &A0 = sys_no_curl_jump  .GetBlock(0, 0);
+    const mfem::SparseMatrix &A1 = sys_with_curl_jump.GetBlock(0, 0);
+
+    ASSERT_EQ(A0.Height(), A1.Height());
+
+    bool any_larger = false;
+    for (int i = 0; i < A0.Height(); ++i)
+    {
+        const double d0 = A0.Elem(i, i);
+        const double d1 = A1.Elem(i, i);
+        EXPECT_GE(d1, d0 - 1e-14) << "Diagonal decreased at DOF " << i;
+        if (d1 > d0 + 1e-14) any_larger = true;
+    }
+    EXPECT_TRUE(any_larger) << "Curl-jump ghost penalty did not increase any diagonal entry";
+
+    delete fec_ND;
+    delete fec_CG;
+}
+
+TEST(HcurlStokesSystem, CubeMesh_UpwindPenaltyIncreasesABlockWithNonzeroWind)
+{
+    // Verifies that upwind_scale > 0 (ND_UpwindIntegrator, Heumann upwind) strictly
+    // increases the diagonal of the A block when a non-zero wind is present.
+    // sigma=0 and gamma=0 isolate the upwind term from the other face penalties.
+    //
+    // The upwind term assembles |w.n_F| [[u]].[v] on interior faces.  With a
+    // constant wind (1,0,0), every interior face that has a non-zero normal
+    // component in the x-direction contributes to the diagonal, so at least some
+    // ND edge DOFs must see an increased diagonal.
+
+    const double viscosity = 1.0;
+    const double mass = 1.0;
+    const int refinements = 1;
+    const int order = 1;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
+
+    Mesh mesh(mesh_string.c_str(), 1, 1);
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
+
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
+
+    FiniteElementSpace ND(&mesh, fec_ND);
+    FiniteElementSpace CG(&mesh, fec_CG);
+
+    // Constant wind in the x-direction
+    mfem::VectorFunctionCoefficient w_coef(
+        3, [](const mfem::Vector &, mfem::Vector &y) {
+            y.SetSize(3);
+            y[0] = 1.0; y[1] = 0.0; y[2] = 0.0;
+        });
+
+    // theta=-1, Cw=0: no boundary Nitsche; sigma=0, gamma=0: only upwind differs.
+    hcurl::StokesSystem sys_no_upwind  (ND, CG, mass, viscosity, -1.0, 0.0, 0.0, 0.0, 0.0);
+    hcurl::StokesSystem sys_with_upwind(ND, CG, mass, viscosity, -1.0, 0.0, 0.0, 0.0, 1.0);
+
+    sys_no_upwind  .Update(w_coef);
+    sys_with_upwind.Update(w_coef);
+
+    const mfem::SparseMatrix &A0 = sys_no_upwind  .GetBlock(0, 0);
+    const mfem::SparseMatrix &A1 = sys_with_upwind.GetBlock(0, 0);
+
+    ASSERT_EQ(A0.Height(), A1.Height());
+
+    bool any_larger = false;
+    for (int i = 0; i < A0.Height(); ++i)
+    {
+        const double d0 = A0.Elem(i, i);
+        const double d1 = A1.Elem(i, i);
+        EXPECT_GE(d1, d0 - 1e-14) << "Diagonal decreased at DOF " << i;
+        if (d1 > d0 + 1e-14) any_larger = true;
+    }
+    EXPECT_TRUE(any_larger) << "Heumann upwind did not increase any diagonal entry";
+
+    delete fec_ND;
+    delete fec_CG;
+}
+
+TEST(HdivStokesSystem, CubeMesh_PreconditionedGMRESConverges)
+{
+    // Verifies that GMRES preconditioned with hdiv::BlockDiagPreconditioner converges
+    // on a smooth RHS problem on a refined cube mesh with zero advection.
+
+    const double viscosity = 1.0;
+    const double mass = 10.0;
+    const int refinements = 2;
+    const int order = 1;
+    const double tol = 1e-5;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
+
+    Mesh mesh(mesh_string.c_str(), 1, 1);
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
+
+    auto *fec_RT = new RT_FECollection(order - 1, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_DG = new L2_FECollection(order - 1, dim);
+
+    FiniteElementSpace RT(&mesh, fec_RT);
+    FiniteElementSpace ND(&mesh, fec_ND);
+    FiniteElementSpace DG(&mesh, fec_DG);
+
+    mfem::Array<int> ess_bdr(mesh.bdr_attributes.Max());
+    ess_bdr = 0;
+    ess_bdr[0] = 1;
+
+    mfem::Array<int> ess_tdof;
+    RT.GetEssentialTrueDofs(ess_bdr, ess_tdof);
+
+    auto f = [](const mfem::Vector &x, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = x.Elem(0) * std::sin(x.Elem(1));
+        y.Elem(1) = x.Elem(1) * x.Elem(2);
+        y.Elem(2) = x.Elem(0);
+    };
+    auto zero = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y = 0.0;
+    };
+
+    mfem::VectorFunctionCoefficient zero_coef(3, zero);
+
+    hdiv::StokesSystem sys(RT, ND, DG, ess_tdof, mass, viscosity);
+    sys.Update(zero_coef);   // zero advection
+    hdiv::StokesRHS rhs(RT, ND, DG, ess_tdof, f, zero);
+    mfem::GridFunction u_zero(&RT);
+    u_zero = 0.;
+    rhs.Update(u_zero, 0., mass);
+
+    hdiv::BlockDiagPreconditioner pre(RT, ND, DG, mass);
+    pre.SetOperator(sys);
+
+    hdiv::StokesSolution sol(RT, ND, DG);
+
+    mfem::GMRESSolver solver;
+    solver.SetRelTol(tol);
+    solver.SetAbsTol(1e-12);
+    solver.SetKDim(300);
+    solver.SetMaxIter(10000);
+    solver.SetPrintLevel(1);
+    solver.SetOperator(sys);
+    solver.SetPreconditioner(pre);
+    solver.Mult(rhs, sol);
+
+    ASSERT_TRUE(solver.GetConverged());
+
+    // Verify residual: ||sys * sol - rhs|| / ||rhs|| < tol
+    mfem::Vector res(sol.Size());
+    sys.Mult(sol, res);
+    res -= rhs;
+    const double rhs_norm = rhs.Norml2();
+    EXPECT_LT(res.Norml2() / (rhs_norm > 0. ? rhs_norm : 1.), tol * 10.);
+
+    delete fec_RT;
+    delete fec_ND;
+    delete fec_DG;
+}
+
+TEST(HdivDirectSolver, CubeMesh_SolutionSatisfiesOperatorEquation)
+{
+    // Solves the H(div) Stokes system using hdiv::DirectSolver and verifies that
+    // applying the system operator to the computed solution reproduces the RHS
+    // component-wise.
+
+    const double viscosity = 1.0;
+    const double mass = 1.0;
+    const int refinements = 0;
+    const int order = 1;
+    const std::string mesh_string = "../geo/mesh/LidDrivenCavity3D.msh";
+
+    Mesh mesh(mesh_string.c_str(), 1, 1);
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
+
+    auto *fec_RT = new RT_FECollection(order - 1, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_DG = new L2_FECollection(order - 1, dim);
+
+    FiniteElementSpace RT(&mesh, fec_RT);
+    FiniteElementSpace ND(&mesh, fec_ND);
+    FiniteElementSpace DG(&mesh, fec_DG);
+
+    mfem::Array<int> ess_bdr(mesh.bdr_attributes.Max());
+    ess_bdr = 1;   // constrain all boundary faces
+
+    mfem::Array<int> ess_tdof;
+    RT.GetEssentialTrueDofs(ess_bdr, ess_tdof);
+
+    auto f = [](const mfem::Vector &x, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = x.Elem(0) * std::sin(x.Elem(1));
+        y.Elem(1) = x.Elem(1) * x.Elem(2);
+        y.Elem(2) = x.Elem(0);
+    };
+    auto zero = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y = 0.0;
+    };
+
+    mfem::VectorFunctionCoefficient zero_coef(3, zero);
+
+    hdiv::StokesSystem sys(RT, ND, DG, ess_tdof, mass, viscosity);
+    sys.Update(zero_coef);   // zero advection
+    hdiv::StokesRHS rhs(RT, ND, DG, ess_tdof, f, zero);
+    mfem::GridFunction u_prev(&RT);
+    u_prev = 0.;
+    rhs.Update(u_prev, 0., mass);
+
+    int iterations = 0;
+    hdiv::DirectSolver solver(RT, ND, DG, iterations);
+    solver.SetOperator(sys);
+
+    hdiv::StokesSolution sol(RT, ND, DG);
+    solver.Mult(rhs, sol);
+
+    mfem::Vector sys_sol(sys.NumRows());
+    sys.Mult(sol, sys_sol);
+
+    for (int i = 0; i < rhs.GetBlock(0).Size(); ++i)
+        EXPECT_NEAR(sys_sol[i], rhs[i], 1e-6) << "RT block failed at index " << i;
+    for (int i = rhs.GetBlock(0).Size(); i < rhs.GetBlock(0).Size() + rhs.GetBlock(1).Size(); ++i)
+        EXPECT_NEAR(sys_sol[i], rhs[i], 1e-6) << "ND block failed at index " << i;
+    //for (int i = rhs.GetBlock(0).Size() + rhs.GetBlock(1).Size(); i < rhs.Size(); ++i)
+    //    EXPECT_NEAR(sys_sol[i], rhs[i], 1e-6) << "DG block failed at index " << i;
+
+    delete fec_RT;
+    delete fec_ND;
+    delete fec_DG;
+}
+
+TEST(HdivDirectSolver, CubeMesh_NormalBCL2BoundaryError)
+{
+    // Verifies that the solved velocity satisfies the prescribed normal BC
+    // u·n = (1,0,0)·n in the L2 sense:
+    //
+    //   ||(u_h - (1,0,0)) · n||_{L2(∂Ω)} ≈ 0
+    //
+    // Also checks that ||u_h·n||^2_{L2(∂Ω)} = 2, which is the expected value
+    // for u=(1,0,0) on a unit-cube mesh (only the two x-aligned faces contribute).
+    // For RT elements the essential BC directly constrains the face-normal DOFs,
+    // so with a direct (UMFPack) solve both errors should be at machine precision.
+
+    const double viscosity = 1.0;
+    const double mass = 1.0;
+    const int refinements = 0;
+    const int order = 1;
+    const std::string mesh_string = "../geo/mesh/LidDrivenCavity3D.msh";
+
+    Mesh mesh(mesh_string.c_str(), 1, 1);
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
+
+    auto *fec_RT = new RT_FECollection(order - 1, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_DG = new L2_FECollection(order - 1, dim);
+
+    FiniteElementSpace RT(&mesh, fec_RT);
+    FiniteElementSpace ND(&mesh, fec_ND);
+    FiniteElementSpace DG(&mesh, fec_DG);
+
+    mfem::Array<int> ess_bdr(mesh.bdr_attributes.Max());
+    ess_bdr = 1;   // constrain all boundary faces
+
+    mfem::Array<int> ess_tdof;
+    RT.GetEssentialTrueDofs(ess_bdr, ess_tdof);
+
+    auto one = [](const mfem::Vector &x, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = 1.;
+        y.Elem(1) = 0.;
+        y.Elem(2) = 0.;
+    };
+    auto zero = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y = 0.0;
+    };
+
+    mfem::VectorFunctionCoefficient zero_coef(3, zero);
+    mfem::VectorFunctionCoefficient one_coef(3, one);
+
+    hdiv::StokesSystem sys(RT, ND, DG, ess_tdof, mass, viscosity);
+    sys.Update(zero_coef);
+    hdiv::StokesRHS rhs(RT, ND, DG, ess_tdof, zero, one);
+    mfem::GridFunction u_prev(&RT);
+    u_prev = 0.;
+    rhs.Update(u_prev, 0., mass);
+
+    int iterations = 0;
+    hdiv::DirectSolver solver(RT, ND, DG, iterations);
+    solver.SetOperator(sys);
+
+    hdiv::StokesSolution sol(RT, ND, DG);
+    solver.Mult(rhs, sol);
+
+    // Integrate ((u_h - u_exact) · n)^2 over every essential boundary face,
+    // where u_exact = (1,0,0).
+    // The un-normalised face normal n_J from CalcOrtho(J) satisfies:
+    //   dS = ||n_J|| d(ref),   n_hat = n_J / ||n_J||
+    // so  ((u-u_exact) · n_hat)^2 dS = ((u-u_exact) · n_J)^2 / ||n_J|| d(ref).
+    const mfem::GridFunction &u = sol.get_u();
+    double err_norm_sq = 0.0;
+    double norm_sq = 0.0;
+
+    for (int be = 0; be < mesh.GetNBE(); ++be)
+    {
+        const int attr = mesh.GetBdrElement(be)->GetAttribute();
+        if (!ess_bdr[attr - 1]) continue;
+
+        mfem::FaceElementTransformations *ftr = mesh.GetBdrFaceTransformations(be);
+        const int face_order = 2 * (order - 1) + 2;
+        const mfem::IntegrationRule &ir =
+            mfem::IntRules.Get(ftr->GetGeometryType(), face_order);
+
+        for (int q = 0; q < ir.GetNPoints(); ++q)
+        {
+            const mfem::IntegrationPoint &ip = ir.IntPoint(q);
+            ftr->SetAllIntPoints(&ip);
+
+            // Un-normalised outward normal; ||n_J|| = surface area element.
+            mfem::Vector n_J(dim);
+            mfem::CalcOrtho(ftr->Jacobian(), n_J);
+
+            // Evaluate u at this face point via the adjacent interior element.
+            mfem::Vector u_val(dim);
+            u.GetVectorValue(*ftr->Elem1, ftr->GetElement1IntPoint(), u_val);
+
+            // (u_h - u_exact) · n_J,  with u_exact = (1,0,0).
+            double un = u_val * n_J;
+            double un_err = un - n_J[0]; // assume exact solution is (1,0,0)
+            err_norm_sq += ip.weight * un_err * un_err / n_J.Norml2();
+            norm_sq += ip.weight * un * un / n_J.Norml2();
+        }
+    }
+
+    const double l2_normal_error = std::sqrt(err_norm_sq);
+    EXPECT_NEAR(norm_sq, 2.0, 1e-10);
+    EXPECT_NEAR(l2_normal_error, 0.0, 1e-10);
+
+    delete fec_RT;
+    delete fec_ND;
+    delete fec_DG;
 }

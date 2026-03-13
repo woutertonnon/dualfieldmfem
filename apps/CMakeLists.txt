@@ -8,6 +8,9 @@ add_executable(dualfieldnavierstokes_nitsche dualfieldnavierstokes_nitsche.cpp)
 target_link_libraries(dualfieldnavierstokes_nitsche PRIVATE boundaryoperatorslib mfem Boost::program_options dualfield_project_options)
 
 
+add_executable(hcurl_dualfieldnavierstokes_nitsche hcurl_dualfieldnavierstokes_nitsche.cpp)
+target_link_libraries(hcurl_dualfieldnavierstokes_nitsche PRIVATE boundaryoperatorslib mfem Boost::program_options dualfield_project_options)
+
 add_executable(stokes_nitsche Stokes.cpp)
 target_link_libraries(stokes_nitsche PRIVATE boundaryoperatorslib mfem Boost::program_options dualfield_project_options)
 

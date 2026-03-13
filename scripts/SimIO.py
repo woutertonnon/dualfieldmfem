@@ -309,10 +309,16 @@ class IBVPNavierStokes(ExactManipulationsSpaceTime):
     :type force: sympy.Matrix
     :raises ValueError: If ``u_init`` is not a 3×1 vector.
     """
-    def __init__(self, u_init: sp.Matrix, nu: float, coords, t, u_boundary = sp.Matrix([0,0,0]), force = sp.Matrix([0, 0, 0])): 
+    def __init__(self, u_init: sp.Matrix, nu: float, coords, t, u_boundary = sp.Matrix([0,0,0]), force = sp.Matrix([0, 0, 0]), lid_attributes = None):
         """
         Initialize the Navier–Stokes IBVP.
-        """       
+
+        :param lid_attributes: Mesh boundary attributes where ``u_boundary``
+            is applied.  All other boundary faces get homogeneous Dirichlet
+            (u = 0).  When ``None``, ``u_boundary`` is applied on every
+            boundary face (the original behaviour).
+        :type lid_attributes: list[int] or None
+        """
         expected_rows, expected_cols = 3, 1
         if (u_init.rows, u_init.cols) != (expected_rows, expected_cols):
             raise ValueError(
@@ -325,6 +331,7 @@ class IBVPNavierStokes(ExactManipulationsSpaceTime):
         self.u_boundary = u_boundary
         self.force = force
         self.vorticity_init = self.curl(u_init)
+        self.lid_attributes = lid_attributes
 
     def get_u_init(self):
         """
@@ -537,14 +544,17 @@ class SimulationHelper:
     :type name: str
     """
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, executable: str = "./build/hcurl_dualfieldnavierstokes_nitsche"):
         """
         Initialize the helper.
 
         :param name: Simulation/benchmark name.
         :type name: str
+        :param executable: Path to the solver executable.
+        :type executable: str
         """
         self.name = name
+        self.executable = executable
 
     def expr_to_c(self,expr):
         """
@@ -671,7 +681,7 @@ class SimulationHelper:
 
     def run_all_configs(self):
         """
-        Run all generated configuration files locally using an external executable.
+        Run all generated configuration files locally using ``self.executable``.
 
         Expects configuration files in::
 
@@ -681,15 +691,10 @@ class SimulationHelper:
 
             ./out/data/<name>/
 
-        Uses the executable::
-
-            ./build/dualfield_navierstokes_nitsche
-
         :raises RuntimeError: If the executable cannot be found or executed.
         :returns: None
         :rtype: None
         """
-        EXECUTABLE = "./build/dualfieldnavierstokes_nitsche"
         config_directory = "./data/config/" + self.name +"/"
         out_directory = "./out/data/" + self.name + "/"
         os.makedirs(out_directory, exist_ok=True)
@@ -700,7 +705,7 @@ class SimulationHelper:
         for file in files:
             print("file: ", file)
             # pass the option flag and the config path as separate list items
-            cmd = [EXECUTABLE, "-c", config_directory + str(file)]
+            cmd = [self.executable, "-c", config_directory + str(file)]
             print("Running:", " ".join(cmd))
 
             try:
@@ -710,7 +715,7 @@ class SimulationHelper:
                     check=False,
                 )
             except FileNotFoundError as e:
-                raise RuntimeError(f"Failed to run {EXECUTABLE}: {e}")
+                raise RuntimeError(f"Failed to run {self.executable}: {e}")
 
     def run_remote_command(self, client: paramiko.SSHClient, command: str) -> str:
         """
@@ -804,10 +809,9 @@ class SimulationHelper:
             exec("cd dualfieldmfem/build && make")
             print(stderr.read().decode())
 
-            EXECUTABLE = "./build/dualfield_navierstokes_nitsche"
             config_directory = "data/config/" + self.name +"/"
             out_directory = "out/data/" + self.name + "/"
-            
+
             exec("cd dualfieldmfem && [ -d \"./" + config_directory + "\" ] && echo \"exists\" || mkdir "+config_directory)
             exec("cd dualfieldmfem && [ -d \"./out/data\" ] && echo \"exists\" || mkdir \"./out/data\"")
             exec("cd dualfieldmfem && [ -d \"./" + out_directory + "\" ] && echo \"exists\" || mkdir "+out_directory)
@@ -820,8 +824,9 @@ class SimulationHelper:
                 local_path = "./" + config_directory + file
                 remote_path = "/cluster/home/wtonnon/dualfieldmfem/" + config_directory + file
                 sftp.put(local_path,remote_path)
-                print("cd dualfieldmfem && sbatch --cpus-per-task="+cpuspertask+" --time="+time+" --mem-per-cpu="+mempercpu+" --wrap=\"./build/dualfield_navierstokes_nitsche -c /cluster/home/wtonnon/dualfieldmfem/" + config_directory + file +"\"")
-                exec("cd dualfieldmfem && sbatch --cpus-per-task="+cpuspertask+" --time="+time+" --mem-per-cpu="+mempercpu+" --wrap=\"./build/dualfield_navierstokes_nitsche -c /cluster/home/wtonnon/dualfieldmfem/" + config_directory + file +"\"")
+                sbatch_cmd = "cd dualfieldmfem && sbatch --cpus-per-task="+cpuspertask+" --time="+time+" --mem-per-cpu="+mempercpu+" --wrap=\""+self.executable+" -c /cluster/home/wtonnon/dualfieldmfem/" + config_directory + file +"\""
+                print(sbatch_cmd)
+                exec(sbatch_cmd)
         finally:
             client.close()
 
@@ -846,7 +851,7 @@ class NavierStokesSimulationHelper(SimulationHelper):
     :type printlevel: int
     """
 
-    def __init__(self, exact_equations: IBVPNavierStokes, name: str, mesh = "./extern/mfem/data/ref-cube.mesh", visualisation = 1, printlevel=0):
+    def __init__(self, exact_equations: IBVPNavierStokes, name: str, mesh = "./extern/mfem/data/ref-cube.mesh", visualisation = 1, printlevel=0, executable="./build/hcurl_dualfieldnavierstokes_nitsche"):
         """
         Initialize the Navier--Stokes simulation helper.
 
@@ -860,8 +865,10 @@ class NavierStokesSimulationHelper(SimulationHelper):
         :type visualisation: int
         :param printlevel: Verbosity level.
         :type printlevel: int
+        :param executable: Path to the solver executable.
+        :type executable: str
         """
-        super().__init__(name)
+        super().__init__(name, executable=executable)
         self.exact_equations = exact_equations
         self.mesh = mesh
         self.visualisation = visualisation
@@ -899,6 +906,8 @@ class NavierStokesSimulationHelper(SimulationHelper):
 
         if isinstance(self.exact_equations,IBVPNavierStokes):
             config["boundary_data_u"] = self.sp_vector_to_str(self.exact_equations.get_u_boundary())
+            if self.exact_equations.lid_attributes is not None:
+                config["lid_attributes"] = self.exact_equations.lid_attributes
         else:
             print("Warning: boundary data for u is not given. We continue without!")
 
@@ -924,7 +933,7 @@ class StokesSimulationHelper(SimulationHelper):
     :type name: str
     """
 
-    def __init__(self, exact_equations: manufacturedStokes, name: str):
+    def __init__(self, exact_equations: manufacturedStokes, name: str, executable="./build/hcurl_dualfieldnavierstokes_nitsche"):
         """
         Initialize the Stokes simulation helper.
 
@@ -932,8 +941,10 @@ class StokesSimulationHelper(SimulationHelper):
         :type exact_equations: manufacturedStokes
         :param name: Simulation/benchmark name.
         :type name: str
+        :param executable: Path to the solver executable.
+        :type executable: str
         """
-        super().__init__(name)
+        super().__init__(name, executable=executable)
         self.exact_equations = exact_equations
 
     def base_config_file(self):
@@ -1273,7 +1284,6 @@ class SimulationDataProcessor:
                 timeout=10,
             )
 
-            EXECUTABLE = "./build/dualfield_navierstokes_nitsche"
             config_directory = "data/config/" + self.name +"/"
             out_directory = "out/data/" + self.name + "/"
 

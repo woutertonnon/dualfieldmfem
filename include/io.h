@@ -37,6 +37,7 @@ public:
     }
 
     boost::property_tree::ptree &get_tree() { return tree_; };
+    const boost::property_tree::ptree &get_tree_const() const { return tree_; };
 
     template <typename T>
     T get_value(std::string variable, const T default_value) { return tree_.get<T>(variable.data(), default_value); };
@@ -165,6 +166,27 @@ public:
     std::string get_outputfile() { return outputfile; }
     std::string get_solver() const { return solver; }
     bool has_exact_u() const { return has_exact_u_solution; }
+
+    /// True when the config specifies lid_attributes (attribute-based BCs).
+    bool has_lid_attributes() const {
+        auto child = get_tree_const().get_child_optional("lid_attributes");
+        return child.has_value();
+    }
+
+    /// Build an MFEM boundary-attribute marker from lid_attributes.
+    /// marker[i-1] = 1 for every attribute i listed in the JSON array.
+    /// Size is max_bdr_attr (typically mesh.bdr_attributes.Max()).
+    mfem::Array<int> get_lid_marker(int max_bdr_attr) const {
+        mfem::Array<int> marker(max_bdr_attr);
+        marker = 0;
+        for (auto &item : get_tree_const().get_child("lid_attributes"))
+        {
+            int attr = item.second.get_value<int>();
+            if (attr >= 1 && attr <= max_bdr_attr)
+                marker[attr - 1] = 1;
+        }
+        return marker;
+    }
 
 private:
     // Configuration parameters loaded from the JSON file
@@ -387,6 +409,77 @@ private:
     mfem::GridFunction &w_;
     int &num_it_A1_;
     int &num_it_A2_;
+    std::chrono::time_point<std::chrono::steady_clock> time_;
+    DualFieldConfig config_;
+};
+
+// CSV logger for the H(curl)-H(curl) dual-field Navier-Stokes system.
+//
+// Both velocity fields u1, u2 live in the same ND (H(curl)) space.  The
+// quantities logged are the kinetic energies ||u1||^2 and ||u2||^2 (via the
+// ND mass matrix), the L2 error against the exact solution (when available),
+// and per-system iteration counts.
+class HCurlDualFieldCSVLogger : public CSVLogger
+{
+public:
+    HCurlDualFieldCSVLogger(DualFieldConfig &config,
+                            int &cycle,
+                            double &t,
+                            mfem::FiniteElementSpace *ND,
+                            mfem::GridFunction &u1,
+                            mfem::GridFunction &u2,
+                            int &num_it1,
+                            int &num_it2)
+        : CSVLogger(config.get_outputfile()),
+          cycle_(cycle), t_(t),
+          ND_(ND),
+          mass_ND_(ND),
+          u1_(u1), u2_(u2),
+          num_it1_(num_it1), num_it2_(num_it2),
+          time_(std::chrono::steady_clock::now()),
+          config_(config)
+    {
+        get_ofstream() << "runtime_it,cycle,time,num_it1,num_it2,||u1||,||u2||";
+        if (config.has_exact_u())
+            get_ofstream() << ",u1_err_L2,u2_err_L2";
+        get_ofstream() << std::endl;
+        get_ofstream().flush();
+
+        mass_ND_.AddDomainIntegrator(new mfem::VectorFEMassIntegrator());
+        mass_ND_.Assemble();
+        mass_ND_.Finalize();
+    }
+
+    void WriteRow() override
+    {
+        double u1_norm = MatrixConservedVariable(mass_ND_, u1_);
+        double u2_norm = MatrixConservedVariable(mass_ND_, u2_);
+
+        std::chrono::duration<double> runtime_it = std::chrono::steady_clock::now() - time_;
+        time_ = std::chrono::steady_clock::now();
+
+        get_ofstream() << runtime_it.count() << "," << cycle_ << ","
+                       << std::setprecision(15) << std::fixed << t_ << ","
+                       << num_it1_ << "," << num_it2_ << ","
+                       << u1_norm << "," << u2_norm;
+        if (config_.has_exact_u())
+        {
+            mfem::VectorFunctionCoefficient u_exact(3, config_.get_exact_data("exact_data_u"));
+            u_exact.SetTime(t_);
+            get_ofstream() << "," << u1_.ComputeL2Error(u_exact)
+                           << "," << u2_.ComputeL2Error(u_exact);
+        }
+        get_ofstream() << std::endl;
+        get_ofstream().flush();
+    }
+
+private:
+    int &cycle_;
+    double &t_;
+    mfem::FiniteElementSpace *ND_;
+    mfem::BilinearForm mass_ND_;
+    mfem::GridFunction &u1_, &u2_;
+    int &num_it1_, &num_it2_;
     std::chrono::time_point<std::chrono::steady_clock> time_;
     DualFieldConfig config_;
 };
