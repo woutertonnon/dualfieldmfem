@@ -16,6 +16,8 @@ namespace po = boost::program_options;
 
 int main(int argc, char *argv[])
 {
+    mfem::Device device("omp");
+
     // ---- Parse command-line options with Boost BEFORE MPI_Init (recommended) ----
     std::string config_path;
 

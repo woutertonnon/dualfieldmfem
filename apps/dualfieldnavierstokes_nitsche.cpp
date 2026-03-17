@@ -27,6 +27,8 @@ namespace po = boost::program_options;
 
 int main(int argc, char *argv[])
 {
+    mfem::Device device("omp");
+
     // ---- Parse command-line options ----------------------------------------
     std::string config_path;
 
@@ -203,8 +205,8 @@ int main(int argc, char *argv[])
     }
 
     // ---- Solvers -----------------------------------------------------------
-    hcurl::DirectSolver hcurl_solv(ND, CG, num_it_A1);
-    hdiv::DirectSolver  hdiv_solv(RT, ND, DG, num_it_A2);
+    hcurl::GMRESSolver hcurl_solv(ND, CG, num_it_A1, viscosity);
+    hdiv::GMRESSolver  hdiv_solv(RT, ND, DG, num_it_A2, 1./dt);
 
     // ---- CSV logging -------------------------------------------------------
     DualFieldCSVLogger csv(config, cycle, t, t, &ND, &RT,

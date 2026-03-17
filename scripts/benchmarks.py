@@ -271,7 +271,7 @@ class LidDrivenCavity3DExact(benchmark):
             sp.Integer(0),
         ])
         init_u = sp.Matrix([0, 0, 0])
-        name = "LidDrivenCavity3DExactDualHcurlCw1000"
+        name = "LidDrivenCavity3DExactParallel"
         meshname = "./geo/mesh/" + name + ".msh"
 
         generate_box_mesh(Lx=1, Ly=1, Lz=Lz, lc=0.25, out=meshname)
@@ -290,8 +290,8 @@ class LidDrivenCavity3DExact(benchmark):
             SimulationDataProcessor=SimulationDataProcessor,
             dts=lambda order, refinements: .1,
             T=T,
-            refinements=lambda order: [0] if order == 1 else [0],
-            orders=[2])
+            refinements=lambda order: [2] if order == 1 else [0],
+            orders=[1])
 
 
 class ConstantField(benchmark):

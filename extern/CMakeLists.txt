@@ -1,6 +1,9 @@
 set(MFEM_USE_METIS_5 ON CACHE BOOL "Enable METIS 5")
 set(MFEM_USE_SUITESPARSE ON CACHE BOOL "Use SuiteSparse")
 set(MFEM_USE_MPI  OFF CACHE BOOL "Force MFEM to enable MPI (required for MUMPS)" FORCE)
+set(MFEM_USE_OPENMP ON CACHE BOOL "Enable OpenMP backend for parallel mat-vec" FORCE)
+set(MFEM_USE_LEGACY_OPENMP ON CACHE BOOL "Enable legacy OpenMP in SparseMatrix::Mult" FORCE)
+set(MFEM_THREAD_SAFE ON CACHE BOOL "Thread-safe mode (required for OpenMP)" FORCE)
 message(STATUS "Forcing MFEM configuration: MFEM_USE_MPI=${MFEM_USE_MPI}, MFEM_USESUITESPARSE=${MFEM_USE_SUITESPARSE}, MFEM_USE_METIS_5=${MFEM_USE_METIS_5}")
 
 add_subdirectory(mfem)

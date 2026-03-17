@@ -16,6 +16,8 @@ namespace po = boost::program_options;
 
 int main(int argc, char *argv[])
 {
+    mfem::Device device("omp");
+
     // ---- Parse command-line options with Boost BEFORE MPI_Init (recommended) ----
     std::string config_path;
 
@@ -149,7 +151,7 @@ int main(int argc, char *argv[])
         rhs.Update(x.get_u(),t,1./dt);
 
 
-        hcurl::DirectSolver solv(ND,CG,num_it_A1);
+        hcurl::GMRESSolver solv(ND,CG,num_it_A1,viscosity);
         solv.SetOperator(sys);
         solv.Mult(rhs,x);
 	//rhs.get_p().Print(std::cout);

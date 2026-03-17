@@ -9,6 +9,22 @@
 #include "BoundaryOperators.h"
 
 
+/// Prints residual norm every @a freq iterations.
+class PeriodicResidualMonitor : public mfem::IterativeSolverMonitor
+{
+    int freq_;
+public:
+    PeriodicResidualMonitor(int freq = 100) : freq_(freq) {}
+    void MonitorResidual(int it, mfem::real_t norm, const mfem::Vector &r,
+                         bool final) override
+    {
+        if (final || it % freq_ == 0)
+        {
+            mfem::out << "  iteration " << it << ", residual norm = "
+                      << norm << std::endl;
+        }
+    }
+};
 
 
 // Utility that computes block offsets for a list of finite element spaces.
@@ -591,6 +607,80 @@ namespace hcurl{
             iterations_ = 1;
         }
     };
+
+    // GMRES solver for the 2×2 H(curl) Stokes system
+    //
+    //   [A   B ] [u]   [f]
+    //   [BT  0 ] [p] = [g]
+    //
+    // Block-diagonal preconditioner with GS smoother on actual blocks:
+    //   Block 0: GS on A (re-set each timestep)
+    //   Block 1: GS on (1/viscosity)*M_CG (Schur complement approximation)
+    class GMRESSolver
+        : private OffsetsHolder,
+          public mfem::Solver
+    {
+    private:
+        mfem::BlockMatrix *op_;
+        int &iterations_;
+
+        mutable mfem::GSSmoother smoother_A_;
+        mfem::BilinearForm prec_p_;
+        mfem::GSSmoother smoother_p_;
+        mutable mfem::BlockDiagonalPreconditioner prec_;
+
+    public:
+        GMRESSolver(mfem::FiniteElementSpace &ND,
+                    mfem::FiniteElementSpace &CG,
+                    int &iterations,
+                    double viscosity)
+            : OffsetsHolder({&ND, &CG}),
+              mfem::Solver(offsets_.Last()),
+              iterations_(iterations),
+              op_(nullptr),
+              prec_p_(&CG),
+              prec_(offsets_)
+        {
+            mfem::ConstantCoefficient inv_visc(1.0 / viscosity);
+            prec_p_.AddDomainIntegrator(new mfem::MassIntegrator(inv_visc));
+            prec_p_.Assemble();
+            prec_p_.Finalize();
+            smoother_p_.SetOperator(prec_p_.SpMat());
+        }
+
+        void SetOperator(const mfem::Operator &op) override
+        {
+            throw std::invalid_argument(
+                "hcurl::GMRESSolver::SetOperator(): expected mfem::BlockMatrix.");
+        }
+
+        void SetOperator(mfem::BlockMatrix &op)
+        {
+            op_ = &op;
+            smoother_A_.SetOperator(op.GetBlock(0, 0));
+            prec_.SetDiagonalBlock(0, &smoother_A_);
+            prec_.SetDiagonalBlock(1, &smoother_p_);
+        }
+
+        void Mult(const mfem::Vector &x, mfem::Vector &y) const override
+        {
+            PeriodicResidualMonitor monitor(100);
+            mfem::GMRESSolver gmres;
+            gmres.iterative_mode = true;
+            gmres.SetOperator(*op_);
+            gmres.SetPreconditioner(prec_);
+            gmres.SetMonitor(monitor);
+            gmres.SetRelTol(1e-6);
+            gmres.SetAbsTol(1e-10);
+            gmres.SetMaxIter(100000);
+            gmres.SetKDim(500);
+            gmres.SetPrintLevel(0);
+
+            y.SetSize(op_->Height());
+            gmres.Mult(x, y);
+            iterations_ = gmres.GetNumIterations();
+        }
+    };
 }
 
 namespace hdiv{
@@ -875,17 +965,16 @@ namespace hdiv{
         mfem::FiniteElementSpace &RT_, &ND_, &DG_;
         double mass_;
 
-        // A block: non-symmetric, re-factored each timestep
-        mfem::UMFPackSolver invA_;
+        // A block: GS smoother, re-set each timestep
+        mutable mfem::GSSmoother smoother_A_;
 
-        // D block: exact via UMFPack (static, factored once in constructor)
+        // D block: GS smoother on -M_ND (static, set once in constructor)
         mfem::BilinearForm mass_D_;
-        mfem::UMFPackSolver invD_;
+        mfem::GSSmoother smoother_D_;
 
-        // Pressure block: DG mass matrix approximation
+        // Pressure block: GS smoother on (1/mass)*M_DG
         mfem::BilinearForm mass_p_;
         mfem::GSSmoother smoother_p_;
-        mfem::CGSolver invS_;
 
     public:
         BlockDiagPreconditioner(mfem::FiniteElementSpace &RT,
@@ -896,15 +985,14 @@ namespace hdiv{
               mfem::Solver(offsets_.Last()),
               RT_(RT), ND_(ND), DG_(DG), mass_(mass),
               mass_D_(&ND),
-              mass_p_(&DG),
-              invD_(), invS_()
+              mass_p_(&DG)
         {
-            // D block: assemble -M_ND and factor with UMFPack once (D is static)
+            // D block: assemble -M_ND
             mfem::ConstantCoefficient minus_one(-1.0);
             mass_D_.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(minus_one));
             mass_D_.Assemble();
             mass_D_.Finalize();
-            invD_.SetOperator(mass_D_.SpMat());
+            smoother_D_.SetOperator(mass_D_.SpMat());
 
             // Pressure block: (1/mass) * M_DG
             mfem::ConstantCoefficient inv_mass_coef(1.0 / mass_);
@@ -912,15 +1000,8 @@ namespace hdiv{
             mass_p_.Assemble();
             mass_p_.Finalize();
             smoother_p_.SetOperator(mass_p_.SpMat());
-            invS_.SetOperator(mass_p_.SpMat());
-            invS_.SetPreconditioner(smoother_p_);
-            invS_.SetRelTol(1e-8);
-            invS_.SetAbsTol(1e-15);
-            invS_.SetMaxIter(200);
-            invS_.SetPrintLevel(0);
         }
 
-        // Called each timestep after hdiv_sys.Update() to re-factor A
         void SetOperator(const mfem::Operator &op) override
         {
             throw std::invalid_argument("BlockDiagPreconditioner::SetOperator(): expected mfem::BlockMatrix.");
@@ -928,7 +1009,7 @@ namespace hdiv{
 
         void SetOperator(mfem::BlockMatrix &op)
         {
-            invA_.SetOperator(op.GetBlock(0, 0));
+            smoother_A_.SetOperator(op.GetBlock(0, 0));
         }
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
@@ -943,9 +1024,9 @@ namespace hdiv{
             y1.MakeRef(y, offsets_[1], offsets_[2] - offsets_[1]);
             y2.MakeRef(y, offsets_[2], offsets_[3] - offsets_[2]);
 
-            invA_.Mult(x0, y0);   // A block: exact via UMFPack
-            invD_.Mult(x1, y1);   // D block: exact via UMFPack
-            invS_.Mult(x2, y2);   // Pressure block: CG on (1/mass)*M_DG
+            smoother_A_.Mult(x0, y0);   // A block: GS smoother
+            smoother_D_.Mult(x1, y1);   // D block: GS smoother
+            smoother_p_.Mult(x2, y2);   // Pressure block: GS smoother
         }
     };
 
@@ -1019,6 +1100,72 @@ namespace hdiv{
             direct.SetOperator(*aug);
             direct.Mult(rhs, y);
             iterations_ = 1;
+        }
+    };
+
+    // GMRES solver for the 3×3 H(div) Stokes system
+    //
+    //   [A    BT   CT] [u]   [f]
+    //   [B    D    0 ] [w] = [g]
+    //   [C    0    0 ] [p]   [h]
+    //
+    // Block-diagonal preconditioner with GS smoother on actual blocks:
+    //   Block 0: GS on A (re-set each timestep)
+    //   Block 1: GS on D = -M_ND (static)
+    //   Block 2: GS on (1/mass)*M_DG (Schur complement approximation)
+    class GMRESSolver
+        : private OffsetsHolder,
+          public mfem::Solver
+    {
+    private:
+        mfem::BlockMatrix *op_;
+        int &iterations_;
+
+        // Block-diagonal GS preconditioner
+        mutable BlockDiagPreconditioner prec_;
+
+    public:
+        GMRESSolver(mfem::FiniteElementSpace &RT,
+                    mfem::FiniteElementSpace &ND,
+                    mfem::FiniteElementSpace &DG,
+                    int &iterations,
+                    double mass)
+            : OffsetsHolder({&RT, &ND, &DG}),
+              mfem::Solver(offsets_.Last()),
+              iterations_(iterations),
+              op_(nullptr),
+              prec_(RT, ND, DG, mass)
+        {}
+
+        void SetOperator(const mfem::Operator &op) override
+        {
+            throw std::invalid_argument(
+                "hdiv::GMRESSolver::SetOperator(): expected mfem::BlockMatrix.");
+        }
+
+        void SetOperator(mfem::BlockMatrix &op)
+        {
+            op_ = &op;
+            prec_.SetOperator(op);
+        }
+
+        void Mult(const mfem::Vector &x, mfem::Vector &y) const override
+        {
+            PeriodicResidualMonitor monitor(100);
+            mfem::GMRESSolver gmres;
+            gmres.iterative_mode = true;
+            gmres.SetOperator(*op_);
+            gmres.SetPreconditioner(prec_);
+            gmres.SetMonitor(monitor);
+            gmres.SetRelTol(1e-6);
+            gmres.SetAbsTol(1e-10);
+            gmres.SetMaxIter(100000);
+            gmres.SetKDim(500);
+            gmres.SetPrintLevel(0);
+
+            y.SetSize(op_->Height());
+            gmres.Mult(x, y);
+            iterations_ = gmres.GetNumIterations();
         }
     };
 

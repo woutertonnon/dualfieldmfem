@@ -6,6 +6,7 @@ import shutil
 import json
 import subprocess
 import os
+import stat
 import paramiko
 from paramiko.ssh_exception import SSHException, ChannelException
 import sys
@@ -1257,29 +1258,37 @@ class SimulationDataProcessor:
                 plt.savefig(directory + "/" + self.name+"_" + cons_column +"_order"+str(order)+"_ref"+str(ref)+".png" )
                 plt.close(fig)
 
+    def _sftp_pull_recursive(self, sftp, remote_dir, local_dir):
+        """Recursively download a remote directory tree via SFTP."""
+        os.makedirs(local_dir, exist_ok=True)
+        for entry in sftp.listdir_attr(remote_dir):
+            remote_path = remote_dir + "/" + entry.filename
+            local_path = os.path.join(local_dir, entry.filename)
+            if stat.S_ISDIR(entry.st_mode):
+                self._sftp_pull_recursive(sftp, remote_path, local_path)
+            else:
+                sftp.get(remote_path, local_path)
+                print(f"  Downloaded {remote_path}")
+
     def pull_data_from_euler(self):
         """
-        Pull solver output CSV files from the Euler cluster via SFTP.
+        Pull solver output CSV files and ParaView visualisation data from the
+        Euler cluster via SFTP.
 
-        For each config file found in::
+        CSV files: for each config file in ``data/config/<name>/``, downloads
+        ``out/data/<name>/<config_basename>_vars.csv``.
 
-            data/config/<name>/
+        ParaView files: recursively downloads the directory tree under
+        ``data/visualisation/paraview/<name>/`` (Cycle folders with .vtu files).
 
-        this method attempts to download the corresponding output file::
-
-            out/data/<name>/<config_basename>_vars.csv
-
-        from the remote path under ``/cluster/home/<user>/dualfieldmfem/`` into the
-        local ``out/data/<name>/`` directory.
-
-        Missing files are skipped with a warning.
+        Missing files/directories are skipped with a warning.
 
         :returns: None
         :rtype: None
         """
         hostname = "euler.ethz.ch"
         username = "wtonnon"
-        key_path = os.path.expanduser("~/.ssh/id_ed25519") 
+        key_path = os.path.expanduser("~/.ssh/id_ed25519")
 
         #key = paramiko.RSAKey.from_private_key_file(key_path)
         client = paramiko.SSHClient()
@@ -1311,6 +1320,8 @@ class SimulationDataProcessor:
                 print("Warning: tried creating directory \"" + out_directory + "\", but it already exists.")
 
             sftp = client.open_sftp()
+
+            # --- Pull CSV output files ---
             for config_file in files:
                 out_file, ext = os.path.splitext(config_file)
                 out_file = out_file + "_vars.csv"
@@ -1320,6 +1331,19 @@ class SimulationDataProcessor:
                     sftp.get(remote_path,local_path)
                 except FileNotFoundError:
                     print("Warning: "+ remote_path + " or " + local_path  + " on remote or local machine, respectively, not found. Skipping file..")
+
+            # --- Pull ParaView visualisation files ---
+            remote_base = "/cluster/home/wtonnon/dualfieldmfem/"
+            paraview_rel = "data/visualisation/paraview/" + self.name + "/"
+            remote_paraview = remote_base + paraview_rel
+            local_paraview = "./" + paraview_rel
+            try:
+                sftp.stat(remote_paraview)
+                print(f"Pulling ParaView data from {remote_paraview} ...")
+                self._sftp_pull_recursive(sftp, remote_paraview.rstrip("/"), local_paraview)
+                print("ParaView data downloaded.")
+            except FileNotFoundError:
+                print(f"Warning: ParaView directory {remote_paraview} not found on remote. Skipping.")
         finally:
             client.close()
 
