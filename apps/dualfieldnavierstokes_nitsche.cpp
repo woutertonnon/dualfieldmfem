@@ -166,8 +166,12 @@ int main(int argc, char *argv[])
     hcurl::StokesSolution hcurl_x(ND, CG);
 
     // ---- H(div) system: u2 in RT, w2 in ND, p2 in DG -----------------------
+    // Main-step system (full step dt): maps half-time n-1/2 -> n+1/2.
     hdiv::StokesSystem   hdiv_sys(RT, ND, DG, ess_tdof, 1./dt, viscosity,
                                   hdiv_sigma, hdiv_Cw, hdiv_gamma);
+    // Start-up system (half step dt/2): maps t=0 -> t=dt/2.
+    hdiv::StokesSystem   hdiv_sys_half(RT, ND, DG, ess_tdof, 2./dt, viscosity,
+                                       hdiv_sigma, hdiv_Cw, hdiv_gamma);
     hdiv::StokesRHS      hdiv_rhs(RT, ND, DG, ess_tdof,
                                   config.get_exact_data("force_data"),
                                   config.get_exact_data("boundary_data_u"),
@@ -186,9 +190,15 @@ int main(int argc, char *argv[])
     // H(curl) vorticity is curl(u1), computed on-the-fly from the ND solution.
     mfem::CurlGridFunctionCoefficient   w_hcurl(&hcurl_x.get_u());
 
+    // ---- Time bookkeeping --------------------------------------------------
+    // Staggered timeline:
+    //   u1 on full times  t_full = n*dt
+    //   u2,w2 on half times t_half = (n+1/2)*dt
+    double t_full = 0.0;
+    double t_half = 0.0;
+    int    cycle  = 0;
+
     // ---- Visualisation -----------------------------------------------------
-    double t     = 0.;
-    int    cycle = 0;
 
     mfem::ParaViewDataCollection vtk_dc(
         "./data/visualisation/paraview/" + output_file, &mesh);
@@ -207,34 +217,49 @@ int main(int argc, char *argv[])
     // ---- Solvers -----------------------------------------------------------
     hcurl::GMRESSolver hcurl_solv(ND, CG, num_it_A1, viscosity);
     hdiv::GMRESSolver  hdiv_solv(RT, ND, DG, num_it_A2, 1./dt);
+    hdiv::GMRESSolver  hdiv_solv_half(RT, ND, DG, num_it_A2, 2./dt);
 
     // ---- CSV logging -------------------------------------------------------
-    DualFieldCSVLogger csv(config, cycle, t, t, &ND, &RT,
+    DualFieldCSVLogger csv(config, cycle, t_full, t_half, &ND, &RT,
                            hcurl_x.get_u(), hdiv_x.get_u(), hdiv_x.get_w(),
                            num_it_A1, num_it_A2);
 
-    // ---- Time loop ---------------------------------------------------------
-    for (t = dt, cycle = 1; t < T + tol; t += dt, cycle++)
-    {
-        csv.WriteRow();
+    // ---- Start-up half step for H(div) ------------------------------------
+    // Compute u2^{1/2}, w2^{1/2} before first H(curl) solve so convection in
+    // the H(curl) system does not use an uninitialized H(div) vorticity field.
+    t_half = 0.5 * dt;
+    hdiv_sys_half.Update(w_hcurl);
+    hdiv_rhs.Update(hdiv_x.get_u(), t_half, 2./dt);
+    hdiv_solv_half.SetOperator(hdiv_sys_half);
+    hdiv_solv_half.Mult(hdiv_rhs, hdiv_x);
 
+    // Log initialized staggered state: (t_full, t_half) = (0, dt/2).
+    csv.WriteRow();
+
+    // ---- Time loop ---------------------------------------------------------
+    for (t_full = dt, cycle = 1; t_full < T + tol; t_full += dt, cycle++)
+    {
         // -- H(curl): convection by w_hdiv (vorticity from H(div) system) ----
         hcurl_sys.Update(w_hdiv);
-        hcurl_rhs.Update(hcurl_x.get_u(), t, 1./dt);
+        hcurl_rhs.Update(hcurl_x.get_u(), t_full, 1./dt);
         hcurl_solv.SetOperator(hcurl_sys);
         hcurl_solv.Mult(hcurl_rhs, hcurl_x);
-        // After this call hcurl_x (and therefore w_hcurl = curl(u1)) is at n+1
+        // After this call hcurl_x (and therefore w_hcurl = curl(u1)) is at t_full.
 
-        // -- H(div): convection by w_hcurl (curl of freshly updated u1) ------
+        // -- H(div): advance to the next half time using fresh curl(u1) -------
+        t_half = t_full + 0.5 * dt;
         hdiv_sys.Update(w_hcurl);
-        hdiv_rhs.Update(hdiv_x.get_u(), t, 1./dt);
+        hdiv_rhs.Update(hdiv_x.get_u(), t_half, 1./dt);
         hdiv_solv.SetOperator(hdiv_sys);
         hdiv_solv.Mult(hdiv_rhs, hdiv_x);
+
+        // Log post-solve state for this cycle with consistent full/half times.
+        csv.WriteRow();
 
         if (visualisation > 0 && cycle % visualisation == 0)
         {
             vtk_dc.SetCycle(cycle);
-            vtk_dc.SetTime(t);
+            vtk_dc.SetTime(t_full);
             vtk_dc.Save();
         }
     }

@@ -1,7 +1,26 @@
 import sympy as sp
-import SimIO
 import gmsh
 import os
+import sys
+from pathlib import Path
+
+try:
+    from simbench_adapters.mfem_ns import (
+        IBVPNavierStokes,
+        IBVPNavierStokesSolution,
+        ManufacturedNavierStokes,
+        NavierStokesBenchmarkHelper,
+    )
+    from simbench_core import SimulationDataProcessor
+except ModuleNotFoundError:
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+    from simbench_adapters.mfem_ns import (
+        IBVPNavierStokes,
+        IBVPNavierStokesSolution,
+        ManufacturedNavierStokes,
+        NavierStokesBenchmarkHelper,
+    )
+    from simbench_core import SimulationDataProcessor
 
 
 def generate_box_mesh(Lx=1.0, Ly=1.0, Lz=1.0, lc=None, out="./geo/mesh/box.msh"):
@@ -132,8 +151,8 @@ class benchmark:
 
     This class wires together:
 
-    - a :class:`SimIO.SimulationHelper`-like object to generate/run configurations
-    - a :class:`SimIO.SimulationDataProcessor`-like object to collect and plot results
+        - a simulation helper object to generate/run configurations
+        - a simulation data processor object to collect and plot results
     - parameter sweeps for time step, mesh refinement, and polynomial order
     """
     def __init__(self, name, SimulationHelper, SimulationDataProcessor,
@@ -142,9 +161,9 @@ class benchmark:
         :param name: Benchmark name, used for output file naming.
         :type name: str
         :param SimulationHelper: Helper that generates configs and runs the solver.
-        :type SimulationHelper: SimIO.SimulationHelper
+         :type SimulationHelper: object
         :param SimulationDataProcessor: Processor for collecting and plotting results.
-        :type SimulationDataProcessor: SimIO.SimulationDataProcessor
+         :type SimulationDataProcessor: object
         :param dts: Time step as a function of (order, refinement).
         :type dts: Callable[[int, int], float]
         :param T: End time.
@@ -207,12 +226,17 @@ class LidDrivenCavity3D(benchmark):
         # Smooth top-hat on [0,1]: ~1 in the interior, ~0 within 'edge' of each end.
         # Smaller eps → sharper transition; avoids corner singularities on the lid.
         def cut_off(s, edge=sp.Float(0.05), eps=sp.Float(0.03)):
-            return sp.Rational(1, 2) * (sp.tanh((s - edge)/eps) - sp.tanh((s - (1 - edge))/eps))
+            return sp.Rational(1, 2) * (
+                sp.tanh((s - edge) / eps)
+                - sp.tanh((s - (sp.Float(1.0) - edge)) / eps)
+            )  # type: ignore[operator]
 
         # One-sided ramp: ~1 only within 'edge' of z=Lz (the lid), ~0 elsewhere.
         # Replaces the linear x2/Lz so side walls see ~0 prescribed velocity (no-slip).
         def ramp_top(z, edge=sp.Float(0.04), eps=sp.Float(0.02)):
-            return sp.Rational(1, 2) * (1 + sp.tanh((z - (Lz - edge)) / eps))
+            return sp.Rational(1, 2) * (
+                sp.Float(1.0) + sp.tanh((z - (sp.Float(Lz) - edge)) / eps)
+            )
 
         # tanh(t): smooth, differentiable time ramp from 0→1 with unit timescale.
         tr_u = 5 * sp.Matrix([
@@ -226,17 +250,17 @@ class LidDrivenCavity3D(benchmark):
 
         generate_box_mesh(Lx=1, Ly=1, Lz=Lz, lc=0.25, out=meshname)
 
-        SimulationHelper = SimIO.NavierStokesSimulationHelper(
-            SimIO.IBVPNavierStokes(
-                u_init=init_u, nu=nu, coords=coords, t=t, u_boundary=tr_u),
-            name, mesh=meshname, visualisation=1, printlevel=2,
+        exact = IBVPNavierStokes(
+            u_init=init_u, nu=nu, coords=coords, t=t, u_boundary=tr_u)
+        SimulationHelper = NavierStokesBenchmarkHelper(
+            exact, name, mesh=meshname, visualisation=1, printlevel=2,
             executable=executable)
-        SimulationDataProcessor = SimIO.SimulationDataProcessor(name)
+        data_processor = SimulationDataProcessor(name)
 
         super().__init__(
             name=name,
             SimulationHelper=SimulationHelper,
-            SimulationDataProcessor=SimulationDataProcessor,
+            SimulationDataProcessor=data_processor,
             dts=lambda order, refinements: 10.,
             T=T,
             refinements=lambda order: [0] if order == 1 else [0],
@@ -276,21 +300,21 @@ class LidDrivenCavity3DExact(benchmark):
 
         generate_box_mesh(Lx=1, Ly=1, Lz=Lz, lc=0.25, out=meshname)
 
-        SimulationHelper = SimIO.NavierStokesSimulationHelper(
-            SimIO.IBVPNavierStokes(
-                u_init=init_u, nu=nu, coords=coords, t=t, u_boundary=tr_u,
-                lid_attributes=[16]),
-            name, mesh=meshname, visualisation=10, printlevel=2,
+        exact = IBVPNavierStokes(
+            u_init=init_u, nu=nu, coords=coords, t=t, u_boundary=tr_u,
+            lid_attributes=[16])
+        SimulationHelper = NavierStokesBenchmarkHelper(
+            exact, name, mesh=meshname, visualisation=10, printlevel=2,
             executable=executable)
-        SimulationDataProcessor = SimIO.SimulationDataProcessor(name)
+        data_processor = SimulationDataProcessor(name)
 
         super().__init__(
             name=name,
             SimulationHelper=SimulationHelper,
-            SimulationDataProcessor=SimulationDataProcessor,
+            SimulationDataProcessor=data_processor,
             dts=lambda order, refinements: .1,
             T=T,
-            refinements=lambda order: [2] if order == 1 else [0],
+            refinements=lambda order: [1] if order == 1 else [0],
             orders=[1])
 
 
@@ -320,18 +344,18 @@ class ConstantField(benchmark):
 
         generate_box_mesh(Lx=1, Ly=1, Lz=1, lc=0.4, out=meshname)
 
-        SimulationHelper = SimIO.NavierStokesSimulationHelper(
-            SimIO.IBVPNavierStokesSolution(
-                u=u, p=p, nu=nu, coords=coords, t=t,
-                u_boundary=u, u_init=init_u),
-            name, mesh=meshname, visualisation=1, printlevel=2,
+        exact = IBVPNavierStokesSolution(
+            u=u, p=p, nu=nu, coords=coords, t=t,
+            u_boundary=u, u_init=init_u)
+        SimulationHelper = NavierStokesBenchmarkHelper(
+            exact, name, mesh=meshname, visualisation=1, printlevel=2,
             executable=executable)
-        SimulationDataProcessor = SimIO.SimulationDataProcessor(name)
+        data_processor = SimulationDataProcessor(name)
 
         super().__init__(
             name=name,
             SimulationHelper=SimulationHelper,
-            SimulationDataProcessor=SimulationDataProcessor,
+            SimulationDataProcessor=data_processor,
             dts=lambda order, refinements: 0.01,
             T=T,
             refinements=lambda order: [0],
@@ -364,27 +388,77 @@ class RigidRotation(benchmark):
 
         generate_box_mesh(Lx=1, Ly=1, Lz=1, lc=0.4, out=meshname)
 
-        SimulationHelper = SimIO.NavierStokesSimulationHelper(
-            SimIO.IBVPNavierStokesSolution(
-                u=u, p=p, nu=nu, coords=coords, t=t,
-                u_boundary=u, u_init=init_u),
-            name, mesh=meshname, visualisation=100, printlevel=2,
+        exact = IBVPNavierStokesSolution(
+            u=u, p=p, nu=nu, coords=coords, t=t,
+            u_boundary=u, u_init=init_u)
+        SimulationHelper = NavierStokesBenchmarkHelper(
+            exact, name, mesh=meshname, visualisation=100, printlevel=2,
             executable=executable)
-        SimulationDataProcessor = SimIO.SimulationDataProcessor(name)
+        data_processor = SimulationDataProcessor(name)
 
         super().__init__(
             name=name,
             SimulationHelper=SimulationHelper,
-            SimulationDataProcessor=SimulationDataProcessor,
+            SimulationDataProcessor=data_processor,
             dts=lambda order, refinements: 0.01,
             T=T,
             refinements=lambda order: [0],
             orders=[1])
 
 
+class TaylorGreenCombinedConvergence(benchmark):
+    """Combined space-time convergence benchmark on an unstructured cube.
+
+    The benchmark uses a divergence-free Taylor--Green-type manufactured
+    solution on ``[0,1]^3`` and ties the timestep to mesh refinement so both
+    temporal and spatial errors are reduced together.
+    """
+
+    def __init__(self, executable="./build/dualfieldnavierstokes_nitsche"):
+        T = 0.125
+        name = "TaylorGreenCombinedConvergence"
+        meshname = "./extern/mfem/data/ref-cube.mesh"
+
+        x0, x1, x2, t = sp.symbols("x0 x1 x2 t", real=True)
+        coords = [x0, x1, x2]
+        nu = 0.01
+        k = 2.0 * sp.pi
+        decay = sp.exp(-2.0 * nu * k * k * t)
+
+        u = sp.Matrix([
+            sp.Mul(sp.sin(k * x0), sp.cos(k * x1), decay),
+            sp.Mul(-1, sp.cos(k * x0), sp.sin(k * x1), decay),
+            sp.Integer(0),
+        ])
+
+        p = sp.Integer(0)
+        exact = ManufacturedNavierStokes(u=u, p=p, nu=nu, coords=coords, t=t)
+
+        simulation_helper = NavierStokesBenchmarkHelper(
+            exact,
+            name,
+            mesh=meshname,
+            visualisation=0,
+            printlevel=1,
+            executable=executable,
+        )
+        data_processor = SimulationDataProcessor(name)
+
+        super().__init__(
+            name=name,
+            SimulationHelper=simulation_helper,
+            SimulationDataProcessor=data_processor,
+            # Keep T/dt integer on every refinement level so each case is
+            # compared at the same physical end time (t_full = T).
+            dts=lambda order, refinement: 0.5 / (16 * (2 ** refinement)),
+            T=T,
+            refinements=lambda order: [0, 1, 2, 3],
+            orders=[2],
+        )
+
+
 
 
 if __name__ == "__main__":
-    bench = LidDrivenCavity3DExact("./build/dualfieldnavierstokes_nitsche")
-    #bench = RigidRotation()
+    bench = TaylorGreenCombinedConvergence()
     bench.run_local()

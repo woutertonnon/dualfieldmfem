@@ -53,8 +53,7 @@ class SobolevPreconditioner
 {
 private:
     std::vector<std::unique_ptr<mfem::BilinearForm>> bil_forms_;
-    std::vector<std::unique_ptr<mfem::CGSolver>> solvers_;
-    std::vector<std::unique_ptr<mfem::GSSmoother>> smoothers_;
+    std::vector<std::unique_ptr<mfem::UMFPackSolver>> solvers_;
     std::vector<mfem::ConstantCoefficient> mass_weights_, diff_weights_;
 
     static void AddMassDiffIntegrators(mfem::BilinearForm &blf, mfem::Coefficient &mass_weight_coef, mfem::Coefficient &diff_weight_coef)
@@ -88,10 +87,10 @@ private:
 
 public:
     explicit SobolevPreconditioner(const std::vector<mfem::FiniteElementSpace *> &fes_array, const std::vector<double> mass_weights, const std::vector<double> diff_weights)
-        : OffsetsHolder(fes_array), mass_weights_(mass_weights.begin(), mass_weights.end()), diff_weights_(diff_weights.begin(), diff_weights.end()) // 1) offsets built first
+          : OffsetsHolder(fes_array), mass_weights_(mass_weights.begin(), mass_weights.end()), diff_weights_(diff_weights.begin(), diff_weights.end()) // 1) offsets built first
           ,
           mfem::BlockDiagonalPreconditioner(offsets_),
-          bil_forms_(fes_array.size()), solvers_(fes_array.size()), smoothers_(fes_array.size())
+          bil_forms_(fes_array.size()), solvers_(fes_array.size())
     {
         for (int i = 0; i < (int)fes_array.size(); ++i)
         {
@@ -102,14 +101,7 @@ public:
             bil_forms_[i]->Assemble();
             bil_forms_[i]->Finalize();
 
-            smoothers_[i] = std::make_unique<mfem::GSSmoother>(bil_forms_[i]->SpMat());
-
-            solvers_[i] = std::make_unique<mfem::CGSolver>();
-            solvers_[i]->SetMaxIter(100);
-            solvers_[i]->SetRelTol(0.0);
-            solvers_[i]->SetAbsTol(1e-4);
-            solvers_[i]->SetPrintLevel(0);
-            solvers_[i]->SetPreconditioner(*smoothers_[i]);
+            solvers_[i] = std::make_unique<mfem::UMFPackSolver>();
             solvers_[i]->SetOperator(bil_forms_[i]->SpMat());
 
             SetDiagonalBlock(i, solvers_[i].get());
@@ -374,15 +366,13 @@ namespace hcurl{
         int &iterations_;
         mfem::FiniteElementSpace &ND_, &CG_;
         mfem::UMFPackSolver invA;
-        mfem::GSSmoother smoother_;
-        mfem::CGSolver cgsolver_;
         mfem::BilinearForm mass_bil_;
 
     public:
         SchurSolver(mfem::FiniteElementSpace &ND,
                     mfem::FiniteElementSpace &CG,
                     double mass, double viscosity, int& iterations, double tol = 1e-8)
-            : mfem::Solver(ND.GetVDim() + CG.GetVDim()), OffsetsHolder({&ND, &CG}), mass_(mass), viscosity_(viscosity), iterations_(iterations), tol_(tol), ND_(ND), CG_(CG), invA(), smoother_(), cgsolver_(), mass_bil_(&ND)
+            : mfem::Solver(ND.GetVDim() + CG.GetVDim()), OffsetsHolder({&ND, &CG}), mass_(mass), viscosity_(viscosity), iterations_(iterations), tol_(tol), ND_(ND), CG_(CG), invA(), mass_bil_(&ND)
         {
             mass_bil_.AddDomainIntegrator(new mfem::VectorFEMassIntegrator());
             mass_bil_.Assemble();
@@ -404,14 +394,6 @@ namespace hcurl{
 
             op_ = &op;
             
-
-
-            smoother_.SetOperator(mass_bil_.SpMat());
-            cgsolver_.SetOperator(mass_bil_);
-            cgsolver_.SetAbsTol(1e-15);
-            cgsolver_.SetRelTol(tol_);
-            
-            //invA.SetPreconditioner(cgsolver_);
             invA.SetOperator(op_->GetBlock(0, 0));
             //invA.SetAbsTol(1e-15);
             //invA.SetRelTol(tol_);
@@ -613,9 +595,9 @@ namespace hcurl{
     //   [A   B ] [u]   [f]
     //   [BT  0 ] [p] = [g]
     //
-    // Block-diagonal preconditioner with GS smoother on actual blocks:
-    //   Block 0: GS on A (re-set each timestep)
-    //   Block 1: GS on (1/viscosity)*M_CG (Schur complement approximation)
+    // Block-diagonal preconditioner with exact UMFPack block solves:
+    //   Block 0: exact solve on A (re-set each timestep)
+    //   Block 1: exact solve on (1/viscosity)*M_CG (Schur complement approximation)
     class GMRESSolver
         : private OffsetsHolder,
           public mfem::Solver
@@ -624,9 +606,9 @@ namespace hcurl{
         mfem::BlockMatrix *op_;
         int &iterations_;
 
-        mutable mfem::GSSmoother smoother_A_;
+        mutable mfem::UMFPackSolver solver_A_;
         mfem::BilinearForm prec_p_;
-        mfem::GSSmoother smoother_p_;
+        mfem::UMFPackSolver solver_p_;
         mutable mfem::BlockDiagonalPreconditioner prec_;
 
     public:
@@ -645,7 +627,7 @@ namespace hcurl{
             prec_p_.AddDomainIntegrator(new mfem::MassIntegrator(inv_visc));
             prec_p_.Assemble();
             prec_p_.Finalize();
-            smoother_p_.SetOperator(prec_p_.SpMat());
+            solver_p_.SetOperator(prec_p_.SpMat());
         }
 
         void SetOperator(const mfem::Operator &op) override
@@ -657,9 +639,9 @@ namespace hcurl{
         void SetOperator(mfem::BlockMatrix &op)
         {
             op_ = &op;
-            smoother_A_.SetOperator(op.GetBlock(0, 0));
-            prec_.SetDiagonalBlock(0, &smoother_A_);
-            prec_.SetDiagonalBlock(1, &smoother_p_);
+            solver_A_.SetOperator(op.GetBlock(0, 0));
+            prec_.SetDiagonalBlock(0, &solver_A_);
+            prec_.SetDiagonalBlock(1, &solver_p_);
         }
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
@@ -965,16 +947,16 @@ namespace hdiv{
         mfem::FiniteElementSpace &RT_, &ND_, &DG_;
         double mass_;
 
-        // A block: GS smoother, re-set each timestep
-        mutable mfem::GSSmoother smoother_A_;
+        // A block: exact solve, re-set each timestep
+        mutable mfem::UMFPackSolver solver_A_;
 
-        // D block: GS smoother on -M_ND (static, set once in constructor)
+        // D block: exact solve on -M_ND (static, set once in constructor)
         mfem::BilinearForm mass_D_;
-        mfem::GSSmoother smoother_D_;
+        mfem::UMFPackSolver solver_D_;
 
-        // Pressure block: GS smoother on (1/mass)*M_DG
+        // Pressure block: exact solve on (1/mass)*M_DG
         mfem::BilinearForm mass_p_;
-        mfem::GSSmoother smoother_p_;
+        mfem::UMFPackSolver solver_p_;
 
     public:
         BlockDiagPreconditioner(mfem::FiniteElementSpace &RT,
@@ -992,14 +974,14 @@ namespace hdiv{
             mass_D_.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(minus_one));
             mass_D_.Assemble();
             mass_D_.Finalize();
-            smoother_D_.SetOperator(mass_D_.SpMat());
+            solver_D_.SetOperator(mass_D_.SpMat());
 
             // Pressure block: (1/mass) * M_DG
             mfem::ConstantCoefficient inv_mass_coef(1.0 / mass_);
             mass_p_.AddDomainIntegrator(new mfem::MassIntegrator(inv_mass_coef));
             mass_p_.Assemble();
             mass_p_.Finalize();
-            smoother_p_.SetOperator(mass_p_.SpMat());
+            solver_p_.SetOperator(mass_p_.SpMat());
         }
 
         void SetOperator(const mfem::Operator &op) override
@@ -1009,7 +991,7 @@ namespace hdiv{
 
         void SetOperator(mfem::BlockMatrix &op)
         {
-            smoother_A_.SetOperator(op.GetBlock(0, 0));
+            solver_A_.SetOperator(op.GetBlock(0, 0));
         }
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
@@ -1024,9 +1006,9 @@ namespace hdiv{
             y1.MakeRef(y, offsets_[1], offsets_[2] - offsets_[1]);
             y2.MakeRef(y, offsets_[2], offsets_[3] - offsets_[2]);
 
-            smoother_A_.Mult(x0, y0);   // A block: GS smoother
-            smoother_D_.Mult(x1, y1);   // D block: GS smoother
-            smoother_p_.Mult(x2, y2);   // Pressure block: GS smoother
+            solver_A_.Mult(x0, y0);   // A block: exact solve
+            solver_D_.Mult(x1, y1);   // D block: exact solve
+            solver_p_.Mult(x2, y2);   // Pressure block: exact solve
         }
     };
 
@@ -1109,10 +1091,10 @@ namespace hdiv{
     //   [B    D    0 ] [w] = [g]
     //   [C    0    0 ] [p]   [h]
     //
-    // Block-diagonal preconditioner with GS smoother on actual blocks:
-    //   Block 0: GS on A (re-set each timestep)
-    //   Block 1: GS on D = -M_ND (static)
-    //   Block 2: GS on (1/mass)*M_DG (Schur complement approximation)
+    // Block-diagonal preconditioner with exact UMFPack block solves:
+    //   Block 0: exact solve on A (re-set each timestep)
+    //   Block 1: exact solve on D = -M_ND (static)
+    //   Block 2: exact solve on (1/mass)*M_DG (Schur complement approximation)
     class GMRESSolver
         : private OffsetsHolder,
           public mfem::Solver
@@ -1121,7 +1103,7 @@ namespace hdiv{
         mfem::BlockMatrix *op_;
         int &iterations_;
 
-        // Block-diagonal GS preconditioner
+        // Block-diagonal exact preconditioner
         mutable BlockDiagPreconditioner prec_;
 
     public:

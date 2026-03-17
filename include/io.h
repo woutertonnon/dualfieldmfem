@@ -387,10 +387,15 @@ public:
                        << u1w1 << "," << u2w2;
         if (config_.has_exact_u())
         {
-            mfem::VectorFunctionCoefficient u_exact_coeff(3, config_.get_exact_data("exact_data_u"));
-            u_exact_coeff.SetTime(t_full_);
-	    std::cout << "L2 err = " << u_.ComputeL2Error(u_exact_coeff) << std::endl;
-            get_ofstream() << "," << u_.ComputeL2Error(u_exact_coeff) << "," << v_.ComputeL2Error(u_exact_coeff);
+            mfem::VectorFunctionCoefficient u1_exact_coeff(3, config_.get_exact_data("exact_data_u"));
+            u1_exact_coeff.SetTime(t_full_);
+	    std::cout << "L2 err = " << u_.ComputeL2Error(u1_exact_coeff) << std::endl;
+
+            mfem::VectorFunctionCoefficient u2_exact_coeff(3, config_.get_exact_data("exact_data_u"));
+            u2_exact_coeff.SetTime(t_half_);
+
+            get_ofstream() << "," << u_.ComputeL2Error(u1_exact_coeff)
+                           << "," << v_.ComputeL2Error(u2_exact_coeff);
         }
         get_ofstream() << std::endl;
         get_ofstream().flush();
