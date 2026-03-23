@@ -18,7 +18,45 @@ venv/
 ENV/
 env/
 
-# OS / editor
+# OS / editor / tools
 .DS_Store
 .idea/
 .vscode/
+.claude/
+
+# Runtime artifacts
+config_library_*.cpp
+config_library_*.so
+tmp/
+matplotlib-*/
+
+# Generated meshes (benchmarks regenerate via generate_box_mesh)
+geo/mesh/*.msh
+!geo/mesh/box.msh
+!geo/mesh/LidDrivenCavity3D.msh
+
+# Tool/shell configs
+.bash_profile
+.bashrc
+.profile
+.zprofile
+.zshrc
+.mcp.json
+.ripgreprc
+.gitconfig
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+
+# Output data
+out/
