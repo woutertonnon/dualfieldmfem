@@ -55,6 +55,7 @@ def generate_box_mesh(Lx=1.0, Ly=1.0, Lz=1.0, lc=None, out="./geo/mesh/box.msh")
     """
     gmsh.initialize()
     gmsh.model.add("box")
+    gmsh.option.setNumber("General.Terminal", 0)
 
     gmsh.model.occ.addBox(0, 0, 0, Lx, Ly, Lz)
     gmsh.model.occ.synchronize()
@@ -146,6 +147,42 @@ def generate_box_mesh(Lx=1.0, Ly=1.0, Lz=1.0, lc=None, out="./geo/mesh/box.msh")
     gmsh.write(out)
     gmsh.finalize()
     print(f"Wrote {out} (Lx={Lx}, Ly={Ly}, Lz={Lz}, lc={lc})")
+
+
+def compile_latex_report(tex_path="tex_reports/benchmark_report.tex", runs=1):
+    """Compile the benchmark LaTeX report with pdflatex."""
+    report = Path(tex_path)
+    if not report.is_absolute():
+        report = Path(__file__).resolve().parents[1] / report
+    report = report.resolve()
+
+    if not report.exists():
+        print(f"[warn] Report source not found: {report}; skipping LaTeX compile.")
+        return None
+
+    pdflatex = shutil.which("pdflatex")
+    if pdflatex is None:
+        raise RuntimeError("pdflatex not found in PATH")
+
+    cmd = [pdflatex, "-interaction=nonstopmode", "-halt-on-error", report.name]
+    for _ in range(max(1, int(runs))):
+        proc = subprocess.run(
+            cmd,
+            cwd=str(report.parent),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            log_file = report.with_suffix(".log")
+            raise RuntimeError(
+                f"pdflatex failed for {report.name} (exit {proc.returncode}); "
+                f"see {log_file}"
+            )
+
+    pdf_file = report.with_suffix(".pdf")
+    print(f"[info] Compiled LaTeX report: {pdf_file}")
+    return pdf_file
 
 
 class benchmark:
@@ -648,6 +685,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Stop immediately if one benchmark fails",
     )
+    parser.add_argument(
+        "--no-compile-report",
+        action="store_true",
+        help="Skip compiling tex_reports/benchmark_report.tex after plotting",
+    )
     args = parser.parse_args()
 
     selected = benchmark_map.keys() if args.benchmark == "all" else [args.benchmark]
@@ -698,6 +740,16 @@ if __name__ == "__main__":
                 raise
         except Exception as exc:
             msg = f"{bench_name} failed: {exc}"
+            failures.append(msg)
+            print(f"[error] {msg}")
+            if args.fail_fast:
+                raise
+
+    if args.mode in ("local", "plot-local", "plot-euler") and not args.no_compile_report:
+        try:
+            compile_latex_report()
+        except Exception as exc:
+            msg = f"Report compilation failed: {exc}"
             failures.append(msg)
             print(f"[error] {msg}")
             if args.fail_fast:

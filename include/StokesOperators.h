@@ -649,12 +649,10 @@ namespace hcurl{
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
         {
-            PeriodicResidualMonitor monitor(100);
             mfem::GMRESSolver gmres;
             gmres.iterative_mode = true;
             gmres.SetOperator(*op_);
             gmres.SetPreconditioner(prec_);
-            gmres.SetMonitor(monitor);
             gmres.SetRelTol(rel_tol_);
             gmres.SetAbsTol(1e-10);
             gmres.SetMaxIter(100000);
@@ -762,12 +760,10 @@ namespace hcurl{
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
         {
-            PeriodicResidualMonitor monitor(100);
             mfem::FGMRESSolver gmres;
             gmres.iterative_mode = true;
             gmres.SetOperator(*op_);
             gmres.SetPreconditioner(prec_);
-            gmres.SetMonitor(monitor);
             gmres.SetRelTol(rel_tol_);
             gmres.SetAbsTol(1e-10);
             gmres.SetMaxIter(100000);
@@ -1063,7 +1059,7 @@ namespace hdiv{
             gmressolver_.SetAbsTol(1e-15);
             gmressolver_.SetRelTol(tol_);
             gmressolver_.SetMaxIter(10000);
-            gmressolver_.SetPrintLevel(1);
+            gmressolver_.SetPrintLevel(0);
         }
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
@@ -1269,12 +1265,10 @@ namespace hdiv{
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
         {
-            PeriodicResidualMonitor monitor(100);
             mfem::GMRESSolver gmres;
             gmres.iterative_mode = true;
             gmres.SetOperator(*op_);
             gmres.SetPreconditioner(prec_);
-            gmres.SetMonitor(monitor);
             gmres.SetRelTol(rel_tol_);
             gmres.SetAbsTol(1e-10);
             gmres.SetMaxIter(100000);
@@ -1433,12 +1427,10 @@ namespace hdiv{
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
         {
-            PeriodicResidualMonitor monitor(100);
             mfem::FGMRESSolver gmres;
             gmres.iterative_mode = true;
             gmres.SetOperator(*op_);
             gmres.SetPreconditioner(prec_);
-            gmres.SetMonitor(monitor);
             gmres.SetRelTol(rel_tol_);
             gmres.SetAbsTol(1e-10);
             gmres.SetMaxIter(100000);

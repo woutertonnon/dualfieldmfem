@@ -104,8 +104,6 @@ public:
                                    return;
                                }});
         }
-	    for (const auto& [key, value] : functions_) 
-        std::cout << key << " => "  << '\n';
     }
 
     ~SimulationConfig()
@@ -274,7 +272,6 @@ public:
                       << csv_path << std::endl;
             return;
         }
-        std::cout << "[info] CSV opened (truncated): " << csv_path << std::endl;
     };
 
     bool IsOpen() const { return csv_.is_open(); }
@@ -389,7 +386,6 @@ public:
         {
             mfem::VectorFunctionCoefficient u1_exact_coeff(3, config_.get_exact_data("exact_data_u"));
             u1_exact_coeff.SetTime(t_full_);
-	    std::cout << "L2 err = " << u_.ComputeL2Error(u1_exact_coeff) << std::endl;
 
             mfem::VectorFunctionCoefficient u2_exact_coeff(3, config_.get_exact_data("exact_data_u"));
             u2_exact_coeff.SetTime(t_half_);

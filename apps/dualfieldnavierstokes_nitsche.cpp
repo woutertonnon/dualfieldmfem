@@ -15,7 +15,12 @@
 
 #include <iostream>
 #include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <iomanip>
+#include <limits>
 #include <memory>
+#include <sstream>
 #include <boost/program_options.hpp>
 
 #include "mfem.hpp"
@@ -26,6 +31,30 @@
 using namespace mfem;
 using namespace std;
 namespace po = boost::program_options;
+
+namespace
+{
+std::string FormatDuration(double seconds)
+{
+    if (!std::isfinite(seconds) || seconds < 0.0)
+    {
+        return "--:--";
+    }
+    auto total = static_cast<long long>(std::llround(seconds));
+    const long long h = total / 3600;
+    const long long m = (total % 3600) / 60;
+    const long long s = total % 60;
+
+    std::ostringstream os;
+    os << std::setfill('0');
+    if (h > 0)
+    {
+        os << std::setw(2) << h << ":";
+    }
+    os << std::setw(2) << m << ":" << std::setw(2) << s;
+    return os.str();
+}
+}
 
 int main(int argc, char *argv[])
 {
@@ -63,7 +92,11 @@ int main(int argc, char *argv[])
     std::cout << "Using config file: " << config_path << std::endl;
 
     DualFieldConfig config(config_path);
-    config.PrintTree(config.get_tree());
+    const int printlevel = config.get_printlevel();
+    if (config.get_value<bool>("dump_config", false))
+    {
+        config.PrintTree(config.get_tree());
+    }
 
     // ---- Configuration -----------------------------------------------------
     double viscosity   = config.get_viscosity();
@@ -148,10 +181,13 @@ int main(int argc, char *argv[])
     {
         lid_marker = config.get_lid_marker(mesh.bdr_attributes.Max());
         lid_marker_ptr = &lid_marker;
-        std::cout << "Lid-driven cavity mode: nonzero BCs on attributes";
-        for (int i = 0; i < lid_marker.Size(); i++)
-            if (lid_marker[i]) std::cout << " " << i+1;
-        std::cout << std::endl;
+        if (printlevel > 0)
+        {
+            std::cout << "Lid-driven cavity mode: nonzero BCs on attributes";
+            for (int i = 0; i < lid_marker.Size(); i++)
+                if (lid_marker[i]) std::cout << " " << i + 1;
+            std::cout << std::endl;
+        }
     }
 
     // ---- Essential DOFs for H(div) -----------------------------------------
@@ -246,6 +282,45 @@ int main(int argc, char *argv[])
                            hcurl_x.get_u(), hdiv_x.get_u(), hdiv_x.get_w(),
                            num_it_A1, num_it_A2);
 
+    int total_cycles = 0;
+    for (double t = dt; t < T + tol; t += dt) { total_cycles++; }
+
+    auto run_start = std::chrono::steady_clock::now();
+    auto print_progress = [&](int completed_cycles, double t_now)
+    {
+        if (total_cycles <= 0) { return; }
+
+        const int width = 32;
+        const double frac_raw = static_cast<double>(completed_cycles) / static_cast<double>(total_cycles);
+        const double frac = std::clamp(frac_raw, 0.0, 1.0);
+        const int filled = static_cast<int>(std::round(frac * width));
+        const auto now = std::chrono::steady_clock::now();
+        const double elapsed_s = std::chrono::duration<double>(now - run_start).count();
+        const double eta_s = (completed_cycles > 0)
+                                 ? elapsed_s * (static_cast<double>(total_cycles - completed_cycles) /
+                                                static_cast<double>(completed_cycles))
+                                 : std::numeric_limits<double>::infinity();
+
+        std::ostringstream line;
+        line << "\r[";
+        for (int i = 0; i < width; i++)
+        {
+            line << (i < filled ? '=' : ' ');
+        }
+        line << "] " << std::setw(3) << static_cast<int>(std::round(frac * 100.0)) << "% "
+             << completed_cycles << "/" << total_cycles
+             << "  t=" << std::fixed << std::setprecision(3) << t_now << "/" << T
+             << "  ETA " << FormatDuration(eta_s);
+
+        std::cout << line.str() << std::flush;
+        if (completed_cycles >= total_cycles)
+        {
+            std::cout << std::endl;
+        }
+    };
+
+    print_progress(0, 0.0);
+
     // ---- Start-up half step for H(div) ------------------------------------
     // Compute u2^{1/2}, w2^{1/2} before first H(curl) solve so convection in
     // the H(curl) system does not use an uninitialized H(div) vorticity field.
@@ -307,6 +382,7 @@ int main(int argc, char *argv[])
 
         // Log post-solve state for this cycle with consistent full/half times.
         csv.WriteRow();
+        print_progress(cycle, t_full);
 
         if (visualisation > 0 && cycle % visualisation == 0)
         {
