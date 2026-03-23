@@ -6,8 +6,14 @@
 #include <cstdlib>                             // For std::system
 #include <dlfcn.h>                             // For dlopen, dlsym, dlclose
 // #include <mpi.h>                               // For MPI_Comm, MPI_Barrier
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <map>
+#include <stdexcept>
+#include <string>
 #include <typeindex>
 #include <unistd.h>
 #include <stdio.h>
@@ -49,19 +55,39 @@ public:
         try{ 
             return functions_.at(function_name); } 
         catch (const std::out_of_range& e) {
-            std::cout << "get_exact_data(): data not found!: " << e.what() << std::endl; std::abort();
+            throw std::runtime_error("get_exact_data(): data not found: " + function_name);
         }
     };
 
     void InitializeLibrary(std::initializer_list<std::string> function_names)
     {
-        // Get job ID to get unique name
+        CleanupGeneratedLibraryArtifacts();
+
         auto pid = getpid();
-        library_name_ = std::string("config_library_") + std::to_string(pid); // + std::string(".cpp");
-        std::string library_name_cpp = std::string("./") + library_name_ + std::string(".cpp");
-        std::string library_name_so  = std::string("./") + library_name_ + std::string(".so");
+        const auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        static std::atomic<std::uint64_t> counter{0};
+        const auto serial = counter.fetch_add(1, std::memory_order_relaxed);
+
+        std::error_code ec;
+        std::filesystem::create_directories("./tmp", ec);
+        if (ec)
+        {
+            throw std::runtime_error("Failed to create ./tmp for generated config library: " + ec.message());
+        }
+
+        const std::string library_stem =
+            std::string("config_library_") + std::to_string(pid) +
+            "_" + std::to_string(now) + "_" + std::to_string(serial);
+        library_cpp_path_ = std::filesystem::path("./tmp") / (library_stem + ".cpp");
+        library_so_path_  = std::filesystem::path("./tmp") / (library_stem + ".so");
+
         // Generate C++ code that includes the user-provided function code
-        std::ofstream file(library_name_cpp);
+        std::ofstream file(library_cpp_path_);
+        if (!file)
+        {
+            CleanupGeneratedLibraryArtifacts();
+            throw std::runtime_error("Failed to open generated source file: " + library_cpp_path_.string());
+        }
         file << R"(#include <cmath>
 
                    extern "C" {)";
@@ -71,20 +97,24 @@ public:
         file << R"(} // extern "C")";
         file.close();
 
-        std::string cmd = "g++ -O2 -fPIC -shared -o " + library_name_so + " " + library_name_cpp;
+        std::string cmd = "g++ -O2 -fPIC -shared -o \"" + library_so_path_.string() + "\" \"" + library_cpp_path_.string() + "\"";
         int rc = std::system(cmd.c_str());
         if (rc != 0)
         {
-            std::cerr << "Failed to compile generated library. cmd: " << cmd << "\n";
-            return;
+            CleanupGeneratedLibraryArtifacts();
+            throw std::runtime_error("Failed to compile generated library. cmd: " + cmd);
         }
 
-        lib_handle_ = dlopen(library_name_so.data(), RTLD_LAZY);
+        lib_handle_ = dlopen(library_so_path_.c_str(), RTLD_LAZY);
         if (!lib_handle_)
         {
-            std::cerr << ": Failed to load library: " << dlerror() << std::endl;
-            return;
+            const char *err = dlerror();
+            CleanupGeneratedLibraryArtifacts();
+            throw std::runtime_error(std::string("Failed to load generated library: ") + (err ? err : "unknown"));
         }
+
+        // Source file is no longer needed once the shared object is built.
+        std::filesystem::remove(library_cpp_path_, ec);
 
         // Load the function pointers
         for (std::string function_name : function_names)
@@ -92,10 +122,9 @@ public:
             lib_func_handles_.insert({function_name, reinterpret_cast<SpaceTimeDataFunc>(dlsym(lib_handle_, function_name.data()))});
             if (!lib_func_handles_.at(function_name))
             {
-                std::cerr << ": Failed to load initial_data_u: " << dlerror() << std::endl;
-                dlclose(lib_handle_);
-                lib_handle_ = nullptr;
-                return;
+                const char *err = dlerror();
+                CleanupGeneratedLibraryArtifacts();
+                throw std::runtime_error(std::string("Failed to load generated symbol '") + function_name + "': " + (err ? err : "unknown"));
             }
             functions_.insert({function_name,
                                [this, function_name](const mfem::Vector &x, double t, mfem::Vector &v)
@@ -104,23 +133,41 @@ public:
                                    return;
                                }});
         }
+
+        // Shared object can also be unlinked immediately after dlopen/dlsym.
+        // The loaded image remains valid until dlclose, even if the file is deleted.
+        std::filesystem::remove(library_so_path_, ec);
     }
 
     ~SimulationConfig()
+    {
+        CleanupGeneratedLibraryArtifacts();
+    }
+
+private:
+    void CleanupGeneratedLibraryArtifacts() noexcept
     {
         if (lib_handle_)
         {
             dlclose(lib_handle_);
             lib_handle_ = nullptr;
         }
-        std::filesystem::remove(library_name_+std::string(".so"));
-        std::filesystem::remove(library_name_+std::string(".cpp"));
+
+        std::error_code ec;
+        if (!library_so_path_.empty())
+        {
+            std::filesystem::remove(library_so_path_, ec);
+        }
+        if (!library_cpp_path_.empty())
+        {
+            std::filesystem::remove(library_cpp_path_, ec);
+        }
     }
 
-private:
     boost::property_tree::ptree tree_;
-    std::string library_name_;
-    void *lib_handle_;
+    std::filesystem::path library_cpp_path_;
+    std::filesystem::path library_so_path_;
+    void *lib_handle_ = nullptr;
 
     typedef void (*SpaceTimeDataFunc)(double *, double, double *, int);
     std::map<std::string, SpaceTimeDataFunc> lib_func_handles_;
