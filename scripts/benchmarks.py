@@ -2,6 +2,9 @@ import sympy as sp
 import gmsh
 import os
 import sys
+import argparse
+import subprocess
+import shutil
 from pathlib import Path
 
 try:
@@ -156,7 +159,7 @@ class benchmark:
     - parameter sweeps for time step, mesh refinement, and polynomial order
     """
     def __init__(self, name, SimulationHelper, SimulationDataProcessor,
-                 dts, T, refinements, orders):
+                 dts, T, refinements, orders, tol=1e-10, slice_normal="z"):
         """
         :param name: Benchmark name, used for output file naming.
         :type name: str
@@ -180,92 +183,195 @@ class benchmark:
         self.T = T
         self.refinements = refinements
         self.orders = orders
+        self.tol = tol
+        self.slice_normal = slice_normal
 
     def run_euler(self):
         """Run the full parameter sweep using the Euler backend."""
         self.SimulationHelper.generate_config_files(
-            self.T, self.dts, self.refinements, self.orders, tol=1e-7)
+            self.T, self.dts, self.refinements, self.orders, tol=self.tol)
         self.SimulationHelper.run_all_configs_euler()
 
     def run_local(self):
         """Run the full parameter sweep locally."""
+        out_dir = Path("out") / "data" / self.name
+        vis_dir = Path("out") / "paraview" / self.name
+        shutil.rmtree(out_dir, ignore_errors=True)
+        shutil.rmtree(vis_dir, ignore_errors=True)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
         self.SimulationHelper.run_convergence(
-            self.T, self.dts, self.refinements, self.orders, tol=1e-7)
+            self.T, self.dts, self.refinements, self.orders, tol=self.tol)
 
     def plot_local(self):
         """Collect and plot results from local runs."""
-        self.SimulationDataProcessor.collect_data()
-        self.SimulationDataProcessor.plot_convergence()
+        plot_dir = Path("out") / "plots" / self.name
+        shutil.rmtree(plot_dir, ignore_errors=True)
+
+        out_dir = Path("out") / "data" / self.name
+        csv_files = sorted(out_dir.glob(f"{self.name}_conv_order*_ref*_vars.csv"))
+        if not csv_files:
+            raise RuntimeError(f"No CSV files found in {out_dir}")
+
+        with csv_files[0].open("r", encoding="utf-8") as f:
+            header = f.readline().strip()
+        columns = {item.strip() for item in header.split(",") if item.strip()}
+
+        error_candidates = [c for c in ("u1_err_L2", "u2_err_L2") if c in columns]
+        cons_candidates = [c for c in ("||u1||", "||u2||", "u1*w1", "u2*w2") if c in columns]
+
+        has_multiple_refs = any(len(list(self.refinements(o))) > 1 for o in self.orders)
+        if error_candidates and has_multiple_refs:
+            self.SimulationDataProcessor.error_columns = error_candidates
+            self.SimulationDataProcessor.collect_data()
+            self.SimulationDataProcessor.plot_convergence()
+
+        if cons_candidates:
+            self.SimulationDataProcessor.cons_columns = cons_candidates
+            self.SimulationDataProcessor.plot_conserved_variables()
+
+        if not error_candidates and not cons_candidates:
+            raise RuntimeError(f"No supported plotting columns found in {csv_files[0]}")
 
     def plot_euler(self):
         """Pull Euler results and plot them using the local pipeline."""
         self.SimulationDataProcessor.pull_data_from_euler()
         self.plot_local()
 
+    def _default_slice_variant(self):
+        order = max(self.orders)
+        refinement = max(self.refinements(order))
+        return order, refinement
 
-class LidDrivenCavity3D(benchmark):
-    """
-    Three-dimensional lid-driven cavity benchmark.
+    def _copy_files_tree(self, source_dir, target_dir):
+        source = Path(source_dir)
+        target = Path(target_dir)
+        if not source.exists():
+            return 0
 
-    Solves the Navier–Stokes equations on the unit cube [0,1]^3 with a
-    smooth boundary-layer velocity profile on the top and side walls:
+        copied = 0
+        for path in source.rglob("*"):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(source)
+            dst = target / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, dst)
+            copied += 1
+        return copied
 
-        u_bc = 5 * cut_off(x) * cut_off(y) * (z / Lz),  v_bc = w_bc = 0
+    def _organize_conservation_tree(self, bundle_dir, order, refinement):
+        """Keep only conservation plots matching the bundle's order/ref."""
+        cons_dir = Path(bundle_dir) / "conservation"
+        if not cons_dir.exists():
+            return
 
-    where ``cut_off`` tapers the velocity to zero near each edge, avoiding
-    corner singularities. The mesh is graded near ``z = Lz`` and ``x = Lx``
-    to resolve the shear layers. ``nu = 0.001``, so Re ~ 5000.
-    """
-    def __init__(self, executable="./build/hcurl_dualfieldnavierstokes_nitsche"):
-        Lz = 1
-        T = 10000
+        suffix = f"_order{order}_ref{refinement}."
+        for item in list(cons_dir.iterdir()):
+            if not item.is_file():
+                continue
+            if suffix not in item.name:
+                item.unlink()
 
-        x0, x1, x2, t = sp.symbols('x0 x1 x2 t', real=True)
-        coords = [x0, x1, x2]
-        nu = 0.001
-        # Smooth top-hat on [0,1]: ~1 in the interior, ~0 within 'edge' of each end.
-        # Smaller eps → sharper transition; avoids corner singularities on the lid.
-        def cut_off(s, edge=sp.Float(0.05), eps=sp.Float(0.03)):
-            return sp.Rational(1, 2) * (
-                sp.tanh((s - edge) / eps)
-                - sp.tanh((s - (sp.Float(1.0) - edge)) / eps)
-            )  # type: ignore[operator]
 
-        # One-sided ramp: ~1 only within 'edge' of z=Lz (the lid), ~0 elsewhere.
-        # Replaces the linear x2/Lz so side walls see ~0 prescribed velocity (no-slip).
-        def ramp_top(z, edge=sp.Float(0.04), eps=sp.Float(0.02)):
-            return sp.Rational(1, 2) * (
-                sp.Float(1.0) + sp.tanh((z - (sp.Float(Lz) - edge)) / eps)
-            )
+    def plot_slices(self, normal=None, order=None, refinement=None, cycle=None, output_subdir=None, quiet=False):
+        """Generate 2D slice plots via scripts/plot_slice.py."""
+        if order is None or refinement is None:
+            def_order, def_ref = self._default_slice_variant()
+            order = def_order if order is None else order
+            refinement = def_ref if refinement is None else refinement
 
-        # tanh(t): smooth, differentiable time ramp from 0→1 with unit timescale.
-        tr_u = 5 * sp.Matrix([
-            sp.tanh(t) * cut_off(x0) * cut_off(x1) * ramp_top(x2),
-            sp.Integer(0),
-            sp.Integer(0),
-        ])
-        init_u = sp.Matrix([0, 0, 0])
-        name = "LidDrivenCavity3Dnoconvection"
-        meshname = "./geo/mesh/" + name + ".msh"
+        variant = f"conv_order{order}_ref{refinement}"
+        script = Path(__file__).resolve().parent / "plot_slice.py"
+        cmd = [
+            sys.executable,
+            str(script),
+            "--name",
+            self.name,
+            "--variant",
+            variant,
+            "--normal",
+            normal or self.slice_normal,
+            "--format",
+            "png,pdf",
+            "-o",
+            output_subdir
+            if output_subdir
+            else f"{self.name}_slice_{normal or self.slice_normal}_o{order}_r{refinement}",
+        ]
+        if cycle is not None:
+            cmd.extend(["--cycle", str(cycle)])
+        if quiet:
+            proc = subprocess.run(cmd, check=False, capture_output=True, text=True)
+            if proc.returncode != 0:
+                err = (proc.stderr or proc.stdout or "").strip()
+                raise RuntimeError(err if err else f"plot_slice.py failed with exit code {proc.returncode}")
+        else:
+            subprocess.run(cmd, check=True)
 
-        generate_box_mesh(Lx=1, Ly=1, Lz=Lz, lc=0.25, out=meshname)
+    def bundle_plots(self, normal=None, order=None, refinement=None, cycle=None):
+        """Collect outputs into out/plots/benchmarks/<name>/.
 
-        exact = IBVPNavierStokes(
-            u_init=init_u, nu=nu, coords=coords, t=t, u_boundary=tr_u)
-        SimulationHelper = NavierStokesBenchmarkHelper(
-            exact, name, mesh=meshname, visualisation=1, printlevel=2,
-            executable=executable)
-        data_processor = SimulationDataProcessor(name)
+        Layout::
 
-        super().__init__(
-            name=name,
-            SimulationHelper=SimulationHelper,
-            SimulationDataProcessor=data_processor,
-            dts=lambda order, refinements: 10.,
-            T=T,
-            refinements=lambda order: [0] if order == 1 else [0],
-            orders=[1])
+            <name>/
+              convergence/              -- convergence-rate plots (all orders/refs)
+              <name>_rX_oY/             -- per-variant bundle
+                conservation/           -- only this order/ref
+                slice/                  -- only this order/ref
+        """
+        plots_root = Path("out") / "plots"
+        bench_root = plots_root / "benchmarks" / self.name
+        source_dir = plots_root / self.name          # raw output from plot_local
 
+        shutil.rmtree(bench_root, ignore_errors=True)
+
+        # -- Convergence: shared across all variants ----------------------------
+        src_conv = source_dir / "convergence"
+        if src_conv.exists():
+            dst_conv = bench_root / "convergence"
+            shutil.rmtree(dst_conv, ignore_errors=True)
+            self._copy_files_tree(src_conv, dst_conv)
+
+        # -- Per-variant bundles ------------------------------------------------
+        if order is not None and refinement is not None:
+            pairs = [(int(order), int(refinement))]
+        else:
+            pairs = [(int(o), int(r)) for o in self.orders for r in self.refinements(o)]
+
+        for o, r in pairs:
+            bundle_dir = bench_root / f"{self.name}_r{r}_o{o}"
+            shutil.rmtree(bundle_dir, ignore_errors=True)
+            bundle_dir.mkdir(parents=True, exist_ok=True)
+
+            # Conservation: copy all, then prune to this variant.
+            src_cons = source_dir / "conservation"
+            if src_cons.exists():
+                self._copy_files_tree(src_cons, bundle_dir / "conservation")
+                self._organize_conservation_tree(bundle_dir, o, r)
+
+            # Slice.
+            tmp_rel = Path("benchmarks") / self.name / f"__tmp_slice_{self.name}_r{r}_o{o}"
+            tmp_dir = plots_root / tmp_rel
+            try:
+                self.plot_slices(
+                    normal=normal,
+                    order=o,
+                    refinement=r,
+                    cycle=cycle,
+                    output_subdir=str(tmp_rel),
+                    quiet=True,
+                )
+                self._copy_files_tree(tmp_dir, bundle_dir / "slice")
+            except Exception as exc:
+                print(f"[warn] Slice plotting skipped for {self.name} (order{o}, ref{r}): {exc}")
+            finally:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+
+            print(f"[info] Bundled plots: {bundle_dir}")
+
+        print(f"[info] Convergence plots: {bench_root / 'convergence'}")
+        return bench_root
 
 class LidDrivenCavity3DExact(benchmark):
     """
@@ -280,17 +386,19 @@ class LidDrivenCavity3DExact(benchmark):
     stationary walls.  No z-ramp is needed because the lid velocity is only
     applied on the top face via ``lid_attributes = [16]``.
     """
-    def __init__(self, executable="./build/hcurl_dualfieldnavierstokes_nitsche"):
+    def __init__(self, executable="./build/dualfieldnavierstokes_nitsche", solver="GMRES"):
         Lz = 1
-        T = 10000
+        T = 5
 
         x0, x1, x2, t = sp.symbols('x0 x1 x2 t', real=True)
         coords = [x0, x1, x2]
         nu = 0.001
 
-        # Lid velocity: only applied on zmax face (attribute 16)
-        tr_u = 5 * sp.Matrix([
-            1.,
+        # Lid velocity: only applied on zmax face (attribute 16), with smooth
+        # startup ramp to avoid impulsive t=0 forcing.
+        ramp = sp.tanh(2 * t)
+        tr_u = ramp * sp.Matrix([
+            sp.Integer(1),
             sp.Integer(0),
             sp.Integer(0),
         ])
@@ -298,24 +406,25 @@ class LidDrivenCavity3DExact(benchmark):
         name = "LidDrivenCavity3DExactParallel"
         meshname = "./geo/mesh/" + name + ".msh"
 
-        generate_box_mesh(Lx=1, Ly=1, Lz=Lz, lc=0.25, out=meshname)
+        generate_box_mesh(Lx=1, Ly=1, Lz=Lz, lc=0.5, out=meshname)
 
         exact = IBVPNavierStokes(
             u_init=init_u, nu=nu, coords=coords, t=t, u_boundary=tr_u,
             lid_attributes=[16])
         SimulationHelper = NavierStokesBenchmarkHelper(
-            exact, name, mesh=meshname, visualisation=10, printlevel=2,
-            executable=executable)
+            exact, name, mesh=meshname, visualisation=1, printlevel=0,
+            executable=executable, linear_solver=solver)
         data_processor = SimulationDataProcessor(name)
 
         super().__init__(
             name=name,
             SimulationHelper=SimulationHelper,
             SimulationDataProcessor=data_processor,
-            dts=lambda order, refinements: .1,
+            dts=lambda order, refinements: 0.2,
             T=T,
-            refinements=lambda order: [1] if order == 1 else [0],
-            orders=[1])
+            refinements=lambda order: [0],
+            orders=[1,2],
+            slice_normal="y")
 
 
 class ConstantField(benchmark):
@@ -329,8 +438,8 @@ class ConstantField(benchmark):
     error should remain at machine precision for any mesh and polynomial order.
     ``nu = 1``.
     """
-    def __init__(self, executable="./build/hcurl_dualfieldnavierstokes_nitsche"):
-        T = 100
+    def __init__(self, executable="./build/dualfieldnavierstokes_nitsche", solver="GMRES"):
+        T = 0.2
 
         x0, x1, x2, t = sp.symbols('x0 x1 x2 t', real=True)
         coords = [x0, x1, x2]
@@ -349,17 +458,18 @@ class ConstantField(benchmark):
             u_boundary=u, u_init=init_u)
         SimulationHelper = NavierStokesBenchmarkHelper(
             exact, name, mesh=meshname, visualisation=1, printlevel=2,
-            executable=executable)
+            executable=executable, linear_solver=solver)
         data_processor = SimulationDataProcessor(name)
 
         super().__init__(
             name=name,
             SimulationHelper=SimulationHelper,
             SimulationDataProcessor=data_processor,
-            dts=lambda order, refinements: 0.01,
+            dts=lambda order, refinements: 0.1,
             T=T,
             refinements=lambda order: [0],
-            orders=[1])
+            orders=[1,2],
+            slice_normal="z")
 
 
 class RigidRotation(benchmark):
@@ -373,37 +483,46 @@ class RigidRotation(benchmark):
     error should remain at machine precision for any mesh and polynomial order.
     ``nu = 1``.
     """
-    def __init__(self, executable="./build/hcurl_dualfieldnavierstokes_nitsche"):
-        T = 100
+    def __init__(self, executable="./build/dualfieldnavierstokes_nitsche", solver="GMRES"):
+        T = 5.
 
         x0, x1, x2, t = sp.symbols('x0 x1 x2 t', real=True)
         coords = [x0, x1, x2]
         nu = .001
         u = sp.Matrix([-x1, x0, 0])
         p = sp.Integer(0)
-        init_u = sp.Matrix([0, 0, 0])
         name = "RigidRotationSingleField"
         meshname = "./geo/mesh/RigidRotation.msh"
+        #meshname = "./extern/mfem/data/ref-cube.mesh"
 
 
         generate_box_mesh(Lx=1, Ly=1, Lz=1, lc=0.4, out=meshname)
 
-        exact = IBVPNavierStokesSolution(
-            u=u, p=p, nu=nu, coords=coords, t=t,
-            u_boundary=u, u_init=init_u)
+        # Manufactured setup: with p=0 this produces force=(-2x,-2y,0)
+        # and uses u_init=u, so the rigid rotation is an exact steady state.
+        exact = IBVPNavierStokesSolution(u=u, p=p, nu=nu, coords=coords, t=t, u_init=sp.Matrix([0,0,0]),u_boundary=u)
         SimulationHelper = NavierStokesBenchmarkHelper(
-            exact, name, mesh=meshname, visualisation=100, printlevel=2,
-            executable=executable)
+            exact,
+            name,
+            mesh=meshname,
+            visualisation=1,
+            printlevel=2,
+            executable=executable,
+            linear_solver=solver,
+            # Keep RT at least first-order so affine rigid rotation is
+            # representable in the H(div) branch and does not pollute u1.
+        )
         data_processor = SimulationDataProcessor(name)
 
         super().__init__(
             name=name,
             SimulationHelper=SimulationHelper,
             SimulationDataProcessor=data_processor,
-            dts=lambda order, refinements: 0.01,
+            dts=lambda order, refinements: 0.1,
             T=T,
             refinements=lambda order: [0],
-            orders=[1])
+            orders=[1,2],
+            slice_normal="z")
 
 
 class TaylorGreenCombinedConvergence(benchmark):
@@ -414,16 +533,19 @@ class TaylorGreenCombinedConvergence(benchmark):
     temporal and spatial errors are reduced together.
     """
 
-    def __init__(self, executable="./build/dualfieldnavierstokes_nitsche"):
+    def __init__(self, executable="./build/dualfieldnavierstokes_nitsche", solver="GMRES"):
         T = 0.125
         name = "TaylorGreenCombinedConvergence"
         meshname = "./extern/mfem/data/ref-cube.mesh"
 
         x0, x1, x2, t = sp.symbols("x0 x1 x2 t", real=True)
         coords = [x0, x1, x2]
-        nu = 0.01
-        k = 2.0 * sp.pi
-        decay = sp.exp(-2.0 * nu * k * k * t)
+        nu = sp.Float(0.01)
+        # Avoid mesh-commensurate aliasing on the ref-cube base mesh.
+        # k=2*pi can make lowest-order edge moments vanish on coarse levels,
+        # which destroys observed convergence rates.
+        k = sp.Float(1.0)
+        decay = sp.exp(-sp.Float(2.0) * nu * k * k * t)
 
         u = sp.Matrix([
             sp.Mul(sp.sin(k * x0), sp.cos(k * x1), decay),
@@ -441,6 +563,7 @@ class TaylorGreenCombinedConvergence(benchmark):
             visualisation=0,
             printlevel=1,
             executable=executable,
+            linear_solver=solver,
         )
         data_processor = SimulationDataProcessor(name)
 
@@ -450,15 +573,137 @@ class TaylorGreenCombinedConvergence(benchmark):
             SimulationDataProcessor=data_processor,
             # Keep T/dt integer on every refinement level so each case is
             # compared at the same physical end time (t_full = T).
-            dts=lambda order, refinement: 0.5 / (16 * (2 ** refinement)),
+            dts=lambda order, refinement: 0.5 / (8 * (2 ** (refinement*order))),
             T=T,
-            refinements=lambda order: [0, 1, 2, 3],
-            orders=[2],
+            refinements=lambda order: range(0,5-order),
+            orders=[1, 2],
+            slice_normal="z",
         )
 
 
 
 
 if __name__ == "__main__":
-    bench = TaylorGreenCombinedConvergence()
-    bench.run_local()
+    benchmark_map = {
+        "LidDrivenCavity3DExact": LidDrivenCavity3DExact,
+        "ConstantField": ConstantField,
+        "RigidRotation": RigidRotation,
+        "TaylorGreenCombinedConvergence": TaylorGreenCombinedConvergence,
+    }
+
+    parser = argparse.ArgumentParser(description="Run MFEM Navier-Stokes benchmarks")
+    parser.add_argument(
+        "--benchmark",
+        default="all",
+        choices=["all", *benchmark_map.keys()],
+        help="Benchmark class to run, or 'all' to run every benchmark",
+    )
+    parser.add_argument(
+        "--mode",
+        default="local",
+        choices=["local", "euler", "plot-local", "plot-euler"],
+        help="Execution mode",
+    )
+    parser.add_argument(
+        "--solver",
+        default="GMRES_AMSADS",
+        help="Linear solver string written into generated configs (e.g. GMRES, GMRES_AMSADS)",
+    )
+    parser.add_argument(
+        "--executable",
+        default="./build/dualfieldnavierstokes_nitsche",
+        help="Override executable path used by the selected benchmark",
+    )
+    parser.add_argument(
+        "--tol",
+        type=float,
+        default=1e-5,
+        help="Linear solver relative tolerance written to generated configs",
+    )
+    parser.add_argument(
+        "--plot-slice",
+        action="store_true",
+        help="Also generate a representative slice plot via plot_slice.py",
+    )
+    parser.add_argument(
+        "--slice-normal",
+        choices=["x", "y", "z"],
+        default=None,
+        help="Override slice normal (default is benchmark-specific)",
+    )
+    parser.add_argument(
+        "--slice-order",
+        type=int,
+        default=None,
+        help="Override polynomial order used for the slice variant",
+    )
+    parser.add_argument(
+        "--slice-refinement",
+        type=int,
+        default=None,
+        help="Override refinement used for the slice variant",
+    )
+    parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Stop immediately if one benchmark fails",
+    )
+    args = parser.parse_args()
+
+    selected = benchmark_map.keys() if args.benchmark == "all" else [args.benchmark]
+    failures = []
+
+    for bench_name in selected:
+        try:
+            bench_cls = benchmark_map[bench_name]
+            solver_name = args.solver
+            if solver_name == "GMRES_AMSADS":
+                if bench_name in ("LidDrivenCavity3DExact", "RigidRotation", "ConstantField"):
+                    print(f"[warn] {bench_name}: GMRES_AMSADS can break down; using GMRES.")
+                    solver_name = "GMRES"
+            if args.executable:
+                bench = bench_cls(executable=args.executable, solver=solver_name)
+            else:
+                bench = bench_cls(solver=solver_name)
+            bench.tol = float(args.tol)
+
+            if args.mode == "local":
+                bench.run_local()
+                bench.plot_local()
+            elif args.mode == "euler":
+                bench.run_euler()
+            elif args.mode == "plot-local":
+                bench.plot_local()
+            else:
+                bench.plot_euler()
+
+            if args.mode in ("local", "plot-local", "plot-euler"):
+                bench.bundle_plots(
+                    normal=args.slice_normal,
+                    order=args.slice_order,
+                    refinement=args.slice_refinement,
+                )
+
+            if args.plot_slice:
+                bench.plot_slices(
+                    normal=args.slice_normal,
+                    order=args.slice_order,
+                    refinement=args.slice_refinement,
+                )
+        except SystemExit as exc:
+            msg = f"{bench_name} failed with SystemExit({exc.code})"
+            failures.append(msg)
+            print(f"[error] {msg}")
+            if args.fail_fast:
+                raise
+        except Exception as exc:
+            msg = f"{bench_name} failed: {exc}"
+            failures.append(msg)
+            print(f"[error] {msg}")
+            if args.fail_fast:
+                raise
+
+    if failures:
+        print("[warn] Some benchmarks failed:")
+        for item in failures:
+            print(f"  - {item}")

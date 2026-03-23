@@ -74,6 +74,13 @@ def to_legacy_flat(case: dict[str, Any]) -> dict[str, Any]:
         if "lid_attributes" in boundary:
             legacy["lid_attributes"] = boundary["lid_attributes"]
 
+    metadata = c.get("metadata", {})
+    if isinstance(metadata, dict):
+        overrides = metadata.get("legacy_overrides")
+        if isinstance(overrides, dict):
+            for key, value in overrides.items():
+                legacy[key] = value
+
     return legacy
 
 

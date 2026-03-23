@@ -1199,3 +1199,115 @@ TEST(HdivDirectSolver, CubeMesh_NormalBCL2BoundaryError)
     delete fec_ND;
     delete fec_DG;
 }
+
+#if defined(MFEM_USE_MPI) && defined(MFEM_HYPRE_VERSION)
+TEST(HcurlStokesSystem, CubeMesh_GMRESAMSSolverConvergesWithSmallResidual)
+{
+    const double viscosity = 1.0;
+    const int refinements = 0;
+    const int order = 1;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
+
+    Mesh mesh(mesh_string.c_str(), 1, 1);
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
+
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_CG = new H1_FECollection(order, dim);
+
+    FiniteElementSpace ND(&mesh, fec_ND);
+    FiniteElementSpace CG(&mesh, fec_CG);
+
+    auto f = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = 1.0;
+        y.Elem(1) = 1.0;
+        y.Elem(2) = 1.0;
+    };
+
+    hcurl::StokesSystem sys(ND, CG, 1.0, viscosity, 1.0, 100.0, 10.0);
+    hcurl::StokesRHS rhs(ND, CG, f, f);
+    hcurl::StokesSolution x(ND, CG);
+    int iterations = 0;
+
+    hcurl::GMRESAMSSolver solver(ND, CG, iterations, viscosity);
+    solver.SetOperator(sys);
+    solver.Mult(rhs, x);
+
+    mfem::Vector r(rhs.Size());
+    sys.Mult(x, r);
+    r -= rhs;
+    const double rhs_norm = rhs.Norml2();
+    EXPECT_LT(r.Norml2() / (rhs_norm > 0.0 ? rhs_norm : 1.0), 1e-6);
+    EXPECT_GT(iterations, 0);
+
+    delete fec_ND;
+    delete fec_CG;
+}
+
+TEST(HdivStokesSystem, CubeMesh_GMRESADSSolverConvergesWithSmallResidual)
+{
+    const double viscosity = 1.0;
+    const double mass = 10.0;
+    const int refinements = 0;
+    const int order = 1;
+    const std::string mesh_string = "../extern/mfem/data/ref-cube.mesh";
+
+    Mesh mesh(mesh_string.c_str(), 1, 1);
+    for (int l = 0; l < refinements; ++l) { mesh.UniformRefinement(); }
+    const int dim = mesh.Dimension();
+
+    auto *fec_RT = new RT_FECollection(order - 1, dim);
+    auto *fec_ND = new ND_FECollection(order, dim);
+    auto *fec_DG = new L2_FECollection(order - 1, dim);
+
+    FiniteElementSpace RT(&mesh, fec_RT);
+    FiniteElementSpace ND(&mesh, fec_ND);
+    FiniteElementSpace DG(&mesh, fec_DG);
+
+    mfem::Array<int> ess_bdr(mesh.bdr_attributes.Max());
+    ess_bdr = 1;
+    mfem::Array<int> ess_tdof;
+    RT.GetEssentialTrueDofs(ess_bdr, ess_tdof);
+
+    auto zero = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y = 0.0;
+    };
+    auto one = [](const mfem::Vector &, double, mfem::Vector &y) -> void
+    {
+        y.SetSize(3);
+        y.Elem(0) = 1.0;
+        y.Elem(1) = 0.0;
+        y.Elem(2) = 0.0;
+    };
+
+    mfem::VectorFunctionCoefficient zero_coef(3, zero);
+    hdiv::StokesSystem sys(RT, ND, DG, ess_tdof, mass, viscosity);
+    sys.Update(zero_coef);
+
+    hdiv::StokesRHS rhs(RT, ND, DG, ess_tdof, zero, one);
+    mfem::GridFunction u_prev(&RT);
+    u_prev = 0.0;
+    rhs.Update(u_prev, 0.0, mass);
+
+    hdiv::StokesSolution x(RT, ND, DG);
+    int iterations = 0;
+    hdiv::GMRESADSSolver solver(RT, ND, DG, iterations, mass);
+    solver.SetOperator(sys);
+    solver.Mult(rhs, x);
+
+    mfem::Vector r(rhs.Size());
+    sys.Mult(x, r);
+    r -= rhs;
+    const double rhs_norm = rhs.Norml2();
+    EXPECT_LT(r.Norml2() / (rhs_norm > 0.0 ? rhs_norm : 1.0), 1e-6);
+    EXPECT_GT(iterations, 0);
+
+    delete fec_RT;
+    delete fec_ND;
+    delete fec_DG;
+}
+#endif

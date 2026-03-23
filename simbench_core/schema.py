@@ -72,7 +72,7 @@ def apply_defaults_v1(case: dict[str, Any]) -> dict[str, Any]:
     c.setdefault("metadata", {})
 
     runtime = c.setdefault("runtime", {})
-    runtime.setdefault("tol", 1e-8)
+    runtime.setdefault("tol", 1e-10)
     runtime.setdefault("visualisation", 0)
     runtime.setdefault("printlevel", 0)
 

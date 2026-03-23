@@ -55,7 +55,9 @@ class NavierStokesBenchmarkHelper(_SympyCodegen):
         mesh: str = "./extern/mfem/data/ref-cube.mesh",
         visualisation: int = 1,
         printlevel: int = 0,
-        executable: str = "./build/hcurl_dualfieldnavierstokes_nitsche",
+        executable: str = "./build/dualfieldnavierstokes_nitsche",
+        linear_solver: str = "GMRES",
+        legacy_overrides: dict | Callable[[int, int], dict] | None = None,
         legacy_remote_helper=None,
     ) -> None:
         """Create a helper for Navier--Stokes benchmark case generation and runs."""
@@ -64,6 +66,8 @@ class NavierStokesBenchmarkHelper(_SympyCodegen):
         self.mesh = mesh
         self.visualisation = visualisation
         self.printlevel = printlevel
+        self.linear_solver = linear_solver
+        self.legacy_overrides = legacy_overrides
         self.adapter = MfemNavierStokesAdapter(executable=executable)
         self.legacy_remote_helper = legacy_remote_helper
 
@@ -87,7 +91,7 @@ class NavierStokesBenchmarkHelper(_SympyCodegen):
         dt: Callable[[int, int], float],
         refinements: Callable[[int], Iterable[int]],
         orders: list[int],
-        tol: float = 1e-8,
+        tol: float = 1e-10,
     ) -> None:
         """Generate legacy-compatible JSON config files for a sweep."""
         config_dir = Path("./data/config") / self.name
@@ -97,6 +101,12 @@ class NavierStokesBenchmarkHelper(_SympyCodegen):
         for order in orders:
             for refinement in refinements(order):
                 stem = f"{self.name}_conv_order{order}_ref{refinement}"
+                overrides = None
+                if self.legacy_overrides is not None:
+                    if callable(self.legacy_overrides):
+                        overrides = self.legacy_overrides(int(order), int(refinement))
+                    else:
+                        overrides = self.legacy_overrides
                 case = self.adapter.build_case(
                     case_id=stem,
                     mesh=self.mesh,
@@ -110,7 +120,9 @@ class NavierStokesBenchmarkHelper(_SympyCodegen):
                     tol=float(tol),
                     visualisation=int(self.visualisation),
                     printlevel=int(self.printlevel),
+                    linear_solver=self.linear_solver,
                     lid_attributes=getattr(self.exact_equations, "lid_attributes", None),
+                    legacy_overrides=overrides,
                 )
                 self.adapter.write_config(case, config_dir / f"{stem}.json")
 
@@ -131,7 +143,7 @@ class NavierStokesBenchmarkHelper(_SympyCodegen):
         dt: Callable[[int, int], float],
         refinements: Callable[[int], Iterable[int]],
         orders: list[int],
-        tol: float = 1e-8,
+        tol: float = 1e-10,
     ) -> None:
         """Convenience wrapper for config generation followed by local runs."""
         self.generate_config_files(T, dt, refinements, orders, tol)
@@ -235,6 +247,7 @@ class StokesBenchmarkHelper(_SympyCodegen):
         visualisation: int = 0,
         printlevel: int = 1,
         executable: str = "./build/stokes_nitsche",
+        linear_solver: str = "GMRES",
         legacy_remote_helper=None,
     ) -> None:
         """Create a helper for Stokes benchmark case generation and runs."""
@@ -243,6 +256,7 @@ class StokesBenchmarkHelper(_SympyCodegen):
         self.mesh = mesh
         self.visualisation = visualisation
         self.printlevel = printlevel
+        self.linear_solver = linear_solver
         self.adapter = MfemStokesAdapter(executable=executable)
         self.legacy_remote_helper = legacy_remote_helper
 
@@ -259,7 +273,7 @@ class StokesBenchmarkHelper(_SympyCodegen):
         dt: Callable[[int, int], float],
         refinements: Callable[[int], Iterable[int]],
         orders: list[int],
-        tol: float = 1e-8,
+        tol: float = 1e-10,
     ) -> None:
         """Generate legacy-compatible JSON config files for a Stokes sweep."""
         del T
@@ -283,6 +297,7 @@ class StokesBenchmarkHelper(_SympyCodegen):
                     tol=float(tol),
                     visualisation=int(self.visualisation),
                     printlevel=int(self.printlevel),
+                    linear_solver=self.linear_solver,
                 )
                 self.adapter.write_config(case, config_dir / f"{stem}.json")
 
@@ -302,7 +317,7 @@ class StokesBenchmarkHelper(_SympyCodegen):
         dt: Callable[[int, int], float],
         refinements: Callable[[int], Iterable[int]],
         orders: list[int],
-        tol: float = 1e-8,
+        tol: float = 1e-10,
     ) -> None:
         """Convenience wrapper for config generation followed by local runs."""
         self.generate_config_files(T, dt, refinements, orders, tol)

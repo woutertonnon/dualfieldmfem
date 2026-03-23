@@ -144,7 +144,7 @@ public:
           refinements(get_value("refinements", 10)),
           order(get_value("order", 1)),
           visualisation(get_value("visualisation", 0)),
-          tol(get_value("tol", 1e-8)),
+          tol(get_value("tol", 1e-10)),
           viscosity(get_value("viscosity", 0.)),
           printlevel(get_value("printlevel", 0)),
           has_exact_u_solution(!get_value<std::string>("exact_data_u", "").empty())
@@ -216,7 +216,7 @@ public:
           refinements(get_value("refinements", 10)),
           order(get_value("order", 1)),
           visualisation(get_value("visualisation", 0)),
-          tol(get_value("tol", 1e-8)),
+          tol(get_value("tol", 1e-10)),
           mass(get_value("mass",0.)),
           viscosity(get_value("viscosity", 0.)),
           printlevel(get_value("printlevel", 0)),

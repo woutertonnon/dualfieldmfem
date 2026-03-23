@@ -34,22 +34,18 @@ class _ExactManipulationsSpace:
         n = vec_field.rows
         lap = sp.Matrix.zeros(n, 1)
         for i in range(n):
-            lap_i = 0
-            for c in self.coords:
-                lap_i += sp.diff(vec_field[i], c, 2)
-            lap[i] = lap_i
+            terms = [sp.diff(vec_field[i], c, 2) for c in self.coords]
+            lap[i] = sp.Add(*terms)
         return lap
 
     def convective_term(self, u):
-        """Return the convective term ``(u dot grad)u``."""
-        n = u.rows
-        term = sp.Matrix.zeros(n, 1)
-        for i in range(n):
-            expr = 0
-            for j, c in enumerate(self.coords):
-                expr += u[j] * sp.diff(u[i], c)
-            term[i] = expr
-        return term
+        """Return rotational-form convection ``-u x curl(u)``.
+
+        The C++ Navier--Stokes operators discretize convection in rotational
+        form via ``(curl(u_prev) x u, v)``. Manufactured forcing must use the
+        same identity to remain consistent with that operator.
+        """
+        return -u.cross(self.curl(u))
 
     def time_derivative(self, u, t):
         """Return time derivative of a symbolic expression or vector field."""

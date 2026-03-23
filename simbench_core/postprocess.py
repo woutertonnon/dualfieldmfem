@@ -215,7 +215,7 @@ class SimulationDataProcessor:
                     pass
 
             remote_base = "/cluster/home/wtonnon/dualfieldmfem/"
-            paraview_rel = "data/visualisation/paraview/" + self.name + "/"
+            paraview_rel = "out/paraview/" + self.name + "/"
             remote_paraview = remote_base + paraview_rel
             local_paraview = "./" + paraview_rel
             try:

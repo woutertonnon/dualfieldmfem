@@ -6,7 +6,7 @@ Outputs are saved to out/plots/<name>/ (or out/plots/<-o>/) in PNG, PDF, and EPS
 
 Options:
     --name NAME          Case name (required). Matches a folder under
-                         data/visualisation/paraview/, e.g. RigidRotation.
+                         out/paraview/, e.g. RigidRotation.
     --cycle CYCLES       Cycle(s) to plot: a single number, a comma-separated
                          list (0,10,20,30), or a range start:step:stop
                          (0:10:100). Default: last available.
@@ -14,7 +14,7 @@ Options:
     --variant VARIANT    Subfolder variant, e.g. conv_order2_ref0.
                          Default: first found (warns if multiple exist).
     --basedir DIR        Root directory for case folders.
-                         Default: data/visualisation/paraview.
+                         Default: out/paraview.
     --stream-density D   Streamline density for streamplot. Default: 1.5.
     --format FMT         Output formats: comma-separated list of png, pdf, eps.
                          Default: png,pdf,eps (all three).
@@ -256,8 +256,8 @@ def main():
     parser.add_argument("--name", type=str, required=True,
                         help="Case name, e.g. RigidRotation or LidDrivenCavity3Dnoconvection")
     parser.add_argument("--basedir", type=str,
-                        default="data/visualisation/paraview",
-                        help="Root directory containing case folders (default: data/visualisation/paraview)")
+                        default="out/paraview",
+                        help="Root directory containing case folders (default: out/paraview)")
     parser.add_argument("--variant", type=str, default=None,
                         help="Subfolder variant, e.g. conv_order2_ref0 (default: first found)")
     parser.add_argument("--cycle", type=str, default=None,

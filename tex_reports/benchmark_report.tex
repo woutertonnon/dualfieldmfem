@@ -1,0 +1,234 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{amsmath}
+
+\title{DualField MFEM Benchmark Plot Report}
+\date{\today}
+
+\newcommand{\img}[2]{%
+\begin{subfigure}[t]{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{\detokenize{#1}}
+\caption{#2}
+\end{subfigure}%
+}
+
+\newcommand{\conspanel}[4]{%
+\begin{figure}[p]
+\centering
+\img{out/plots/benchmarks/#1/#2/conservation/#1_||u1||_order#3_ref#4.png}{$\|u_1\|$}
+\hfill
+\img{out/plots/benchmarks/#1/#2/conservation/#1_||u2||_order#3_ref#4.png}{$\|u_2\|$}
+\vspace{0.5em}
+
+\img{out/plots/benchmarks/#1/#2/conservation/#1_u1*w1_order#3_ref#4.png}{$u_1 \cdot \omega_1$}
+\hfill
+\img{out/plots/benchmarks/#1/#2/conservation/#1_u2*w2_order#3_ref#4.png}{$u_2 \cdot \omega_2$}
+\caption{#1 conservation diagnostics for order #3, refinement #4.}
+\end{figure}
+}
+
+\newcommand{\convpanel}[1]{%
+\begin{figure}[p]
+\centering
+\img{out/plots/benchmarks/#1/convergence/#1_u1_err_L2.png}{$L^2$ error of $u_1$}
+\hfill
+\img{out/plots/benchmarks/#1/convergence/#1_u2_err_L2.png}{$L^2$ error of $u_2$}
+\caption{#1 convergence plots.}
+\end{figure}
+}
+
+\begin{document}
+
+\maketitle
+
+This report aggregates all benchmark plots found under
+\texttt{out/plots/benchmarks} and lists the run parameters taken from
+\texttt{data/config/*/*.json} and solver defaults in
+\texttt{apps/dualfieldnavierstokes\_nitsche.cpp}.
+
+\section*{Global Solver and Stabilization Parameters}
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Parameter               & Value                                                                                                                              \\
+		\midrule
+		Executable              & \texttt{./build/dualfieldnavierstokes\_nitsche}                                                                                    \\
+		Linear solver           & GMRES (all benchmark configs)                                                                                                      \\
+		Linear tolerance        & $10^{-5}$ (all benchmark configs)                                                                                                  \\
+		H(curl) $\theta$        & $-1.0$                                                                                                                             \\
+		H(curl) $C_w$           & $10000.0$                                                                                                                          \\
+		H(curl) $\sigma$        & $0.0$                                                                                                                              \\
+		H(curl) $\gamma$        & $100.0$                                                                                                                            \\
+		H(curl) upwind scale    & $0.0$                                                                                                                              \\
+		H(curl) $\delta$ (PSPG) & $0.0$                                                                                                                              \\
+		H(div) $\sigma$         & $100.0$                                                                                                                            \\
+		H(div) $\gamma$         & $0.0$                                                                                                                              \\
+		H(div) $C_w$            & $100.0$                                                                                                                            \\
+		Override status         & No \texttt{hcurl\_*} or \texttt{hdiv\_*} keys are present in the benchmark JSON files, so these defaults are active for all cases. \\
+		\bottomrule
+	\end{tabularx}
+	\caption{Common solver and stabilization parameters used in this benchmark bundle.}
+\end{table}
+
+\section{ConstantField}
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity                   & Value                                              \\
+		\midrule
+		Mesh file                  & \texttt{geo/mesh/ConstantField.msh}                \\
+		Mesh generation            & Box mesh with $L_x=L_y=L_z=1$, base size $lc=0.4$  \\
+		Base mesh stats            & 505 nodes, 1764 tetrahedra, 776 boundary triangles \\
+		Polynomial orders in plots & $o \in \{1,2\}$                                    \\
+		Refinements in plots       & $r=0$                                              \\
+		Time stepping              & $\Delta t=0.1$, $T=0.2$                            \\
+		Viscosity                  & $\nu = 0.001$                                      \\
+		Slice setup                & Normal direction $z$, cycle 2, plane $z=0.5$       \\
+		\bottomrule
+	\end{tabularx}
+	\caption{ConstantField benchmark setup.}
+\end{table}
+
+\conspanel{ConstantField}{ConstantField_r0_o1}{1}{0}
+\conspanel{ConstantField}{ConstantField_r0_o2}{2}{0}
+
+\begin{figure}[p]
+	\centering
+	\img{out/plots/benchmarks/ConstantField/ConstantField_r0_o1/slice/fields_cycle000002_z0.500.png}{Fields slice, order 1}
+	\hfill
+	\img{out/plots/benchmarks/ConstantField/ConstantField_r0_o2/slice/fields_cycle000002_z0.500.png}{Fields slice, order 2}
+	\vspace{0.5em}
+
+	\img{out/plots/benchmarks/ConstantField/ConstantField_r0_o1/slice/pressure_cycle000002_z0.500.png}{Pressure slice, order 1}
+	\hfill
+	\img{out/plots/benchmarks/ConstantField/ConstantField_r0_o2/slice/pressure_cycle000002_z0.500.png}{Pressure slice, order 2}
+	\caption{ConstantField slice plots (cycle 2, $z=0.5$).}
+\end{figure}
+
+\clearpage
+\section{LidDrivenCavity3DExactParallel}
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity                   & Value                                                \\
+		\midrule
+		Mesh file                  & \texttt{geo/mesh/LidDrivenCavity3DExactParallel.msh} \\
+		Mesh generation            & Box mesh with $L_x=L_y=L_z=1$, base size $lc=0.5$    \\
+		Base mesh stats            & 342 nodes, 1130 tetrahedra, 542 boundary triangles   \\
+		Polynomial orders in plots & $o \in \{1,2\}$                                      \\
+		Refinements in plots       & $r=0$                                                \\
+		Time stepping              & $\Delta t=0.2$, $T=5.0$                              \\
+		Viscosity                  & $\nu = 0.001$                                        \\
+		Lid attributes             & Boundary attribute 16                                \\
+		\bottomrule
+	\end{tabularx}
+	\caption{LidDrivenCavity3DExactParallel benchmark setup.}
+\end{table}
+
+\conspanel{LidDrivenCavity3DExactParallel}{LidDrivenCavity3DExactParallel_r0_o1}{1}{0}
+\conspanel{LidDrivenCavity3DExactParallel}{LidDrivenCavity3DExactParallel_r0_o2}{2}{0}
+
+\clearpage
+\section{RigidRotationSingleField}
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity                   & Value                                              \\
+		\midrule
+		Mesh file                  & \texttt{geo/mesh/RigidRotation.msh}                \\
+		Mesh generation            & Box mesh with $L_x=L_y=L_z=1$, base size $lc=0.4$  \\
+		Base mesh stats            & 505 nodes, 1764 tetrahedra, 776 boundary triangles \\
+		Polynomial orders in plots & $o \in \{1,2\}$                                    \\
+		Refinements in plots       & $r=0$                                              \\
+		Time stepping              & $\Delta t=0.1$, $T=5.0$                            \\
+		Viscosity                  & $\nu = 0.001$                                      \\
+		\bottomrule
+	\end{tabularx}
+	\caption{RigidRotationSingleField benchmark setup.}
+\end{table}
+
+\convpanel{RigidRotationSingleField}
+\conspanel{RigidRotationSingleField}{RigidRotationSingleField_r0_o1}{1}{0}
+\conspanel{RigidRotationSingleField}{RigidRotationSingleField_r0_o2}{2}{0}
+
+\begin{figure}[p]
+	\centering
+	\img{out/plots/benchmarks/RigidRotationSingleField/RigidRotationSingleField_r0_o1/slice/fields_cycle000050_z0.500.png}{Fields slice, order 1}
+	\hfill
+	\img{out/plots/benchmarks/RigidRotationSingleField/RigidRotationSingleField_r0_o2/slice/fields_cycle000050_z0.500.png}{Fields slice, order 2}
+	\vspace{0.5em}
+
+	\img{out/plots/benchmarks/RigidRotationSingleField/RigidRotationSingleField_r0_o1/slice/pressure_cycle000050_z0.500.png}{Pressure slice, order 1}
+	\hfill
+	\img{out/plots/benchmarks/RigidRotationSingleField/RigidRotationSingleField_r0_o2/slice/pressure_cycle000050_z0.500.png}{Pressure slice, order 2}
+	\caption{RigidRotationSingleField slice plots (cycle 50, $z=0.5$).}
+\end{figure}
+
+\clearpage
+\section{TaylorGreenCombinedConvergence}
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity                   & Value                                                                                            \\
+		\midrule
+		Mesh file                  & \texttt{extern/mfem/data/ref-cube.mesh}                                                          \\
+		Base mesh stats            & 8 vertices, 1 hexahedral element                                                                 \\
+		Refinement behavior        & Uniform 3D refinement level $r$ (effective element size scales approximately as $h \sim 2^{-r}$) \\
+		Polynomial orders in plots & $o \in \{1,2\}$                                                                                  \\
+		Refinements in plots       & $r=0,1,2,3$ for $o=1$ and $r=0,1,2$ for $o=2$                                                    \\
+		End time                   & $T=0.125$                                                                                        \\
+		Viscosity                  & $\nu = 0.01$                                                                                     \\
+		Time-step rule             & $\Delta t = 0.5 / \left(8\cdot 2^{r\,o}\right)$                                                  \\
+		\bottomrule
+	\end{tabularx}
+	\caption{TaylorGreenCombinedConvergence benchmark setup.}
+\end{table}
+
+\begin{table}[H]
+	\centering
+	\begin{tabular}{@{}cccc@{}}
+		\toprule
+		Order $o$ & Refinement $r$ & $\Delta t$ & Approx. refined cells \\
+		\midrule
+		1         & 0              & 0.0625     & $8^0 = 1$             \\
+		1         & 1              & 0.03125    & $8^1 = 8$             \\
+		1         & 2              & 0.015625   & $8^2 = 64$            \\
+		1         & 3              & 0.0078125  & $8^3 = 512$           \\
+		2         & 0              & 0.0625     & $8^0 = 1$             \\
+		2         & 1              & 0.015625   & $8^1 = 8$             \\
+		2         & 2              & 0.00390625 & $8^2 = 64$            \\
+		\bottomrule
+	\end{tabular}
+	\caption{Taylor-Green parameter sweep represented in this plot bundle.}
+\end{table}
+
+\convpanel{TaylorGreenCombinedConvergence}
+
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r0_o1}{1}{0}
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r1_o1}{1}{1}
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r2_o1}{1}{2}
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r3_o1}{1}{3}
+
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r0_o2}{2}{0}
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r1_o2}{2}{1}
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r2_o2}{2}{2}
+
+\end{document}

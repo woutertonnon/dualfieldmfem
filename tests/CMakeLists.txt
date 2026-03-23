@@ -30,3 +30,21 @@ target_link_libraries(stokes_tests PRIVATE GTest::gtest GTest::gtest_main)
 
 
 add_test(NAME stokes_tests COMMAND stokes_tests)
+
+add_test(
+  NAME dualfield_smoke_umfpack
+  COMMAND $<TARGET_FILE:dualfieldnavierstokes_nitsche>
+          -c data/config/ConstantField/ConstantField_smoke_umfpack.json
+)
+set_tests_properties(dualfield_smoke_umfpack PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+add_test(
+  NAME dualfield_smoke_amsads
+  COMMAND $<TARGET_FILE:dualfieldnavierstokes_nitsche>
+          -c data/config/ConstantField/ConstantField_smoke_amsads.json
+)
+set_tests_properties(dualfield_smoke_amsads PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)

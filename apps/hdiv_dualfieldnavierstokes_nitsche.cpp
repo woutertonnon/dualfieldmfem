@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
     int    cycle = 0;
 
     mfem::ParaViewDataCollection vtk_dc(
-        "./data/visualisation/paraview/" + output_file, &mesh);
+        "./out/paraview/" + output_file, &mesh);
     if (visualisation > 0)
     {
         vtk_dc.RegisterField("u1", &x1.get_u());
@@ -189,8 +189,8 @@ int main(int argc, char *argv[])
     }
 
     // ---- Solvers -----------------------------------------------------------
-    hdiv::GMRESSolver solv1(RT, ND, DG, num_it1, 1./dt);
-    hdiv::GMRESSolver solv2(RT, ND, DG, num_it2, 1./dt);
+    hdiv::GMRESSolver solv1(RT, ND, DG, num_it1, 1./dt, tol);
+    hdiv::GMRESSolver solv2(RT, ND, DG, num_it2, 1./dt, tol);
 
     // ---- CSV logging -------------------------------------------------------
     HDivDualFieldCSVLogger csv(config, cycle, t, &RT,

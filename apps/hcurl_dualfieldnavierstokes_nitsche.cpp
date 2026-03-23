@@ -180,7 +180,7 @@ int main(int argc, char *argv[])
     int    cycle = 0;
 
     mfem::ParaViewDataCollection vtk_dc(
-        "./data/visualisation/paraview/" + output_file, &mesh);
+        "./out/paraview/" + output_file, &mesh);
     if (visualisation > 0)
     {
         vtk_dc.RegisterField("u1", &x1.get_u());
@@ -193,8 +193,8 @@ int main(int argc, char *argv[])
     }
 
     // ---- Solvers -----------------------------------------------------------
-    hcurl::GMRESSolver solv1(ND, CG, num_it1, viscosity);
-    hcurl::GMRESSolver solv2(ND, CG, num_it2, viscosity);
+    hcurl::GMRESSolver solv1(ND, CG, num_it1, viscosity, tol);
+    hcurl::GMRESSolver solv2(ND, CG, num_it2, viscosity, tol);
 
     // ---- CSV logging -------------------------------------------------------
     HCurlDualFieldCSVLogger csv(config, cycle, t, &ND, x1.get_u(), x2.get_u(),

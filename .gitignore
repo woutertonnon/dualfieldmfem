@@ -24,6 +24,10 @@ env/
 .vscode/
 .claude/
 
+# Extern submodule build artifacts (submodule roots are tracked by git)
+extern/mfem/*
+extern/boundaryintegrallib/*
+
 # Runtime artifacts
 config_library_*.cpp
 config_library_*.so

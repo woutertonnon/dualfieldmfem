@@ -34,7 +34,7 @@ class _BaseMfemAdapter:
 class MfemNavierStokesAdapter(_BaseMfemAdapter):
     """Adapter for MFEM Navier--Stokes executables using DualFieldConfig contract."""
 
-    def __init__(self, executable: str = "./build/hcurl_dualfieldnavierstokes_nitsche") -> None:
+    def __init__(self, executable: str = "./build/dualfieldnavierstokes_nitsche") -> None:
         super().__init__(executable)
 
     def build_case(
@@ -49,15 +49,20 @@ class MfemNavierStokesAdapter(_BaseMfemAdapter):
         refinements: int,
         dt: float,
         T: float,
-        tol: float = 1e-8,
+        tol: float = 1e-10,
         visualisation: int = 0,
         printlevel: int = 0,
         linear_solver: str = "GMRES",
         variant: str = "hcurl_dualfield_nitsche",
         lid_attributes: list[int] | None = None,
+        legacy_overrides: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build a validated canonical v1 Navier--Stokes case dictionary."""
+        meta: dict[str, Any] = dict(metadata or {})
+        if legacy_overrides:
+            meta["legacy_overrides"] = dict(legacy_overrides)
+
         case: dict[str, Any] = {
             "schema_version": 1,
             "case_id": case_id,
@@ -88,7 +93,7 @@ class MfemNavierStokesAdapter(_BaseMfemAdapter):
                 "mesh": mesh,
                 "outputfile": outputfile,
             },
-            "metadata": metadata or {},
+            "metadata": meta,
         }
         if lid_attributes is not None:
             case["solver"]["boundary"]["lid_attributes"] = lid_attributes
@@ -113,7 +118,7 @@ class MfemStokesAdapter(_BaseMfemAdapter):
         functions: dict[str, str],
         order: int,
         refinements: int,
-        tol: float = 1e-8,
+        tol: float = 1e-10,
         visualisation: int = 0,
         printlevel: int = 0,
         linear_solver: str = "GMRES",

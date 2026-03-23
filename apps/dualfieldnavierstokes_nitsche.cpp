@@ -14,6 +14,8 @@
 // Both nonlinear terms vanish independently (a x b . b = 0).
 
 #include <iostream>
+#include <algorithm>
+#include <memory>
 #include <boost/program_options.hpp>
 
 #include "mfem.hpp"
@@ -73,28 +75,32 @@ int main(int argc, char *argv[])
     double T           = config.get_T();
     std::string mesh_string  = config.get_mesh();
     std::string output_file  = config.get_outputfile();
+    std::string solver_type  = config.get_solver();
+    bool use_hypre_pc = (solver_type == "GMRES_HYPRE" ||
+                         solver_type == "GMRES_AMSADS" ||
+                         solver_type == "HYPRE");
 
     // ---- H(curl) stabilisation parameters ----------------------------------
     //
     // Adjoint-consistency parameter for Nitsche BCs:
     //   theta = -1 gives the adjoint-consistent (incomplete) variant.
-    double hcurl_theta = -1.;
+    double hcurl_theta = config.get_value<double>("hcurl_theta", -1.0);
     // Nitsche boundary penalty: (Cw / h_F) * int_{dOmega} (n x u).(n x v) dS.
     // Must be large enough to enforce BCs; 10000 is safe.
-    double hcurl_Cw = 10000.;
+    double hcurl_Cw = config.get_value<double>("hcurl_Cw", 10000.0);
     // Normal-jump penalty: (sigma * nu / h_F) * sum_F int_F [[u]].[[v]] dF.
     // For ND the tangential component is continuous; [[u]] is purely normal.
     // Not needed when curl-jump ghost penalty is active.
-    double hcurl_sigma = 0.0;
+    double hcurl_sigma = config.get_value<double>("hcurl_sigma", 0.0);
     // Curl-jump ghost penalty: (gamma * nu * h_F) * sum_F int_F [[curl u]].[[curl v]] dF.
     // Smooths the vorticity curl(u) used as the lagged advection coefficient
     // in the H(div) system.  h_F scaling ensures convergence is not degraded.
-    double hcurl_gamma = 100.0;
+    double hcurl_gamma = config.get_value<double>("hcurl_gamma", 100.0);
     // Heumann upwind: upwind_scale * sum_F int_F |w.n_F| [[u]].[[v]] dF.
     // Wind-adaptive normal-jump penalty (Heumann, Hiptmair, Pagliantini 2016).
-    double hcurl_upwind = 0.0;
+    double hcurl_upwind = config.get_value<double>("hcurl_upwind", 0.0);
     // PSPG pressure stabilisation: delta ~ h^2.
-    double hcurl_delta = 0.0;
+    double hcurl_delta = config.get_value<double>("hcurl_delta", 0.0);
 
     // ---- H(div) stabilisation parameters -----------------------------------
     //
@@ -103,19 +109,19 @@ int main(int argc, char *argv[])
     // For RT the normal component is continuous; [[u]] is purely tangential.
     // Controls tangential DOF oscillations that arise when viscosity enters
     // only through the vorticity coupling B^T D^{-1} B (volume-only).
-    double hdiv_sigma = 100.0;
+    double hdiv_sigma = config.get_value<double>("hdiv_sigma", 100.0);
     // Interior-face div-jump ghost penalty:
     //   (gamma * nu * h_F) * sum_F int_F [[div u]] [[div v]] dF
     // Not needed: div(u) couples to pressure through the saddle-point
     // structure, and the convection coefficient w lives in conforming ND.
-    double hdiv_gamma = 0.0;
+    double hdiv_gamma = config.get_value<double>("hdiv_gamma", 0.0);
     // Boundary tangential penalty (Nitsche-style):
     //   (Cw / h_F) * int_{dOmega} (n x u).(n x v) dS
     // Penalises the tangential component of u on the boundary.  For RT the
     // normal component u.n is strongly enforced via essential BCs; this term
     // weakly controls the tangential trace.  A matching RHS consistency term
     // is added so the exact solution is not penalised.
-    double hdiv_Cw = 100.0;
+    double hdiv_Cw = config.get_value<double>("hdiv_Cw", 100.0);
 
     // ---- Mesh and FE spaces ------------------------------------------------
     Mesh mesh(mesh_string.c_str(), 1, 1);
@@ -124,9 +130,9 @@ int main(int argc, char *argv[])
     int dim = mesh.Dimension();
 
     // DG ~ L2, ND ~ H(curl), RT ~ H(div), CG ~ H1
-    mfem::FiniteElementCollection *fec_DG = new mfem::L2_FECollection(order - 1, dim);
+    mfem::FiniteElementCollection *fec_DG = new mfem::L2_FECollection(order-1, dim);
     mfem::FiniteElementCollection *fec_ND = new mfem::ND_FECollection(order, dim);
-    mfem::FiniteElementCollection *fec_RT = new mfem::RT_FECollection(order - 1, dim);
+    mfem::FiniteElementCollection *fec_RT = new mfem::RT_FECollection(order-1, dim);
     mfem::FiniteElementCollection *fec_CG = new mfem::H1_FECollection(order, dim);
     mfem::FiniteElementSpace DG(&mesh, fec_DG);
     mfem::FiniteElementSpace ND(&mesh, fec_ND);
@@ -201,7 +207,7 @@ int main(int argc, char *argv[])
     // ---- Visualisation -----------------------------------------------------
 
     mfem::ParaViewDataCollection vtk_dc(
-        "./data/visualisation/paraview/" + output_file, &mesh);
+        "./out/paraview/" + output_file, &mesh);
     if (visualisation > 0)
     {
         vtk_dc.RegisterField("u1", &hcurl_x.get_u());
@@ -215,9 +221,25 @@ int main(int argc, char *argv[])
     }
 
     // ---- Solvers -----------------------------------------------------------
-    hcurl::GMRESSolver hcurl_solv(ND, CG, num_it_A1, viscosity);
-    hdiv::GMRESSolver  hdiv_solv(RT, ND, DG, num_it_A2, 1./dt);
-    hdiv::GMRESSolver  hdiv_solv_half(RT, ND, DG, num_it_A2, 2./dt);
+    std::unique_ptr<hcurl::GMRESSolver> hcurl_solv;
+    std::unique_ptr<hcurl::GMRESAMSSolver> hcurl_solv_ams;
+    std::unique_ptr<hdiv::GMRESSolver> hdiv_solv;
+    std::unique_ptr<hdiv::GMRESADSSolver> hdiv_solv_ads;
+    std::unique_ptr<hdiv::GMRESSolver> hdiv_solv_half;
+    std::unique_ptr<hdiv::GMRESADSSolver> hdiv_solv_half_ads;
+
+    if (use_hypre_pc)
+    {
+        hcurl_solv_ams = std::make_unique<hcurl::GMRESAMSSolver>(ND, CG, num_it_A1, viscosity, tol);
+        hdiv_solv_ads = std::make_unique<hdiv::GMRESADSSolver>(RT, ND, DG, num_it_A2, 1./dt, tol);
+        hdiv_solv_half_ads = std::make_unique<hdiv::GMRESADSSolver>(RT, ND, DG, num_it_A2, 2./dt, tol);
+    }
+    else
+    {
+        hcurl_solv = std::make_unique<hcurl::GMRESSolver>(ND, CG, num_it_A1, viscosity, tol);
+        hdiv_solv = std::make_unique<hdiv::GMRESSolver>(RT, ND, DG, num_it_A2, 1./dt, tol);
+        hdiv_solv_half = std::make_unique<hdiv::GMRESSolver>(RT, ND, DG, num_it_A2, 2./dt, tol);
+    }
 
     // ---- CSV logging -------------------------------------------------------
     DualFieldCSVLogger csv(config, cycle, t_full, t_half, &ND, &RT,
@@ -227,11 +249,22 @@ int main(int argc, char *argv[])
     // ---- Start-up half step for H(div) ------------------------------------
     // Compute u2^{1/2}, w2^{1/2} before first H(curl) solve so convection in
     // the H(curl) system does not use an uninitialized H(div) vorticity field.
+    //
+    // Time-centering for RHS forcing:
+    //   startup step is [0, dt/2] so the midpoint is t = dt/4.
     t_half = 0.5 * dt;
     hdiv_sys_half.Update(w_hcurl);
-    hdiv_rhs.Update(hdiv_x.get_u(), t_half, 2./dt);
-    hdiv_solv_half.SetOperator(hdiv_sys_half);
-    hdiv_solv_half.Mult(hdiv_rhs, hdiv_x);
+    hdiv_rhs.Update(hdiv_x.get_u(), 0.25 * dt, 2./dt);
+    if (use_hypre_pc)
+    {
+        hdiv_solv_half_ads->SetOperator(hdiv_sys_half);
+        hdiv_solv_half_ads->Mult(hdiv_rhs, hdiv_x);
+    }
+    else
+    {
+        hdiv_solv_half->SetOperator(hdiv_sys_half);
+        hdiv_solv_half->Mult(hdiv_rhs, hdiv_x);
+    }
 
     // Log initialized staggered state: (t_full, t_half) = (0, dt/2).
     csv.WriteRow();
@@ -241,17 +274,36 @@ int main(int argc, char *argv[])
     {
         // -- H(curl): convection by w_hdiv (vorticity from H(div) system) ----
         hcurl_sys.Update(w_hdiv);
-        hcurl_rhs.Update(hcurl_x.get_u(), t_full, 1./dt);
-        hcurl_solv.SetOperator(hcurl_sys);
-        hcurl_solv.Mult(hcurl_rhs, hcurl_x);
+        // Full-step update [t_full-dt, t_full] uses midpoint forcing time.
+        hcurl_rhs.Update(hcurl_x.get_u(), t_full - 0.5 * dt, 1./dt);
+
+        if (use_hypre_pc)
+        {
+            hcurl_solv_ams->SetOperator(hcurl_sys);
+            hcurl_solv_ams->Mult(hcurl_rhs, hcurl_x);
+        }
+        else
+        {
+            hcurl_solv->SetOperator(hcurl_sys);
+            hcurl_solv->Mult(hcurl_rhs, hcurl_x);
+        }
         // After this call hcurl_x (and therefore w_hcurl = curl(u1)) is at t_full.
 
         // -- H(div): advance to the next half time using fresh curl(u1) -------
         t_half = t_full + 0.5 * dt;
         hdiv_sys.Update(w_hcurl);
-        hdiv_rhs.Update(hdiv_x.get_u(), t_half, 1./dt);
-        hdiv_solv.SetOperator(hdiv_sys);
-        hdiv_solv.Mult(hdiv_rhs, hdiv_x);
+        // Half-grid update [t_half-dt, t_half] is centered at t = t_full.
+        hdiv_rhs.Update(hdiv_x.get_u(), t_half - 0.5 * dt, 1./dt);
+        if (use_hypre_pc)
+        {
+            hdiv_solv_ads->SetOperator(hdiv_sys);
+            hdiv_solv_ads->Mult(hdiv_rhs, hdiv_x);
+        }
+        else
+        {
+            hdiv_solv->SetOperator(hdiv_sys);
+            hdiv_solv->Mult(hdiv_rhs, hdiv_x);
+        }
 
         // Log post-solve state for this cycle with consistent full/half times.
         csv.WriteRow();

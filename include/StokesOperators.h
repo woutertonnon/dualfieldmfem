@@ -605,6 +605,7 @@ namespace hcurl{
     private:
         mfem::BlockMatrix *op_;
         int &iterations_;
+        double rel_tol_;
 
         mutable mfem::UMFPackSolver solver_A_;
         mfem::BilinearForm prec_p_;
@@ -615,11 +616,13 @@ namespace hcurl{
         GMRESSolver(mfem::FiniteElementSpace &ND,
                     mfem::FiniteElementSpace &CG,
                     int &iterations,
-                    double viscosity)
+                    double viscosity,
+                    double rel_tol = 1e-6)
             : OffsetsHolder({&ND, &CG}),
               mfem::Solver(offsets_.Last()),
               iterations_(iterations),
               op_(nullptr),
+              rel_tol_(rel_tol),
               prec_p_(&CG),
               prec_(offsets_)
         {
@@ -652,10 +655,10 @@ namespace hcurl{
             gmres.SetOperator(*op_);
             gmres.SetPreconditioner(prec_);
             gmres.SetMonitor(monitor);
-            gmres.SetRelTol(1e-6);
+            gmres.SetRelTol(rel_tol_);
             gmres.SetAbsTol(1e-10);
             gmres.SetMaxIter(100000);
-            gmres.SetKDim(500);
+            gmres.SetKDim(5000);
             gmres.SetPrintLevel(0);
 
             y.SetSize(op_->Height());
@@ -663,6 +666,138 @@ namespace hcurl{
             iterations_ = gmres.GetNumIterations();
         }
     };
+
+#if defined(MFEM_USE_MPI) && defined(MFEM_HYPRE_VERSION)
+    // GMRES solver for the 2x2 H(curl) Stokes system with HypreAMS on block A
+    // and UMFPack on the pressure mass block.
+    class GMRESAMSSolver
+        : private OffsetsHolder,
+          public mfem::Solver
+    {
+    private:
+        mfem::BlockMatrix *op_;
+        int &iterations_;
+        double rel_tol_;
+        mfem::FiniteElementSpace &ND_;
+
+        mfem::BilinearForm prec_p_;
+        mfem::UMFPackSolver solver_p_;
+        mutable mfem::BlockDiagonalPreconditioner prec_;
+
+        mutable std::unique_ptr<mfem::HypreParMatrix> parA_;
+        mutable std::unique_ptr<mfem::HypreAMS> ams_;
+        mutable std::unique_ptr<mfem::ParMesh> aux_pmesh_;
+        mutable std::unique_ptr<mfem::ParFiniteElementSpace> aux_nd_par_;
+
+        mfem::ParFiniteElementSpace *GetNDParFESpace() const
+        {
+            if (!mfem::Mpi::IsInitialized()) { mfem::Mpi::Init(); }
+
+            auto *nd_par = dynamic_cast<mfem::ParFiniteElementSpace *>(&ND_);
+            if (nd_par) { return nd_par; }
+
+            const int mpi_size = mfem::Mpi::WorldSize();
+            MFEM_VERIFY(mpi_size == 1,
+                        "hcurl::GMRESAMSSolver with serial FiniteElementSpace "
+                        "requires running on one MPI rank");
+
+            if (!aux_nd_par_)
+            {
+                auto *mesh = ND_.GetMesh();
+                MFEM_VERIFY(mesh != nullptr, "hcurl::GMRESAMSSolver: ND mesh is null");
+                std::vector<int> partitioning(mesh->GetNE(), 0);
+                aux_pmesh_ = std::make_unique<mfem::ParMesh>(MPI_COMM_WORLD, *mesh, partitioning.data());
+                aux_nd_par_ = std::make_unique<mfem::ParFiniteElementSpace>(aux_pmesh_.get(), ND_.FEColl());
+            }
+            return aux_nd_par_.get();
+        }
+
+    public:
+        GMRESAMSSolver(mfem::FiniteElementSpace &ND,
+                       mfem::FiniteElementSpace &CG,
+                       int &iterations,
+                       double viscosity,
+                       double rel_tol = 1e-6)
+            : OffsetsHolder({&ND, &CG}),
+              mfem::Solver(offsets_.Last()),
+              op_(nullptr),
+              iterations_(iterations),
+              rel_tol_(rel_tol),
+              ND_(ND),
+              prec_p_(&CG),
+              prec_(offsets_)
+        {
+            mfem::ConstantCoefficient inv_visc(1.0 / viscosity);
+            prec_p_.AddDomainIntegrator(new mfem::MassIntegrator(inv_visc));
+            prec_p_.Assemble();
+            prec_p_.Finalize();
+            solver_p_.SetOperator(prec_p_.SpMat());
+        }
+
+        void SetOperator(const mfem::Operator &op) override
+        {
+            throw std::invalid_argument(
+                "hcurl::GMRESAMSSolver::SetOperator(): expected mfem::BlockMatrix.");
+        }
+
+        void SetOperator(mfem::BlockMatrix &op)
+        {
+            op_ = &op;
+
+            auto *A_sp = dynamic_cast<mfem::SparseMatrix *>(&op.GetBlock(0, 0));
+            MFEM_VERIFY(A_sp != nullptr, "hcurl::GMRESAMSSolver expects SparseMatrix block (0,0)");
+
+            auto *nd_par = GetNDParFESpace();
+
+            HYPRE_BigInt row_starts[2] = {0, static_cast<HYPRE_BigInt>(A_sp->Height())};
+            parA_ = std::make_unique<mfem::HypreParMatrix>(MPI_COMM_WORLD, A_sp->Height(), row_starts, A_sp);
+            parA_->CopyRowStarts();
+
+            ams_ = std::make_unique<mfem::HypreAMS>(*parA_, nd_par);
+            ams_->SetPrintLevel(0);
+
+            prec_.SetDiagonalBlock(0, ams_.get());
+            prec_.SetDiagonalBlock(1, &solver_p_);
+        }
+
+        void Mult(const mfem::Vector &x, mfem::Vector &y) const override
+        {
+            PeriodicResidualMonitor monitor(100);
+            mfem::FGMRESSolver gmres;
+            gmres.iterative_mode = true;
+            gmres.SetOperator(*op_);
+            gmres.SetPreconditioner(prec_);
+            gmres.SetMonitor(monitor);
+            gmres.SetRelTol(rel_tol_);
+            gmres.SetAbsTol(1e-10);
+            gmres.SetMaxIter(100000);
+            gmres.SetKDim(5000);
+            gmres.SetPrintLevel(0);
+
+            y.SetSize(op_->Height());
+            gmres.Mult(x, y);
+            iterations_ = gmres.GetNumIterations();
+        }
+    };
+#else
+    class GMRESAMSSolver
+        : private OffsetsHolder,
+          public mfem::Solver
+    {
+    public:
+        GMRESAMSSolver(mfem::FiniteElementSpace &ND,
+                       mfem::FiniteElementSpace &CG,
+                       int &iterations,
+                       double viscosity)
+            : OffsetsHolder({&ND, &CG}), mfem::Solver(offsets_.Last())
+        {
+            MFEM_ABORT("hcurl::GMRESAMSSolver requires MFEM_USE_MPI and MFEM_USE_HYPRE");
+        }
+        void SetOperator(const mfem::Operator &op) override { }
+        void SetOperator(mfem::BlockMatrix &op) { }
+        void Mult(const mfem::Vector &x, mfem::Vector &y) const override { }
+    };
+#endif
 }
 
 namespace hdiv{
@@ -897,15 +1032,13 @@ namespace hdiv{
                     f_lf[ess_tdof_list_[i]] = tr_u[ess_tdof_list_[i]];
             }
 
-            mfem::LinearForm g_lf(ND_);
-            if (has_lid_)
-                g_lf.AddBoundaryIntegrator(new mfem::VectorFEBoundaryTangentLFIntegrator(tr_u_coef_), bdr_marker_);
-            else
-                g_lf.AddBoundaryIntegrator(new mfem::VectorFEBoundaryTangentLFIntegrator(tr_u_coef_));
-            g_lf.Assemble();
-
             GetBlock(0).Set(1., f_lf);
-            GetBlock(1).Set(-1., g_lf);
+            // Block (1) enforces the weak vorticity relation via
+            // B(u) - M w = 0. The boundary cross term is already part of
+            // B through RT_ND_BdrCrossProductIntegrator in StokesSystem.
+            // Adding an extra boundary RHS here double-counts that trace and
+            // corrupts the coupled vorticity used by the H(curl) solve.
+            GetBlock(1) = 0.;
             GetBlock(2) = 0.;
         }
     };
@@ -1102,6 +1235,7 @@ namespace hdiv{
     private:
         mfem::BlockMatrix *op_;
         int &iterations_;
+        double rel_tol_;
 
         // Block-diagonal exact preconditioner
         mutable BlockDiagPreconditioner prec_;
@@ -1111,11 +1245,13 @@ namespace hdiv{
                     mfem::FiniteElementSpace &ND,
                     mfem::FiniteElementSpace &DG,
                     int &iterations,
-                    double mass)
+                    double mass,
+                    double rel_tol = 1e-6)
             : OffsetsHolder({&RT, &ND, &DG}),
               mfem::Solver(offsets_.Last()),
               iterations_(iterations),
               op_(nullptr),
+              rel_tol_(rel_tol),
               prec_(RT, ND, DG, mass)
         {}
 
@@ -1139,10 +1275,10 @@ namespace hdiv{
             gmres.SetOperator(*op_);
             gmres.SetPreconditioner(prec_);
             gmres.SetMonitor(monitor);
-            gmres.SetRelTol(1e-6);
+            gmres.SetRelTol(rel_tol_);
             gmres.SetAbsTol(1e-10);
             gmres.SetMaxIter(100000);
-            gmres.SetKDim(500);
+            gmres.SetKDim(5000);
             gmres.SetPrintLevel(0);
 
             y.SetSize(op_->Height());
@@ -1150,6 +1286,191 @@ namespace hdiv{
             iterations_ = gmres.GetNumIterations();
         }
     };
+
+#if defined(MFEM_USE_MPI) && defined(MFEM_HYPRE_VERSION)
+    class ADSBlockDiagPreconditioner
+        : private OffsetsHolder,
+          public mfem::Solver
+    {
+    private:
+        mfem::FiniteElementSpace &RT_, &ND_, &DG_;
+        double mass_;
+
+        mutable std::unique_ptr<mfem::HypreParMatrix> parA_;
+        mutable std::unique_ptr<mfem::HypreADS> ads_;
+        mutable std::unique_ptr<mfem::ParMesh> aux_pmesh_;
+        mutable std::unique_ptr<mfem::ParFiniteElementSpace> aux_rt_par_;
+
+        mfem::ParFiniteElementSpace *GetRTParFESpace() const
+        {
+            if (!mfem::Mpi::IsInitialized()) { mfem::Mpi::Init(); }
+
+            auto *rt_par = dynamic_cast<mfem::ParFiniteElementSpace *>(&RT_);
+            if (rt_par) { return rt_par; }
+
+            const int mpi_size = mfem::Mpi::WorldSize();
+            MFEM_VERIFY(mpi_size == 1,
+                        "hdiv::ADSBlockDiagPreconditioner with serial FiniteElementSpace "
+                        "requires running on one MPI rank");
+
+            if (!aux_rt_par_)
+            {
+                auto *mesh = RT_.GetMesh();
+                MFEM_VERIFY(mesh != nullptr, "hdiv::ADSBlockDiagPreconditioner: RT mesh is null");
+                std::vector<int> partitioning(mesh->GetNE(), 0);
+                aux_pmesh_ = std::make_unique<mfem::ParMesh>(MPI_COMM_WORLD, *mesh, partitioning.data());
+                aux_rt_par_ = std::make_unique<mfem::ParFiniteElementSpace>(aux_pmesh_.get(), RT_.FEColl());
+            }
+            return aux_rt_par_.get();
+        }
+
+        mfem::BilinearForm mass_D_;
+        mfem::UMFPackSolver solver_D_;
+
+        mfem::BilinearForm mass_p_;
+        mfem::UMFPackSolver solver_p_;
+
+    public:
+        ADSBlockDiagPreconditioner(mfem::FiniteElementSpace &RT,
+                                   mfem::FiniteElementSpace &ND,
+                                   mfem::FiniteElementSpace &DG,
+                                   double mass)
+            : OffsetsHolder({&RT, &ND, &DG}),
+              mfem::Solver(offsets_.Last()),
+              RT_(RT), ND_(ND), DG_(DG), mass_(mass),
+              mass_D_(&ND),
+              mass_p_(&DG)
+        {
+            mfem::ConstantCoefficient minus_one(-1.0);
+            mass_D_.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(minus_one));
+            mass_D_.Assemble();
+            mass_D_.Finalize();
+            solver_D_.SetOperator(mass_D_.SpMat());
+
+            mfem::ConstantCoefficient inv_mass_coef(1.0 / mass_);
+            mass_p_.AddDomainIntegrator(new mfem::MassIntegrator(inv_mass_coef));
+            mass_p_.Assemble();
+            mass_p_.Finalize();
+            solver_p_.SetOperator(mass_p_.SpMat());
+        }
+
+        void SetOperator(const mfem::Operator &op) override
+        {
+            throw std::invalid_argument(
+                "ADSBlockDiagPreconditioner::SetOperator(): expected mfem::BlockMatrix.");
+        }
+
+        void SetOperator(mfem::BlockMatrix &op)
+        {
+            auto *A_sp = dynamic_cast<mfem::SparseMatrix *>(&op.GetBlock(0, 0));
+            MFEM_VERIFY(A_sp != nullptr, "ADSBlockDiagPreconditioner expects SparseMatrix block (0,0)");
+
+            auto *rt_par = GetRTParFESpace();
+
+            HYPRE_BigInt row_starts[2] = {0, static_cast<HYPRE_BigInt>(A_sp->Height())};
+            parA_ = std::make_unique<mfem::HypreParMatrix>(MPI_COMM_WORLD, A_sp->Height(), row_starts, A_sp);
+            parA_->CopyRowStarts();
+
+            ads_ = std::make_unique<mfem::HypreADS>(*parA_, rt_par);
+            ads_->SetPrintLevel(0);
+        }
+
+        void Mult(const mfem::Vector &x, mfem::Vector &y) const override
+        {
+            mfem::Vector x0, x1, x2, y0, y1, y2;
+
+            x0.MakeRef(const_cast<mfem::Vector &>(x), offsets_[0], offsets_[1] - offsets_[0]);
+            x1.MakeRef(const_cast<mfem::Vector &>(x), offsets_[1], offsets_[2] - offsets_[1]);
+            x2.MakeRef(const_cast<mfem::Vector &>(x), offsets_[2], offsets_[3] - offsets_[2]);
+
+            y0.MakeRef(y, offsets_[0], offsets_[1] - offsets_[0]);
+            y1.MakeRef(y, offsets_[1], offsets_[2] - offsets_[1]);
+            y2.MakeRef(y, offsets_[2], offsets_[3] - offsets_[2]);
+
+            ads_->Mult(x0, y0);
+            solver_D_.Mult(x1, y1);
+            solver_p_.Mult(x2, y2);
+        }
+    };
+
+    class GMRESADSSolver
+        : private OffsetsHolder,
+          public mfem::Solver
+    {
+    private:
+        mfem::BlockMatrix *op_;
+        int &iterations_;
+        double rel_tol_;
+        mutable ADSBlockDiagPreconditioner prec_;
+
+    public:
+        GMRESADSSolver(mfem::FiniteElementSpace &RT,
+                       mfem::FiniteElementSpace &ND,
+                       mfem::FiniteElementSpace &DG,
+                       int &iterations,
+                       double mass,
+                       double rel_tol = 1e-6)
+            : OffsetsHolder({&RT, &ND, &DG}),
+              mfem::Solver(offsets_.Last()),
+              op_(nullptr),
+              iterations_(iterations),
+              rel_tol_(rel_tol),
+              prec_(RT, ND, DG, mass)
+        {
+        }
+
+        void SetOperator(const mfem::Operator &op) override
+        {
+            throw std::invalid_argument(
+                "hdiv::GMRESADSSolver::SetOperator(): expected mfem::BlockMatrix.");
+        }
+
+        void SetOperator(mfem::BlockMatrix &op)
+        {
+            op_ = &op;
+            prec_.SetOperator(op);
+        }
+
+        void Mult(const mfem::Vector &x, mfem::Vector &y) const override
+        {
+            PeriodicResidualMonitor monitor(100);
+            mfem::FGMRESSolver gmres;
+            gmres.iterative_mode = true;
+            gmres.SetOperator(*op_);
+            gmres.SetPreconditioner(prec_);
+            gmres.SetMonitor(monitor);
+            gmres.SetRelTol(rel_tol_);
+            gmres.SetAbsTol(1e-10);
+            gmres.SetMaxIter(100000);
+            gmres.SetKDim(5000);
+            gmres.SetPrintLevel(0);
+
+            y.SetSize(op_->Height());
+            gmres.Mult(x, y);
+            iterations_ = gmres.GetNumIterations();
+        }
+    };
+#else
+    class GMRESADSSolver
+        : private OffsetsHolder,
+          public mfem::Solver
+    {
+    public:
+        GMRESADSSolver(mfem::FiniteElementSpace &RT,
+                       mfem::FiniteElementSpace &ND,
+                       mfem::FiniteElementSpace &DG,
+                       int &iterations,
+                       double mass,
+                       double rel_tol = 1e-6)
+            : OffsetsHolder({&RT, &ND, &DG}), mfem::Solver(offsets_.Last())
+        {
+            MFEM_ABORT("hdiv::GMRESADSSolver requires MFEM_USE_MPI and MFEM_USE_HYPRE");
+        }
+        void SetOperator(const mfem::Operator &op) override { }
+        void SetOperator(mfem::BlockMatrix &op) { }
+        void Mult(const mfem::Vector &x, mfem::Vector &y) const override { }
+    };
+#endif
 
 
 }

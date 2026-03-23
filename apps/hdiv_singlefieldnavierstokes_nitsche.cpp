@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
     double t = 0.;
     int cycle = 0;
 
-    mfem::ParaViewDataCollection vtk_dc("./data/visualisation/paraview/" + output_file, &mesh);
+    mfem::ParaViewDataCollection vtk_dc("./out/paraview/" + output_file, &mesh);
     if (visualisation > 0)
     {
         vtk_dc.RegisterField("u2", &x.get_u()); // Register field for visualization
@@ -158,7 +158,7 @@ int main(int argc, char *argv[])
         sys.Update(w1);
         rhs.Update(x.get_u(),t,1./dt);
 
-        hdiv::GMRESSolver solver(RT,ND,DG,num_it_A2,1./dt);
+        hdiv::GMRESSolver solver(RT,ND,DG,num_it_A2,1./dt,tol);
         solver.SetOperator(sys);
         solver.Mult(rhs,x);
 	//rhs.get_p().Print(std::cout);
