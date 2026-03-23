@@ -1,13 +1,5 @@
 build
 
-# Sphinx build output
-docs/_build/
-
-# Sphinx caches (optional, but recommended)
-docs/.doctrees/
-docs/_autosummary/
-docs/_generated/
-
 # Python cache
 __pycache__/
 *.py[cod]
