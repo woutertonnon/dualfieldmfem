@@ -20,8 +20,8 @@ env/
 
 # OS / editor / tools
 .DS_Store
-.idea/
-.vscode/
+.idea
+.vscode
 .claude/
 
 # Extern submodule build artifacts (submodule roots are tracked by git)
