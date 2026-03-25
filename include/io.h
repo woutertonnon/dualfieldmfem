@@ -113,9 +113,6 @@ public:
             throw std::runtime_error(std::string("Failed to load generated library: ") + (err ? err : "unknown"));
         }
 
-        // Source file is no longer needed once the shared object is built.
-        std::filesystem::remove(library_cpp_path_, ec);
-
         // Load the function pointers
         for (std::string function_name : function_names)
         {
@@ -130,13 +127,9 @@ public:
                                [this, function_name](const mfem::Vector &x, double t, mfem::Vector &v)
                                {
                                    this->lib_func_handles_.at(function_name)(x.GetData(), t, v.GetData(), x.Size());
-                                   return;
-                               }});
+                                    return;
+                                }});
         }
-
-        // Shared object can also be unlinked immediately after dlopen/dlsym.
-        // The loaded image remains valid until dlclose, even if the file is deleted.
-        std::filesystem::remove(library_so_path_, ec);
     }
 
     ~SimulationConfig()
@@ -599,6 +592,83 @@ private:
     mfem::BilinearForm mass_RT_;
     mfem::GridFunction &u1_, &u2_;
     int &num_it1_, &num_it2_;
+    std::chrono::time_point<std::chrono::steady_clock> time_;
+    DualFieldConfig config_;
+};
+
+// CSV logger for the semi-Lagrangian single-field Navier-Stokes solver.
+//
+// The single velocity field u lives in ND (H(curl)).  Logs kinetic energy
+// ||u1||^2 (via the ND mass matrix), L2 error (when exact solution is
+// available), and iteration count.  Column names are chosen to match
+// simbench_core/postprocess.py expectations.
+class SingleFieldCSVLogger : public CSVLogger
+{
+public:
+    SingleFieldCSVLogger(DualFieldConfig &config,
+                         int &cycle,
+                         double &t,
+                         mfem::FiniteElementSpace *ND,
+                         mfem::GridFunction &u,
+                         int &num_it,
+                         const double *advect_time_s = nullptr,
+                         const double *solve_time_s = nullptr)
+        : CSVLogger(config.get_outputfile()),
+          cycle_(cycle), t_(t),
+          ND_(ND),
+          mass_ND_(ND),
+          u_(u),
+          num_it_(num_it),
+          advect_time_s_(advect_time_s),
+          solve_time_s_(solve_time_s),
+          time_(std::chrono::steady_clock::now()),
+          config_(config)
+    {
+        get_ofstream() << "runtime_it,cycle,time_full,num_it,||u1||";
+        if (advect_time_s_ && solve_time_s_)
+            get_ofstream() << ",time_advect_dofs_s,time_solve_s";
+        if (config.has_exact_u())
+            get_ofstream() << ",u1_err_L2";
+        get_ofstream() << std::endl;
+        get_ofstream().flush();
+
+        mass_ND_.AddDomainIntegrator(new mfem::VectorFEMassIntegrator());
+        mass_ND_.Assemble();
+        mass_ND_.Finalize();
+    }
+
+    void WriteRow() override
+    {
+        double u1_norm = MatrixConservedVariable(mass_ND_, u_);
+
+        std::chrono::duration<double> runtime_it = std::chrono::steady_clock::now() - time_;
+        time_ = std::chrono::steady_clock::now();
+
+        get_ofstream() << runtime_it.count() << "," << cycle_ << ","
+                       << std::setprecision(15) << std::fixed << t_ << ","
+                       << num_it_ << ","
+                       << u1_norm;
+        if (advect_time_s_ && solve_time_s_)
+            get_ofstream() << "," << *advect_time_s_ << "," << *solve_time_s_;
+        if (config_.has_exact_u())
+        {
+            mfem::VectorFunctionCoefficient u_exact(3, config_.get_exact_data("exact_data_u"));
+            u_exact.SetTime(t_);
+            get_ofstream() << "," << u_.ComputeL2Error(u_exact);
+        }
+        get_ofstream() << std::endl;
+        get_ofstream().flush();
+    }
+
+private:
+    int &cycle_;
+    double &t_;
+    mfem::FiniteElementSpace *ND_;
+    mfem::BilinearForm mass_ND_;
+    mfem::GridFunction &u_;
+    int &num_it_;
+    const double *advect_time_s_;
+    const double *solve_time_s_;
     std::chrono::time_point<std::chrono::steady_clock> time_;
     DualFieldConfig config_;
 };

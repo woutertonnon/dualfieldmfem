@@ -37,6 +37,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.tri as tri
+from matplotlib.path import Path as MplPath
 from matplotlib.ticker import ScalarFormatter
 import vtk
 from vtk.util.numpy_support import vtk_to_numpy
@@ -120,16 +121,239 @@ def get_field_data(sliced, field_name):
     return vtk_to_numpy(arr)
 
 
-def plot_velocity_panel(ax, triang, x, y, u, v, speed, xi, yi, stream_density, title):
+def _extract_triangle_connectivity(poly: vtk.vtkPolyData) -> np.ndarray:
+    """Extract triangle connectivity from vtkPolyData polys.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape (ntri, 3) with point indices.
+    """
+    polys = poly.GetPolys()
+    if polys is None or polys.GetNumberOfCells() == 0:
+        return np.empty((0, 3), dtype=np.int64)
+
+    conn = vtk_to_numpy(polys.GetData())
+    triangles = []
+    i = 0
+    n = len(conn)
+
+    while i < n:
+        nverts = int(conn[i])
+        i += 1
+        if nverts <= 0:
+            continue
+
+        ids = conn[i : i + nverts]
+        i += nverts
+
+        if nverts == 3:
+            triangles.append(ids)
+        elif nverts > 3:
+            # Fallback fan triangulation (triangle filter should usually avoid this).
+            for j in range(1, nverts - 1):
+                triangles.append([ids[0], ids[j], ids[j + 1]])
+
+    if not triangles:
+        return np.empty((0, 3), dtype=np.int64)
+
+    return np.asarray(triangles, dtype=np.int64)
+
+
+def _triangle_quality_mask(triang: tri.Triangulation) -> np.ndarray:
+    """Build a conservative mask for degenerate/sliver triangles."""
+    tris = triang.triangles
+    if tris is None or len(tris) == 0:
+        return np.zeros(0, dtype=bool)
+
+    x = triang.x
+    y = triang.y
+
+    x0 = x[tris[:, 0]]
+    y0 = y[tris[:, 0]]
+    x1 = x[tris[:, 1]]
+    y1 = y[tris[:, 1]]
+    x2 = x[tris[:, 2]]
+    y2 = y[tris[:, 2]]
+
+    area2 = np.abs((x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0))
+
+    bbox_area = max((x.max() - x.min()) * (y.max() - y.min()), 1e-30)
+    tiny = area2 < (2.0 * bbox_area * 1e-12)
+
+    l01 = (x1 - x0) ** 2 + (y1 - y0) ** 2
+    l12 = (x2 - x1) ** 2 + (y2 - y1) ** 2
+    l20 = (x0 - x2) ** 2 + (y0 - y2) ** 2
+    max_len2 = np.maximum(np.maximum(l01, l12), l20)
+
+    # area2/max_len2 is near zero for very skinny triangles.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        shape_q = np.where(max_len2 > 0.0, area2 / max_len2, 0.0)
+    skinny = shape_q < 1e-10
+
+    return tiny | skinny
+
+
+def _mask_delaunay_outside_slice(
+    triang: tri.Triangulation,
+    poly: vtk.vtkPolyData,
+    ax0: int,
+    ax1: int,
+) -> np.ndarray:
+    """Mask Delaunay triangles whose centroids are outside the sliced cells."""
+    tris = triang.triangles
+    if tris is None or len(tris) == 0:
+        return np.zeros(0, dtype=bool)
+
+    x = triang.x
+    y = triang.y
+    cx = (x[tris[:, 0]] + x[tris[:, 1]] + x[tris[:, 2]]) / 3.0
+    cy = (y[tris[:, 0]] + y[tris[:, 1]] + y[tris[:, 2]]) / 3.0
+    centroids = np.column_stack([cx, cy])
+
+    inside = np.zeros(len(tris), dtype=bool)
+    n_cells = poly.GetNumberOfCells()
+
+    for ci in range(n_cells):
+        cell = poly.GetCell(ci)
+        if cell is None:
+            continue
+        npts = cell.GetNumberOfPoints()
+        if npts < 3:
+            continue
+
+        ids = [cell.GetPointId(j) for j in range(npts)]
+        px = x[ids]
+        py = y[ids]
+
+        pts2d = np.column_stack([px, py])
+        # Remove duplicate consecutive points.
+        keep = np.ones(len(pts2d), dtype=bool)
+        if len(pts2d) > 1:
+            keep[1:] = np.any(np.abs(pts2d[1:] - pts2d[:-1]) > 1e-14, axis=1)
+        pts2d = pts2d[keep]
+        if len(pts2d) < 3:
+            continue
+
+        path = MplPath(pts2d)
+        inside |= path.contains_points(centroids, radius=1e-12)
+
+        if inside.all():
+            break
+
+    return ~inside
+
+
+def build_slice_triangulation(
+    sliced: vtk.vtkPolyData,
+    ax0: int,
+    ax1: int,
+    mode: str = "vtk",
+    debug: bool = False,
+):
+    """Return (poly_for_plot, triangulation, x, y) for the 2D slice."""
+    if mode == "vtk":
+        cleaner = vtk.vtkCleanPolyData()
+        cleaner.SetInputData(sliced)
+        cleaner.Update()
+
+        tri_filter = vtk.vtkTriangleFilter()
+        tri_filter.SetInputData(cleaner.GetOutput())
+        tri_filter.Update()
+
+        poly = tri_filter.GetOutput()
+        pts = vtk_to_numpy(poly.GetPoints().GetData())
+        x = pts[:, ax0]
+        y = pts[:, ax1]
+
+        triangles = _extract_triangle_connectivity(poly)
+        if triangles.size == 0:
+            raise RuntimeError("Slice triangulation failed: no triangles found in VTK polydata")
+        triang = tri.Triangulation(x, y, triangles=triangles)
+    else:
+        poly = sliced
+        pts = vtk_to_numpy(poly.GetPoints().GetData())
+        x = pts[:, ax0]
+        y = pts[:, ax1]
+        triang = tri.Triangulation(x, y)
+
+    mask = _triangle_quality_mask(triang)
+    if mode == "delaunay":
+        outside = _mask_delaunay_outside_slice(triang, poly, ax0, ax1)
+        if outside.size:
+            mask = np.logical_or(mask, outside)
+
+    if mask.size and np.any(mask):
+        triang.set_mask(mask)
+
+    try:
+        triang.get_trifinder()
+    except RuntimeError as exc:
+        if mode == "vtk":
+            if debug:
+                print(f"[debug] VTK triangulation invalid ({exc}); falling back to Delaunay.")
+            return build_slice_triangulation(sliced, ax0, ax1, mode="delaunay", debug=debug)
+        raise
+
+    if debug:
+        n_masked = int(np.count_nonzero(mask)) if mask.size else 0
+        n_total = len(triang.triangles)
+        print(
+            f"[debug] Triangulation mode={mode}, points={len(x)}, triangles={n_total}, masked={n_masked}"
+        )
+
+    return poly, triang, x, y
+
+
+def plot_velocity_panel(
+    ax,
+    triang,
+    u,
+    v,
+    speed,
+    xi,
+    yi,
+    stream_density,
+    title,
+    shading,
+    clip_percentile,
+):
     """Plot velocity magnitude with streamlines on a single axes."""
-    tpc = ax.tripcolor(triang, speed, shading="gouraud", cmap="viridis")
-    interp_u = tri.LinearTriInterpolator(triang, u)
-    interp_v = tri.LinearTriInterpolator(triang, v)
-    Xi, Yi = np.meshgrid(xi, yi)
-    Ui = interp_u(Xi, Yi)
-    Vi = interp_v(Xi, Yi)
-    ax.streamplot(xi, yi, Ui, Vi, color="white", linewidth=0.5,
-                  density=stream_density, arrowsize=0.6)
+    vmax = None
+    speed_plot = speed
+    if clip_percentile < 100.0:
+        vmax = float(np.nanpercentile(speed, clip_percentile))
+        if np.isfinite(vmax) and vmax > 0.0:
+            speed_plot = np.clip(speed, 0.0, vmax)
+        else:
+            vmax = None
+
+    tpc = ax.tripcolor(triang, speed_plot, shading=shading, cmap="viridis", vmin=0.0, vmax=vmax)
+
+    try:
+        interp_u = tri.LinearTriInterpolator(triang, u)
+        interp_v = tri.LinearTriInterpolator(triang, v)
+        Xi, Yi = np.meshgrid(xi, yi)
+        Ui = interp_u(Xi, Yi)
+        Vi = interp_v(Xi, Yi)
+
+        Ui = np.ma.masked_invalid(Ui)
+        Vi = np.ma.masked_invalid(Vi)
+        if np.ma.count(Ui) > 0 and np.ma.count(Vi) > 0:
+            ax.streamplot(
+                xi,
+                yi,
+                Ui,
+                Vi,
+                color="white",
+                linewidth=0.5,
+                density=stream_density,
+                arrowsize=0.6,
+            )
+    except RuntimeError:
+        # Keep the color panel even if streamline interpolation fails.
+        pass
+
     ax.set_aspect("equal")
     ax.set_title(title, fontsize=13)
     return tpc
@@ -138,19 +362,22 @@ def plot_velocity_panel(ax, triang, x, y, u, v, speed, xi, yi, stream_density, t
 def plot_cycle(datadir, cycle, args, normal, centre, outdir, formats):
     """Load, slice, and plot u1, u2, w1, w2 in a (2,2) subplot for a single cycle."""
     grid = load_vtu(datadir, cycle)
-    sliced = slice_grid(grid, normal, centre)
+    sliced_raw = slice_grid(grid, normal, centre)
 
-    npts = sliced.GetNumberOfPoints()
+    npts = sliced_raw.GetNumberOfPoints()
     if npts == 0:
         print(f"Cycle {cycle}: slice produced 0 points — skipping.")
         return
 
-    pts = vtk_to_numpy(sliced.GetPoints().GetData())
     ax0, ax1 = inplane_axes(normal)
     axis_labels = {0: "x", 1: "y", 2: "z"}
-    x = pts[:, ax0]
-    y = pts[:, ax1]
-    triang = tri.Triangulation(x, y)
+    sliced, triang, x, y = build_slice_triangulation(
+        sliced_raw,
+        ax0,
+        ax1,
+        mode=args.triangulation,
+        debug=args.debug_slice,
+    )
 
     ngrid = 200
     xi = np.linspace(x.min(), x.max(), ngrid)
@@ -198,15 +425,33 @@ def plot_cycle(datadir, cycle, args, normal, centre, outdir, formats):
         v_comp = vel[:, ax1]
         speed = np.sqrt(u_comp**2 + v_comp**2)
 
-        tpc = plot_velocity_panel(ax, triang, x, y, u_comp, v_comp, speed,
-                                  xi, yi, args.stream_density, title)
+        if args.debug_slice:
+            imax = int(np.nanargmax(speed))
+            print(
+                f"[debug] {field_name}: |.|_max={speed[imax]:.6g} at ({x[imax]:.6g}, {y[imax]:.6g}), "
+                f"p99.5={np.nanpercentile(speed, 99.5):.6g}"
+            )
+
+        tpc = plot_velocity_panel(
+            ax,
+            triang,
+            u_comp,
+            v_comp,
+            speed,
+            xi,
+            yi,
+            args.stream_density,
+            title,
+            args.shading,
+            args.clip_percentile,
+        )
         make_colorbar(fig, tpc, r"$|\mathbf{" + field_name + r"}|$", ax=ax)
         ax.set_xlabel(rf"${axis_labels[ax0]}$")
         ax.set_ylabel(rf"${axis_labels[ax1]}$")
 
     fig.suptitle(f"Cycle {cycle}, slice {axis_labels[norm_idx]}={slice_coord:.3f}",
                  fontsize=15, y=0.98)
-    fig.tight_layout(rect=[0, 0, 1, 0.96])
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
 
     stem = f"fields_cycle{cycle:06d}_{axis_labels[norm_idx]}{slice_coord:.3f}"
     for ext in formats:
@@ -228,11 +473,24 @@ def plot_cycle(datadir, cycle, args, normal, centre, outdir, formats):
         for idx, (pname, plabel) in enumerate(p_fields[:ncols_p]):
             ax = axes_p[idx]
             p = vtk_to_numpy(sliced.GetPointData().GetArray(pname)).ravel()
-            vlim = max(abs(p.min()), abs(p.max()))
+
+            abs_p = np.abs(p)
+            if args.clip_percentile < 100.0:
+                vlim = float(np.nanpercentile(abs_p, args.clip_percentile))
+            else:
+                vlim = float(np.nanmax(abs_p))
             if vlim == 0:
                 vlim = 1.0
-            tpc = ax.tripcolor(triang, p, shading="gouraud", cmap="RdBu_r",
-                               vmin=-vlim, vmax=vlim)
+
+            p_plot = np.clip(p, -vlim, vlim)
+            tpc = ax.tripcolor(
+                triang,
+                p_plot,
+                shading=args.shading,
+                cmap="RdBu_r",
+                vmin=-vlim,
+                vmax=vlim,
+            )
             make_colorbar(fig_p, tpc, plabel, ax=ax)
             ax.set_xlabel(rf"${axis_labels[ax0]}$")
             ax.set_ylabel(rf"${axis_labels[ax1]}$")
@@ -240,7 +498,7 @@ def plot_cycle(datadir, cycle, args, normal, centre, outdir, formats):
             ax.set_title(plabel, fontsize=13)
 
         fig_p.suptitle(f"Pressure — Cycle {cycle}", fontsize=15, y=0.98)
-        fig_p.tight_layout(rect=[0, 0, 1, 0.96])
+        fig_p.tight_layout(rect=(0, 0, 1, 0.96))
 
         p_stem = f"pressure_cycle{cycle:06d}_{axis_labels[norm_idx]}{slice_coord:.3f}"
         for ext in formats:
@@ -267,6 +525,14 @@ def main():
                         help="Slice-plane normal direction (default: z)")
     parser.add_argument("--stream-density", type=float, default=1.5,
                         help="Streamline density for streamplot (default: 1.5)")
+    parser.add_argument("--triangulation", type=str, default="vtk", choices=["vtk", "delaunay"],
+                        help="Triangulation source for plotting (default: vtk)")
+    parser.add_argument("--shading", type=str, default="flat", choices=["flat", "gouraud"],
+                        help="Shading mode for tripcolor (default: flat)")
+    parser.add_argument("--clip-percentile", type=float, default=99.5,
+                        help="Clip color values to this percentile (0,100]; 100 disables clipping")
+    parser.add_argument("--debug-slice", action="store_true",
+                        help="Print triangulation and field extrema debug information")
     parser.add_argument("--format", type=str, default="png,pdf,eps",
                         help="Output formats: comma-separated list of png, pdf, eps (default: png,pdf,eps)")
     parser.add_argument("-o", type=str, default=None,
@@ -278,6 +544,9 @@ def main():
     for f in formats:
         if f not in ("png", "pdf", "eps"):
             raise ValueError(f"Unsupported format '{f}'. Use png, pdf, or eps.")
+
+    if not (0.0 < args.clip_percentile <= 100.0):
+        raise ValueError("--clip-percentile must be in (0, 100].")
 
     # Resolve datadir from --name and --variant
     case_dir = os.path.join(args.basedir, args.name)

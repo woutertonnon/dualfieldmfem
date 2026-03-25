@@ -16,6 +16,7 @@ find_package(Threads REQUIRED)
 
 add_executable(stokes_tests
   StokesTests.cpp
+  SemiLagrangianAdvectionTests.cpp
 )
 
 target_link_libraries(stokes_tests

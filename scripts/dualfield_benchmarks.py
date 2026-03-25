@@ -149,7 +149,7 @@ def generate_box_mesh(Lx=1.0, Ly=1.0, Lz=1.0, lc=None, out="./geo/mesh/box.msh")
     print(f"Wrote {out} (Lx={Lx}, Ly={Ly}, Lz={Lz}, lc={lc})")
 
 
-def compile_latex_report(tex_path="tex_reports/benchmark_report.tex", runs=1):
+def compile_latex_report(tex_path="tex_reports/dualfield_benchmark_report.tex", runs=1):
     """Compile the benchmark LaTeX report with pdflatex."""
     report = Path(tex_path)
     if not report.is_absolute():
@@ -469,7 +469,7 @@ class LidDrivenCavity3DExact(benchmark):
             name=name,
             SimulationHelper=SimulationHelper,
             SimulationDataProcessor=data_processor,
-            dts=lambda order, refinements: 0.05,
+            dts=lambda order, refinements: 0.2,
             T=T,
             refinements=lambda order: [0],
             orders=[1,2],
