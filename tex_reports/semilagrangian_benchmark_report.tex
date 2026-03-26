@@ -1,0 +1,277 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{graphicx}
+\graphicspath{{../}}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{amsmath}
+
+\title{Semi-Lagrangian MFEM Benchmark Plot Report}
+\date{\today}
+
+\newcommand{\img}[2]{%
+\IfFileExists{../#1}{%
+\begin{subfigure}[t]{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{\detokenize{#1}}
+\caption{#2}
+\end{subfigure}%
+}{\par\textit{[Image not found: \detokenize{#1}]}\par}%
+}
+
+\newcommand{\imgv}[2]{%
+\IfFileExists{../#1}{%
+\begin{subfigure}[t]{0.76\textwidth}
+\centering
+\includegraphics[width=\linewidth]{\detokenize{#1}}
+\caption{#2}
+\end{subfigure}\par\medskip
+}{\par\textit{[Image not found: \detokenize{#1}]}\par}%
+}
+
+\newcommand{\conspanel}[4]{%
+\IfFileExists{../out/plots/benchmarks/#1/#2/conservation/#1_||u1||_order#3_ref#4.png}{%
+\begin{figure}[p]
+\centering
+\img{out/plots/benchmarks/#1/#2/conservation/#1_||u1||_order#3_ref#4.png}{$\|u_1\|$}
+\caption{#1 conservation diagnostics for order #3, refinement #4.}
+\end{figure}
+}{}%
+}
+
+\newcommand{\convpanel}[1]{%
+\IfFileExists{../out/plots/benchmarks/#1/convergence/#1_u1_err_L2.png}{%
+\begin{figure}[p]
+\centering
+\img{out/plots/benchmarks/#1/convergence/#1_u1_err_L2.png}{$L^2$ error of $u_1$}
+\caption{#1 convergence plot.}
+\end{figure}
+}{}%
+}
+
+\begin{document}
+
+\maketitle
+
+\section*{Introduction}
+
+This report collects benchmark results for the semi-Lagrangian
+Navier--Stokes solver based on pullback advection of discrete 1-forms
+(Tonnon \& Hiptmair, 2023, arXiv:2301.04923).
+
+The velocity is discretized in $\mathrm{ND}_1$ (first-order N\'ed\'elec
+elements, $H(\mathrm{curl})$-conforming) and the pressure in
+$\mathrm{CG}_1$ ($H^1$-conforming).  Advection is handled by a
+semi-Lagrangian pullback step: edge DOFs are updated by integrating the
+old discrete 1-form along transported edges (characteristic tracing +
+cell-splitting line integration).
+
+The diffusion--pressure step solves the following saddle-point system at each
+time step.  The bilinear form contains \emph{no Eulerian convection term}
+because convection is accounted for by the semi-Lagrangian step:
+
+\begin{align}
+	a_h(u,v)
+	         & := \frac{1}{\Delta t}(u,v)_\Omega
+	+ \nu(\nabla\times u,\nabla\times v)_\Omega                                                     \\
+	         & \quad + \sum_{F\subset\partial\Omega}\nu\langle n\times(\nabla\times u),v\rangle_F
+	+ \sum_{F\subset\partial\Omega}\nu\theta\langle u,n\times(\nabla\times v)\rangle_F               \\
+	         & \quad + \sum_{F\subset\partial\Omega}\frac{\nu C_w}{h_F}\langle n\times u,n\times v\rangle_F,
+	\\[0.2em]
+	b(p,v)   & := (\nabla p,v)_\Omega,
+	\qquad b^\top(u,q):=(u,\nabla q)_\Omega.
+\end{align}
+
+The right-hand side uses the advected field $\tilde\omega$ (output of the
+semi-Lagrangian step) in place of $u^n$:
+\[
+	F(v) := \frac{1}{\Delta t}(\tilde\omega,v)_\Omega + (f,v)_\Omega
+	+ \text{Nitsche boundary terms},
+	\qquad
+	G(q) := \langle u_D\cdot n,q\rangle_{\partial\Omega}.
+\]
+
+Since the system matrix is \emph{constant} across time steps (no convection
+dependence), the UMFPack factorization is computed once and reused.
+
+\section*{Global Solver and Stabilization Parameters}
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Parameter            & Value                                                       \\
+		\midrule
+		Executable           & \texttt{./build/semilagrangian\_navierstokes\_nitsche}       \\
+		Linear solver        & GMRES                                                       \\
+		Linear tolerance     & $10^{-5}$                                                   \\
+		$\theta$             & $-1.0$                                                      \\
+		$C_w$                & $100.0$                                                     \\
+		Polynomial order     & $o=1$ (ND1 only, semi-Lagrangian restriction)               \\
+		Characteristic trace & Explicit Euler (order 1)                                    \\
+		GL quadrature        & 1-point (midpoint, exact for ND1 on affine simplices)       \\
+		\bottomrule
+	\end{tabularx}
+	\caption{Common solver and stabilization parameters used in this benchmark bundle.}
+\end{table}
+
+\section{ConstantFieldSemiLag}
+
+This benchmark verifies that the semi-Lagrangian solver reproduces the exact
+steady-state solution $u=(1,0,0)$, $p=0$ on the unit cube with matching
+Dirichlet data.
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity              & Value                                              \\
+		\midrule
+		Mesh file             & \texttt{geo/mesh/ConstantField.msh}                \\
+		Mesh generation       & Box mesh with $L_x=L_y=L_z=1$, base size $lc=0.4$ \\
+		Polynomial order      & $o=1$                                              \\
+		Refinement            & $r=0$                                              \\
+		Time stepping         & $\Delta t=0.1$, $T=0.2$                            \\
+		Viscosity             & $\nu = 0.001$                                      \\
+		Slice setup           & Normal direction $z$, plane $z=0.5$                \\
+		\bottomrule
+	\end{tabularx}
+	\caption{ConstantFieldSemiLag benchmark setup.}
+\end{table}
+
+\conspanel{ConstantFieldSemiLag}{ConstantFieldSemiLag_r0_o1}{1}{0}
+
+\clearpage
+\section{LidDrivenCavity3DExactSemiLag}
+
+3D lid-driven cavity with the top lid (boundary attribute 16) driven by
+$u_x=\tanh(2t)$, all other faces stationary.
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity              & Value                                                           \\
+		\midrule
+		Mesh file             & \texttt{geo/mesh/LidDrivenCavity3DExactSemiLag.msh}             \\
+		Mesh generation       & Box mesh with $L_x=L_y=L_z=1$, base size $lc=0.5$              \\
+		Polynomial order      & $o=1$                                                           \\
+		Refinement            & $r=0$                                                           \\
+		Time stepping         & $\Delta t=0.2$, $T=5.0$                                        \\
+		Viscosity             & $\nu = 0.001$                                                   \\
+		Lid attributes        & Boundary attribute 16                                           \\
+		\bottomrule
+	\end{tabularx}
+	\caption{LidDrivenCavity3DExactSemiLag benchmark setup.}
+\end{table}
+
+\conspanel{LidDrivenCavity3DExactSemiLag}{LidDrivenCavity3DExactSemiLag_r0_o1}{1}{0}
+
+\IfFileExists{../out/plots/benchmarks/LidDrivenCavity3DExactSemiLag/LidDrivenCavity3DExactSemiLag_r0_o1/slice/fields_cycle000025_y0.500.png}{%
+\begin{figure}[p]
+	\centering
+	\imgv{out/plots/benchmarks/LidDrivenCavity3DExactSemiLag/LidDrivenCavity3DExactSemiLag_r0_o1/slice/fields_cycle000025_y0.500.png}{Fields slice, order 1}
+	\caption{LidDrivenCavity3DExactSemiLag fields slice plot (cycle 25, $y=0.5$).}
+\end{figure}
+}{}
+
+\IfFileExists{../out/plots/benchmarks/LidDrivenCavity3DExactSemiLag/LidDrivenCavity3DExactSemiLag_r0_o1/slice/pressure_cycle000025_y0.500.png}{%
+\begin{figure}[p]
+	\centering
+	\imgv{out/plots/benchmarks/LidDrivenCavity3DExactSemiLag/LidDrivenCavity3DExactSemiLag_r0_o1/slice/pressure_cycle000025_y0.500.png}{Pressure slice, order 1}
+	\caption{LidDrivenCavity3DExactSemiLag pressure slice plot (cycle 25, $y=0.5$).}
+\end{figure}
+}{}
+
+\clearpage
+\section{RigidRotationSemiLag}
+
+Solid-body rotation $u=(-y,x,0)$, $p=0$ on the unit cube.
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity              & Value                                              \\
+		\midrule
+		Mesh file             & \texttt{geo/mesh/RigidRotation.msh}                \\
+		Mesh generation       & Box mesh with $L_x=L_y=L_z=1$, base size $lc=0.4$ \\
+		Polynomial order      & $o=1$                                              \\
+		Refinement            & $r=0$                                              \\
+		Time stepping         & $\Delta t=0.1$, $T=5.0$                            \\
+		Viscosity             & $\nu = 0.001$                                      \\
+		Slice setup           & Normal direction $z$, plane $z=0.5$                \\
+		\bottomrule
+	\end{tabularx}
+	\caption{RigidRotationSemiLag benchmark setup.}
+\end{table}
+
+\conspanel{RigidRotationSemiLag}{RigidRotationSemiLag_r0_o1}{1}{0}
+
+\clearpage
+\section{TaylorGreenSemiLag}
+
+Taylor--Green combined space-time convergence benchmark.  Because the
+semi-Lagrangian advection is restricted to ND1, only order $o=1$ is tested.
+
+\[
+	\nu=0.01,\qquad k=1,\qquad T=0.125,\qquad
+	\Delta t(r)=\frac{0.5}{8\,2^{r}}.
+\]
+\begin{align}
+	u(x,t)
+	       & =\begin{bmatrix}
+		          e^{-0.02t}\sin(x_0)\cos(x_1)  \\
+		          -e^{-0.02t}\cos(x_0)\sin(x_1) \\
+		          0
+	          \end{bmatrix},
+	\qquad
+	p(x,t)=0.
+\end{align}
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity              & Value                                                                                            \\
+		\midrule
+		Mesh file             & \texttt{extern/mfem/data/ref-cube.mesh}                                                          \\
+		Polynomial order      & $o=1$                                                                                            \\
+		Refinements           & $r=0,1,2,3,4$                                                                                    \\
+		End time              & $T=0.125$                                                                                        \\
+		Viscosity             & $\nu = 0.01$                                                                                     \\
+		Time-step rule        & $\Delta t = 0.5 / (8\cdot 2^{r})$                                                                \\
+		\bottomrule
+	\end{tabularx}
+	\caption{TaylorGreenSemiLag benchmark setup.}
+\end{table}
+
+\begin{table}[H]
+	\centering
+	\begin{tabular}{@{}cccc@{}}
+		\toprule
+		Order $o$ & Refinement $r$ & $\Delta t$ & Approx.\ refined cells \\
+		\midrule
+		1         & 0              & 0.0625     & $8^0 = 1$              \\
+		1         & 1              & 0.03125    & $8^1 = 8$              \\
+		1         & 2              & 0.015625   & $8^2 = 64$             \\
+		1         & 3              & 0.0078125  & $8^3 = 512$            \\
+		1         & 4              & 0.00390625 & $8^4 = 4096$           \\
+		\bottomrule
+	\end{tabular}
+	\caption{Taylor-Green parameter sweep for the semi-Lagrangian solver.}
+\end{table}
+
+\convpanel{TaylorGreenSemiLag}
+
+\conspanel{TaylorGreenSemiLag}{TaylorGreenSemiLag_r0_o1}{1}{0}
+\conspanel{TaylorGreenSemiLag}{TaylorGreenSemiLag_r1_o1}{1}{1}
+\conspanel{TaylorGreenSemiLag}{TaylorGreenSemiLag_r2_o1}{1}{2}
+\conspanel{TaylorGreenSemiLag}{TaylorGreenSemiLag_r3_o1}{1}{3}
+\conspanel{TaylorGreenSemiLag}{TaylorGreenSemiLag_r4_o1}{1}{4}
+
+\end{document}

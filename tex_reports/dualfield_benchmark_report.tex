@@ -1,0 +1,399 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{graphicx}
+\graphicspath{{../}}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{hyperref}
+\usepackage{amsmath}
+
+\title{DualField MFEM Benchmark Plot Report}
+\date{\today}
+
+\newcommand{\img}[2]{%
+\IfFileExists{../#1}{%
+\begin{subfigure}[t]{0.48\textwidth}
+\centering
+\includegraphics[width=\linewidth]{\detokenize{#1}}
+\caption{#2}
+\end{subfigure}%
+}{\par\textit{[Image not found: \detokenize{#1}]}\par}%
+}
+
+\newcommand{\imgv}[2]{%
+\IfFileExists{../#1}{%
+\begin{subfigure}[t]{0.76\textwidth}
+\centering
+\includegraphics[width=\linewidth]{\detokenize{#1}}
+\caption{#2}
+\end{subfigure}\par\medskip
+}{\par\textit{[Image not found: \detokenize{#1}]}\par}%
+}
+
+\newcommand{\conspanel}[4]{%
+\begin{figure}[p]
+\centering
+\img{out/plots/benchmarks/#1/#2/conservation/#1_||u1||_order#3_ref#4.png}{$\|u_1\|$}
+\hfill
+\img{out/plots/benchmarks/#1/#2/conservation/#1_||u2||_order#3_ref#4.png}{$\|u_2\|$}
+\vspace{0.5em}
+
+\img{out/plots/benchmarks/#1/#2/conservation/#1_u1*w1_order#3_ref#4.png}{$u_1 \cdot \omega_1$}
+\hfill
+\img{out/plots/benchmarks/#1/#2/conservation/#1_u2*w2_order#3_ref#4.png}{$u_2 \cdot \omega_2$}
+\caption{#1 conservation diagnostics for order #3, refinement #4.}
+\end{figure}
+}
+
+\newcommand{\convpanel}[1]{%
+\begin{figure}[p]
+\centering
+\img{out/plots/benchmarks/#1/convergence/#1_u1_err_L2.png}{$L^2$ error of $u_1$}
+\hfill
+\img{out/plots/benchmarks/#1/convergence/#1_u2_err_L2.png}{$L^2$ error of $u_2$}
+\caption{#1 convergence plots.}
+\end{figure}
+}
+
+\begin{document}
+
+\maketitle
+
+\section*{Introduction}
+
+\[
+	U_c=\mathrm{ND}_k,\quad Q_c=\mathrm{CG}_k,\quad
+	U_d=\mathrm{RT}_{k-1},\quad W_d=\mathrm{ND}_k,\quad Q_d=\mathrm{DG}_{k-1}.
+\]
+\[
+	\omega_d := w_2,\qquad \omega_c := \nabla\times u_1,\qquad
+	\alpha := \frac{1}{\Delta t}\ \text{(main step)},\ \alpha := \frac{2}{\Delta t}\ \text{(start-up)}.
+\]
+\[
+	\mathcal F_h^i=\text{interior faces},\quad h_F=\sqrt{|J_F|},\quad
+	[\![\cdot]\!]=\text{two-sided jump},\quad \langle\cdot,\cdot\rangle_F=\int_F \cdot\,\cdot\,dS.
+\]
+
+\[
+	\begin{bmatrix}
+		A_c(\omega_d) & B_c      \\
+		B_c^\top      & C_\delta
+	\end{bmatrix}
+	\begin{bmatrix}u_1 \\ p_1\end{bmatrix}
+	=
+	\begin{bmatrix}F_c \\ G_c + D_\delta\end{bmatrix},
+	\qquad
+	\begin{bmatrix}
+		A_d(\omega_c) & B_d^\top & C_d^\top \\
+		B_d           & D_d      & 0        \\
+		C_d           & 0        & 0
+	\end{bmatrix}
+	\begin{bmatrix}u_2 \\ w_2 \\ p_2\end{bmatrix}
+	=
+	\begin{bmatrix}F_d \\ 0 \\ 0\end{bmatrix}.
+\]
+
+\begin{align}
+	a_c(u,v;\omega_d,\beta)
+	         & := \alpha (u,v)_\Omega
+	+ \nu(\nabla\times u,\nabla\times v)_\Omega
+	+ (\omega_d\times u,v)_\Omega                                                                       \\
+	         & \quad + \sum_{F\in\mathcal F_h^i}\frac{\sigma_c\nu}{h_F}
+	\langle [\![u]\!],[\![v]\!]\rangle_F
+	+ \sum_{F\in\mathcal F_h^i}\gamma_c\nu h_F
+	\langle [\![\nabla\times u]\!],[\![\nabla\times v]\!]\rangle_F                                      \\
+	         & \quad + \sum_{F\in\mathcal F_h^i}\eta_u\,|\beta\cdot n_F|\,
+	\langle [\![u]\!],[\![v]\!]\rangle_F
+	+ \sum_{F\subset\partial\Omega}\nu\langle n\times(\nabla\times u),v\rangle_F                        \\
+	         & \quad + \sum_{F\subset\partial\Omega}\nu\theta\langle u,n\times(\nabla\times v)\rangle_F
+	+ \sum_{F\subset\partial\Omega}\frac{\nu C_w^c}{h_F}\langle n\times u,n\times v\rangle_F,
+	\\[0.2em]
+	b_c(p,v) & := (\nabla p,v)_\Omega,
+	\qquad b_c^\top(u,q):=(u,\nabla q)_\Omega,
+	\qquad c_\delta(p,q):=-\delta(\nabla p,\nabla q)_\Omega,
+	\\[0.2em]
+	F_c(v)
+	         & := \alpha(u_1^{\mathrm{prev}},v)_\Omega + (f,v)_\Omega
+	+ \sum_{F\subset\Gamma_D}\nu\theta\langle u_D,n\times(\nabla\times v)\rangle_F
+	+ \sum_{F\subset\Gamma_D}\frac{\nu C_w^c}{h_F}\langle n\times u_D,n\times v\rangle_F,
+	\\[0.2em]
+	G_c(q)   & :=\langle u_D\cdot n,q\rangle_{\Gamma_D},
+	\qquad D_\delta(q):=\delta\,(f+\alpha u_1^{\mathrm{prev}},\nabla q)_\Omega.
+\end{align}
+
+\begin{align}
+	a_d(u,v;\omega_c)
+	              & := \alpha (u,v)_\Omega + (\omega_c\times u,v)_\Omega
+	+ \sum_{F\in\mathcal F_h^i}\frac{\sigma_d\nu}{h_F}
+	\langle [\![u]\!],[\![v]\!]\rangle_F                                                                                   \\
+	              & \quad + \sum_{F\in\mathcal F_h^i}\gamma_d\nu h_F
+	\langle [\![\nabla\cdot u]\!],[\![\nabla\cdot v]\!]\rangle_F
+	+ \sum_{F\subset\partial\Omega}\frac{C_w^d}{h_F}\langle n\times u,n\times v\rangle_F,
+	\\[0.2em]
+	b_d(u,\eta)   & := (u,\nabla\times\eta)_\Omega + \langle n\times u,\eta\rangle_{\partial\Omega}
+	= (\nabla\times u,\eta)_\Omega,
+	\\[0.2em]
+	b_d^\top(w,v) & := \nu(\nabla\times w,v)_\Omega,
+	\qquad d_d(w,\eta):=-(w,\eta)_\Omega,
+	\\[0.2em]
+	c_d(u,r)      & :=-(\nabla\cdot u,r)_\Omega,
+	\qquad c_d^\top(p,v):=-(p,\nabla\cdot v)_\Omega,
+	\\[0.2em]
+	F_d(v)
+	              & := \alpha(u_2^{\mathrm{prev}},v)_\Omega + (f,v)_\Omega
+	+ \sum_{F\subset\Gamma_D}\frac{C_w^d}{h_F}\langle n\times u_D,n\times v\rangle_F,
+	\\[0.2em]
+	              & \text{with }u_2\cdot n\text{ imposed strongly on RT essential DOFs (all faces, or lid-marker subset).}
+\end{align}
+
+\[
+	(\sigma_c,\gamma_c,\eta_u,C_w^c,\theta,\delta)
+	=(\texttt{hcurl\_sigma},\texttt{hcurl\_gamma},\texttt{hcurl\_upwind},\texttt{hcurl\_Cw},\texttt{hcurl\_theta},\texttt{hcurl\_delta}),
+\]
+\[
+	(\sigma_d,\gamma_d,C_w^d)
+	=(\texttt{hdiv\_sigma},\texttt{hdiv\_gamma},\texttt{hdiv\_Cw}).
+\]
+
+\section*{Global Solver and Stabilization Parameters}
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Parameter               & Value                                                                                                                              \\
+		\midrule
+		Executable              & \texttt{./build/dualfieldnavierstokes\_nitsche}                                                                                    \\
+		Linear solver           & GMRES (all benchmark configs)                                                                                                      \\
+		Linear tolerance        & $10^{-5}$ (all benchmark configs)                                                                                                  \\
+		H(curl) $\theta$        & $-1.0$                                                                                                                             \\
+		H(curl) $C_w$           & $10000.0$                                                                                                                          \\
+		H(curl) $\sigma$        & $0.0$                                                                                                                              \\
+		H(curl) $\gamma$        & $100.0$                                                                                                                            \\
+		H(curl) upwind scale    & $0.0$                                                                                                                              \\
+		H(curl) $\delta$ (PSPG) & $0.0$                                                                                                                              \\
+		H(div) $\sigma$         & $100.0$                                                                                                                            \\
+		H(div) $\gamma$         & $0.0$                                                                                                                              \\
+		H(div) $C_w$            & $100.0$                                                                                                                            \\
+		Override status         & No \texttt{hcurl\_*} or \texttt{hdiv\_*} keys are present in the benchmark JSON files, so these defaults are active for all cases. \\
+		\bottomrule
+	\end{tabularx}
+	\caption{Common solver and stabilization parameters used in this benchmark bundle.}
+\end{table}
+
+\section{ConstantField}
+
+This benchmark verifies that a uniform flow target is reproduced on the unit
+cube with exact data $u=(1,0,0)$ and $p=0$, zero forcing, zero initial
+velocity, and constant Dirichlet boundary data.
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity                   & Value                                              \\
+		\midrule
+		Mesh file                  & \texttt{geo/mesh/ConstantField.msh}                \\
+		Mesh generation            & Box mesh with $L_x=L_y=L_z=1$, base size $lc=0.4$  \\
+		Base mesh stats            & 505 nodes, 1764 tetrahedra, 776 boundary triangles \\
+		Polynomial orders in plots & $o \in \{1,2\}$                                    \\
+		Refinements in plots       & $r=0$                                              \\
+		Time stepping              & $\Delta t=0.1$, $T=0.2$                            \\
+		Viscosity                  & $\nu = 0.001$                                      \\
+		Slice setup                & Normal direction $z$, cycle 2, plane $z=0.5$       \\
+		\bottomrule
+	\end{tabularx}
+	\caption{ConstantField benchmark setup.}
+\end{table}
+
+\conspanel{ConstantField}{ConstantField_r0_o1}{1}{0}
+\conspanel{ConstantField}{ConstantField_r0_o2}{2}{0}
+
+\begin{figure}[p]
+	\centering
+	\imgv{out/plots/benchmarks/ConstantField/ConstantField_r0_o1/slice/fields_cycle000002_z0.500.png}{Fields slice, order 1}
+	\imgv{out/plots/benchmarks/ConstantField/ConstantField_r0_o2/slice/fields_cycle000002_z0.500.png}{Fields slice, order 2}
+	\caption{ConstantField fields slice plots (cycle 2, $z=0.5$).}
+\end{figure}
+
+\begin{figure}[p]
+	\centering
+	\imgv{out/plots/benchmarks/ConstantField/ConstantField_r0_o1/slice/pressure_cycle000002_z0.500.png}{Pressure slice, order 1}
+	\imgv{out/plots/benchmarks/ConstantField/ConstantField_r0_o2/slice/pressure_cycle000002_z0.500.png}{Pressure slice, order 2}
+	\caption{ConstantField pressure slice plots (cycle 2, $z=0.5$).}
+\end{figure}
+
+\clearpage
+\section{LidDrivenCavity3DExactParallel}
+
+This benchmark models a 3D lid-driven cavity on the unit cube. The top lid
+(boundary attribute 16) is driven by $u_x=\tanh(2t)$ while all other boundary
+faces are stationary; forcing is zero.
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity                   & Value                                                \\
+		\midrule
+		Mesh file                  & \texttt{geo/mesh/LidDrivenCavity3DExactParallel.msh} \\
+		Mesh generation            & Box mesh with $L_x=L_y=L_z=1$, base size $lc=0.5$    \\
+		Base mesh stats            & 342 nodes, 1130 tetrahedra, 542 boundary triangles   \\
+		Polynomial orders in plots & $o \in \{1,2\}$                                      \\
+		Refinements in plots       & $r=0$                                                \\
+		Time stepping              & $\Delta t=0.2$, $T=5.0$                              \\
+		Viscosity                  & $\nu = 0.001$                                        \\
+		Lid attributes             & Boundary attribute 16                                \\
+		\bottomrule
+	\end{tabularx}
+	\caption{LidDrivenCavity3DExactParallel benchmark setup.}
+\end{table}
+
+\conspanel{LidDrivenCavity3DExactParallel}{LidDrivenCavity3DExactParallel_r0_o1}{1}{0}
+\conspanel{LidDrivenCavity3DExactParallel}{LidDrivenCavity3DExactParallel_r0_o2}{2}{0}
+
+\begin{figure}[p]
+	\centering
+	\imgv{out/plots/benchmarks/LidDrivenCavity3DExactParallel/LidDrivenCavity3DExactParallel_r0_o1/slice/fields_cycle000025_y0.500.png}{Fields slice, order 1}
+	\imgv{out/plots/benchmarks/LidDrivenCavity3DExactParallel/LidDrivenCavity3DExactParallel_r0_o2/slice/fields_cycle000025_y0.500.png}{Fields slice, order 2}
+	\caption{LidDrivenCavity3DExactParallel fields slice plots (cycle 25, $y=0.5$).}
+\end{figure}
+
+\begin{figure}[p]
+	\centering
+	\imgv{out/plots/benchmarks/LidDrivenCavity3DExactParallel/LidDrivenCavity3DExactParallel_r0_o1/slice/pressure_cycle000025_y0.500.png}{Pressure slice, order 1}
+	\imgv{out/plots/benchmarks/LidDrivenCavity3DExactParallel/LidDrivenCavity3DExactParallel_r0_o2/slice/pressure_cycle000025_y0.500.png}{Pressure slice, order 2}
+	\caption{LidDrivenCavity3DExactParallel pressure slice plots (cycle 25, $y=0.5$).}
+\end{figure}
+
+\clearpage
+\section{RigidRotationSingleField}
+
+This benchmark targets solid-body rotation on the unit cube with
+$u=(-y,x,0)$ and $p=0$. In the current implementation the run uses zero
+forcing, zero initial velocity, and rotational boundary data.
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity                   & Value                                              \\
+		\midrule
+		Mesh file                  & \texttt{geo/mesh/RigidRotation.msh}                \\
+		Mesh generation            & Box mesh with $L_x=L_y=L_z=1$, base size $lc=0.4$  \\
+		Base mesh stats            & 505 nodes, 1764 tetrahedra, 776 boundary triangles \\
+		Polynomial orders in plots & $o \in \{1,2\}$                                    \\
+		Refinements in plots       & $r=0$                                              \\
+		Time stepping              & $\Delta t=0.1$, $T=5.0$                            \\
+		Viscosity                  & $\nu = 0.001$                                      \\
+		Slice setup                & Normal direction $z$, cycle 50, plane $z=0.5$      \\
+		\bottomrule
+	\end{tabularx}
+	\caption{RigidRotationSingleField benchmark setup.}
+\end{table}
+
+\conspanel{RigidRotationSingleField}{RigidRotationSingleField_r0_o1}{1}{0}
+\conspanel{RigidRotationSingleField}{RigidRotationSingleField_r0_o2}{2}{0}
+
+\begin{figure}[p]
+	\centering
+	\imgv{out/plots/benchmarks/RigidRotationSingleField/RigidRotationSingleField_r0_o1/slice/fields_cycle000050_z0.500.png}{Fields slice, order 1}
+	\imgv{out/plots/benchmarks/RigidRotationSingleField/RigidRotationSingleField_r0_o2/slice/fields_cycle000050_z0.500.png}{Fields slice, order 2}
+	\caption{RigidRotationSingleField fields slice plots (cycle 50, $z=0.5$).}
+\end{figure}
+
+\begin{figure}[p]
+	\centering
+	\imgv{out/plots/benchmarks/RigidRotationSingleField/RigidRotationSingleField_r0_o1/slice/pressure_cycle000050_z0.500.png}{Pressure slice, order 1}
+	\imgv{out/plots/benchmarks/RigidRotationSingleField/RigidRotationSingleField_r0_o2/slice/pressure_cycle000050_z0.500.png}{Pressure slice, order 2}
+	\caption{RigidRotationSingleField pressure slice plots (cycle 50, $z=0.5$).}
+\end{figure}
+
+\clearpage
+\section{TaylorGreenCombinedConvergence}
+
+\[
+	\nu=0.01,\qquad k=1,\qquad T=0.125,\qquad
+	\Delta t(r,o)=\frac{0.5}{8\,2^{ro}}.
+\]
+\[
+	E(t):=e^{-0.02t},\qquad E_2(t):=e^{-0.04t}.
+\]
+\begin{align}
+	u(x,t)
+	       & =\begin{bmatrix}
+		          E(t)\sin(x_0)\cos(x_1)  \\
+		          -E(t)\cos(x_0)\sin(x_1) \\
+		          0
+	          \end{bmatrix},
+	\qquad
+	p(x,t)=0,
+	\\[0.2em]
+	\omega(x,t)=\nabla\times u
+	       & =\begin{bmatrix}
+		          0 \\0\\2E(t)\sin(x_0)\sin(x_1)
+	          \end{bmatrix},
+	\\[0.2em]
+	f(x,t)
+	       & =\partial_t u-u\times(\nabla\times u)-\nu\Delta u+\nabla p
+	=\begin{bmatrix}
+		 2E_2(t)\sin(x_0)\cos(x_0)\sin^2(x_1) \\
+		 2E_2(t)\sin^2(x_0)\sin(x_1)\cos(x_1) \\
+		 0
+	 \end{bmatrix},
+	\\[0.2em]
+	u_0(x) & =u(x,0),\qquad \omega_0(x)=\omega(x,0),\qquad u_D(x,t)=u(x,t)\ \text{on }\partial\Omega.
+\end{align}
+
+\begin{table}[H]
+	\centering
+	\begin{tabularx}{\textwidth}{@{}lX@{}}
+		\toprule
+		Quantity                   & Value                                                                                            \\
+		\midrule
+		Mesh file                  & \texttt{extern/mfem/data/ref-cube.mesh}                                                          \\
+		Base mesh stats            & 8 vertices, 1 hexahedral element                                                                 \\
+		Refinement behavior        & Uniform 3D refinement level $r$ (effective element size scales approximately as $h \sim 2^{-r}$) \\
+		Polynomial orders in plots & $o \in \{1,2\}$                                                                                  \\
+		Refinements in plots       & $r=0,1,2,3$ for $o=1$ and $r=0,1,2$ for $o=2$                                                    \\
+		End time                   & $T=0.125$                                                                                        \\
+		Viscosity                  & $\nu = 0.01$                                                                                     \\
+		Time-step rule             & $\Delta t = 0.5 / \left(8\cdot 2^{r\,o}\right)$                                                  \\
+		\bottomrule
+	\end{tabularx}
+	\caption{TaylorGreenCombinedConvergence benchmark setup.}
+\end{table}
+
+\begin{table}[H]
+	\centering
+	\begin{tabular}{@{}cccc@{}}
+		\toprule
+		Order $o$ & Refinement $r$ & $\Delta t$ & Approx. refined cells \\
+		\midrule
+		1         & 0              & 0.0625     & $8^0 = 1$             \\
+		1         & 1              & 0.03125    & $8^1 = 8$             \\
+		1         & 2              & 0.015625   & $8^2 = 64$            \\
+		1         & 3              & 0.0078125  & $8^3 = 512$           \\
+		2         & 0              & 0.0625     & $8^0 = 1$             \\
+		2         & 1              & 0.015625   & $8^1 = 8$             \\
+		2         & 2              & 0.00390625 & $8^2 = 64$            \\
+		\bottomrule
+	\end{tabular}
+	\caption{Taylor-Green parameter sweep represented in this plot bundle.}
+\end{table}
+
+\convpanel{TaylorGreenCombinedConvergence}
+
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r0_o1}{1}{0}
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r1_o1}{1}{1}
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r2_o1}{1}{2}
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r3_o1}{1}{3}
+
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r0_o2}{2}{0}
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r1_o2}{2}{1}
+\conspanel{TaylorGreenCombinedConvergence}{TaylorGreenCombinedConvergence_r2_o2}{2}{2}
+
+\end{document}

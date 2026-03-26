@@ -10,6 +10,7 @@ include(CTest)  # defines BUILD_TESTING option and calls enable_testing() when B
 
 # Dependencies
 find_package(Boost 1.65 REQUIRED COMPONENTS program_options filesystem)
+find_package(OpenMP REQUIRED)
 
 add_library(dualfield_project_options INTERFACE)
 

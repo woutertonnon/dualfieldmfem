@@ -2,7 +2,9 @@
 #define FIND_ELEMENT_BFS_H
 
 #include "mfem.hpp"
-#include <queue>
+#include <algorithm>
+#include <cstddef>
+#include <limits>
 #include <vector>
 
 /// Search for the element containing @a point using a BFS starting from
@@ -25,24 +27,43 @@ inline int FindElementBFS(mfem::Mesh &mesh, int start_elem_id,
 
    const mfem::Table &el2el = mesh.ElementToElementTable();
 
-   std::vector<bool> visited(ne, false);
-   std::queue<int> queue;
+   thread_local std::vector<int> visited_stamp;
+   thread_local std::vector<int> bfs_queue;
+   thread_local int stamp = 1;
 
-   queue.push(start_elem_id);
-   visited[start_elem_id] = true;
+   if ((int)visited_stamp.size() != ne)
+   {
+      visited_stamp.assign(ne, 0);
+      stamp = 1;
+   }
+   if (stamp == std::numeric_limits<int>::max())
+   {
+      std::fill(visited_stamp.begin(), visited_stamp.end(), 0);
+      stamp = 1;
+   }
+   const int current_stamp = stamp++;
+
+   bfs_queue.clear();
+   bfs_queue.push_back(start_elem_id);
+   visited_stamp[start_elem_id] = current_stamp;
 
    int count = 0;
 
-   mfem::IsoparametricTransformation eltrans;
-   mfem::InverseElementTransformation inv_tr;
-   inv_tr.SetInitialGuessType(mfem::InverseElementTransformation::Center);
-   inv_tr.SetSolverType(
-       mfem::InverseElementTransformation::NewtonElementProject);
-
-   while (!queue.empty())
+   thread_local mfem::IsoparametricTransformation eltrans;
+   thread_local mfem::InverseElementTransformation inv_tr;
+   thread_local bool inv_tr_initialized = false;
+   if (!inv_tr_initialized)
    {
-      int elem_id = queue.front();
-      queue.pop();
+      inv_tr.SetInitialGuessType(mfem::InverseElementTransformation::Center);
+      inv_tr.SetSolverType(
+          mfem::InverseElementTransformation::NewtonElementProject);
+      inv_tr_initialized = true;
+   }
+
+   std::size_t queue_head = 0;
+   while (queue_head < bfs_queue.size())
+   {
+      int elem_id = bfs_queue[queue_head++];
       ++count;
 
       mesh.GetElementTransformation(elem_id, &eltrans);
@@ -59,10 +80,10 @@ inline int FindElementBFS(mfem::Mesh &mesh, int start_elem_id,
       const int n_nbrs = el2el.RowSize(elem_id);
       for (int i = 0; i < n_nbrs; ++i)
       {
-         if (nbrs[i] >= 0 && !visited[nbrs[i]])
+         if (nbrs[i] >= 0 && visited_stamp[nbrs[i]] != current_stamp)
          {
-            visited[nbrs[i]] = true;
-            queue.push(nbrs[i]);
+            visited_stamp[nbrs[i]] = current_stamp;
+            bfs_queue.push_back(nbrs[i]);
          }
       }
    }

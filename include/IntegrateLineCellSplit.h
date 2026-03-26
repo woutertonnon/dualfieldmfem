@@ -20,34 +20,40 @@ struct LineSegment
 inline bool FindExitFace(mfem::Mesh &mesh, int elem_id,
                          const mfem::Vector &pos1, const mfem::Vector &dir,
                          double s_current, int entry_face,
-                         double &s_exit, int &exit_face)
+                         double &s_exit, int &exit_face,
+                         mfem::Array<int> &verts)
 {
    const int dim = mesh.SpaceDimension();
-   mfem::Array<int> faces, ori;
+   const mfem::Table &elem_to_face =
+       (dim == 2) ? mesh.ElementToEdgeTable() : mesh.ElementToFaceTable();
+   const int *faces = elem_to_face.GetRow(elem_id);
+   const int n_faces = elem_to_face.RowSize(elem_id);
+   const mfem::Table *edge_vertex = nullptr;
    if (dim == 2)
    {
-      mesh.GetElementEdges(elem_id, faces, ori);
-   }
-   else
-   {
-      mesh.GetElementFaces(elem_id, faces, ori);
+      edge_vertex = mesh.GetEdgeVertexTable();
    }
 
    s_exit = std::numeric_limits<double>::max();
    exit_face = -1;
 
-   for (int f = 0; f < faces.Size(); ++f)
+   for (int f = 0; f < n_faces; ++f)
    {
-      if (faces[f] == entry_face) { continue; }
+      const int face = faces[f];
+      if (face == entry_face) { continue; }
 
-      mfem::Array<int> verts;
+      const int *face_verts = nullptr;
+      int n_face_verts = 0;
+
       if (dim == 2)
       {
-         mesh.GetEdgeVertices(faces[f], verts);
+         face_verts = edge_vertex->GetRow(face);
       }
       else
       {
-         mesh.GetFaceVertices(faces[f], verts);
+         mesh.GetFaceVertices(face, verts);
+         face_verts = verts.GetData();
+         n_face_verts = verts.Size();
       }
 
       double s_hit = -1.0;
@@ -56,8 +62,8 @@ inline bool FindExitFace(mfem::Mesh &mesh, int elem_id,
       if (dim == 2)
       {
          // Line-edge intersection in 2D
-         const double *v0 = mesh.GetVertex(verts[0]);
-         const double *v1 = mesh.GetVertex(verts[1]);
+         const double *v0 = mesh.GetVertex(face_verts[0]);
+         const double *v1 = mesh.GetVertex(face_verts[1]);
 
          double ex = v1[0] - v0[0], ey = v1[1] - v0[1];
          double det = dir[0] * (-ey) - dir[1] * (-ex);
@@ -71,7 +77,7 @@ inline bool FindExitFace(mfem::Mesh &mesh, int elem_id,
          if (hit && s_hit > s_current + 1e-12 && s_hit < s_exit)
          {
             s_exit = s_hit;
-            exit_face = faces[f];
+            exit_face = face;
          }
       }
       else // dim == 3
@@ -79,14 +85,14 @@ inline bool FindExitFace(mfem::Mesh &mesh, int elem_id,
          // Line-face intersection in 3D.
          // Split the face into triangles: for a triangle (3 verts) test once,
          // for a quad (4 verts) test two triangles (0-1-2) and (0-2-3).
-         int n_tris = (verts.Size() == 4) ? 2 : 1;
+         int n_tris = (n_face_verts == 4) ? 2 : 1;
          int tri_idx[2][3] = {{0, 1, 2}, {0, 2, 3}};
 
          for (int t = 0; t < n_tris; ++t)
          {
-            const double *tv0 = mesh.GetVertex(verts[tri_idx[t][0]]);
-            const double *tv1 = mesh.GetVertex(verts[tri_idx[t][1]]);
-            const double *tv2 = mesh.GetVertex(verts[tri_idx[t][2]]);
+            const double *tv0 = mesh.GetVertex(face_verts[tri_idx[t][0]]);
+            const double *tv1 = mesh.GetVertex(face_verts[tri_idx[t][1]]);
+            const double *tv2 = mesh.GetVertex(face_verts[tri_idx[t][2]]);
 
             double e1[3] = {tv1[0]-tv0[0], tv1[1]-tv0[1], tv1[2]-tv0[2]};
             double e2[3] = {tv2[0]-tv0[0], tv2[1]-tv0[1], tv2[2]-tv0[2]};
@@ -118,7 +124,7 @@ inline bool FindExitFace(mfem::Mesh &mesh, int elem_id,
                 s_tri > s_current + 1e-12 && s_tri < s_exit)
             {
                s_exit = s_tri;
-               exit_face = faces[f];
+               exit_face = face;
                hit = true;
             }
          }
@@ -132,12 +138,20 @@ inline bool FindExitFace(mfem::Mesh &mesh, int elem_id,
 /// Walk the line from pos1 to pos2 through the mesh, splitting it at
 /// element boundaries.  Returns a list of sub-segments, each lying
 /// entirely within one element.
-inline std::vector<LineSegment> SplitLineIntoSegments(
+inline void SplitLineIntoSegments(
     mfem::Mesh &mesh, int start_elem_id,
     const mfem::Vector &pos1, const mfem::Vector &pos2,
-    int *out_exit_face = nullptr)
+    std::vector<LineSegment> &segments,
+    int *out_exit_face,
+    mfem::Array<int> &verts,
+    mfem::IsoparametricTransformation *eltrans_ws = nullptr,
+    mfem::InverseElementTransformation *inv_tr_ws = nullptr)
 {
-   std::vector<LineSegment> segments;
+   segments.clear();
+   if (segments.capacity() < 8)
+   {
+      segments.reserve(8);
+   }
    if (out_exit_face) { *out_exit_face = -1; }
 
    const int dim = mesh.SpaceDimension();
@@ -147,11 +161,37 @@ inline std::vector<LineSegment> SplitLineIntoSegments(
    // Zero or near-zero length line: nothing to integrate
    double dir_norm_sq = 0.0;
    for (int d = 0; d < dim; ++d) { dir_norm_sq += dir[d] * dir[d]; }
-   if (dir_norm_sq < 1e-18) { return segments; }
+   if (dir_norm_sq < 1e-18) { return; }
 
    mfem::IntegrationPoint ip;
    int elem = FindElementBFS(mesh, start_elem_id, pos1, ip);
-   if (elem < 0) { return segments; }
+   if (elem < 0) { return; }
+
+   // Fast path: if both endpoints are in the same element, no face walk is
+   // needed and the line stays in a single segment.
+   {
+      mfem::IsoparametricTransformation eltrans_local;
+      mfem::InverseElementTransformation inv_tr_local;
+      mfem::IsoparametricTransformation *eltrans =
+          eltrans_ws ? eltrans_ws : &eltrans_local;
+      mfem::InverseElementTransformation *inv_tr =
+          inv_tr_ws ? inv_tr_ws : &inv_tr_local;
+      if (!inv_tr_ws)
+      {
+         inv_tr->SetInitialGuessType(mfem::InverseElementTransformation::Center);
+         inv_tr->SetSolverType(
+             mfem::InverseElementTransformation::NewtonElementProject);
+      }
+      mesh.GetElementTransformation(elem, eltrans);
+      inv_tr->SetTransformation(*eltrans);
+      mfem::IntegrationPoint ip_end;
+      if (inv_tr->Transform(pos2, ip_end) ==
+          mfem::InverseElementTransformation::Inside)
+      {
+         segments.push_back({elem, 0.0, 1.0});
+         return;
+      }
+   }
 
    double s = 0.0;
    int entry_face = -1;
@@ -163,7 +203,7 @@ inline std::vector<LineSegment> SplitLineIntoSegments(
       int exit_face;
 
       bool found = FindExitFace(mesh, elem, pos1, dir,
-                                s, entry_face, s_exit, exit_face);
+                                s, entry_face, s_exit, exit_face, verts);
 
       if (!found)
       {
@@ -216,6 +256,17 @@ inline std::vector<LineSegment> SplitLineIntoSegments(
       elem = next;
       entry_face = exit_face;
    }
+}
+
+inline std::vector<LineSegment> SplitLineIntoSegments(
+    mfem::Mesh &mesh, int start_elem_id,
+    const mfem::Vector &pos1, const mfem::Vector &pos2,
+    int *out_exit_face = nullptr)
+{
+   std::vector<LineSegment> segments;
+   mfem::Array<int> verts;
+   SplitLineIntoSegments(mesh, start_elem_id, pos1, pos2, segments,
+                         out_exit_face, verts, nullptr, nullptr);
 
    return segments;
 }
@@ -227,6 +278,8 @@ struct CellSplitWorkspace
    mfem::Vector point;
    mfem::Vector val;
    mfem::Vector direction;
+   std::vector<LineSegment> split_segments;
+   mfem::Array<int> split_verts;
    mfem::IsoparametricTransformation eltrans;
    mfem::InverseElementTransformation inv_tr;
 
@@ -293,16 +346,14 @@ template <unsigned N_gauss>
 inline double IntegrateLineTangentialCellSplit(
     mfem::Mesh &mesh,
     mfem::GridFunction &gf,
-    int start_elem_id,
     const mfem::Vector &pos1,
     const mfem::Vector &pos2,
+    const std::vector<LineSegment> &segments,
     const GaussLegendreRule<N_gauss> &rule,
     CellSplitWorkspace &ws)
 {
    ws.Init(mesh.SpaceDimension());
    subtract(pos2, pos1, ws.direction);
-
-   auto segments = SplitLineIntoSegments(mesh, start_elem_id, pos1, pos2);
 
    double result = 0.0;
    for (const auto &seg : segments)
@@ -326,6 +377,23 @@ inline double IntegrateLineTangentialCellSplit(
       }
    }
    return result;
+}
+
+/// Integrate the tangential component of a vector GridFunction along the
+/// line from @a pos1 to @a pos2 by first splitting through mesh elements.
+template <unsigned N_gauss>
+inline double IntegrateLineTangentialCellSplit(
+    mfem::Mesh &mesh,
+    mfem::GridFunction &gf,
+    int start_elem_id,
+    const mfem::Vector &pos1,
+    const mfem::Vector &pos2,
+    const GaussLegendreRule<N_gauss> &rule,
+    CellSplitWorkspace &ws)
+{
+   auto segments = SplitLineIntoSegments(mesh, start_elem_id, pos1, pos2);
+   return IntegrateLineTangentialCellSplit(mesh, gf, pos1, pos2,
+                                           segments, rule, ws);
 }
 
 /// Convenience overload without workspace.

@@ -97,7 +97,7 @@ Mesh MakeAttributedUnitCubeMesh(int nx, int ny, int nz)
 SemiLagrangianAdvection1Form<1>::VelocityFunc
 ConstantVelocity(double vx, double vy)
 {
-    return [vx, vy](const Vector &, double, Vector &v)
+    return [vx, vy](const Vector &, double, int, Vector &v)
     {
         v.SetSize(2);
         v[0] = vx;
@@ -331,7 +331,7 @@ TEST(SemiLagrangianAdvection, FullOutsideTransportIn3DUsesTopBoundaryAttribute)
     };
 
     SemiLagrangianAdvection1Form<1>::VelocityFunc velocity =
-        [](const Vector &, double, Vector &v)
+        [](const Vector &, double, int, Vector &v)
     {
         v.SetSize(3);
         v[0] = 0.0;

@@ -135,10 +135,14 @@ int main(int argc, char *argv[])
     // Velocity function: evaluate current velocity GridFunction at arbitrary
     // physical points via BFS element search.
     auto velocity_func = [&mesh, &u_gf = x.get_u(), dim](
-        const mfem::Vector &pt, double, mfem::Vector &v) {
+        const mfem::Vector &pt, double, int start_elem_hint, mfem::Vector &v) {
         v.SetSize(dim);
         mfem::IntegrationPoint ip;
-        int elem = FindElementBFS(mesh, 0, pt, ip);
+        int elem = FindElementBFS(mesh, start_elem_hint, pt, ip);
+        if (elem < 0 && start_elem_hint != 0)
+        {
+            elem = FindElementBFS(mesh, 0, pt, ip);
+        }
         if (elem >= 0)
         {
             mfem::IsoparametricTransformation eltrans;
@@ -203,8 +207,52 @@ int main(int argc, char *argv[])
     int cycle = 0;
     double advect_time_s = 0.0;
     double solve_time_s = 0.0;
+    double trace_time_s = 0.0;
+    double split_time_s = 0.0;
+    double interior_integral_time_s = 0.0;
+    double boundary_integral_time_s = 0.0;
+    long long split_calls = 0;
+    long long total_segments = 0;
+    double edge_thread_min_s = 0.0;
+    double edge_thread_avg_s = 0.0;
+    double edge_thread_max_s = 0.0;
+    double edge_thread_imbalance = 0.0;
+    int edge_threads_active = 0;
+    long long edge_thread_edges_min = 0;
+    long long edge_thread_edges_max = 0;
+    double edge_thread_cpu_min_s = 0.0;
+    double edge_thread_cpu_avg_s = 0.0;
+    double edge_thread_cpu_max_s = 0.0;
+    double edge_thread_cpu_util_min = 0.0;
+    double edge_thread_cpu_util_avg = 0.0;
+    double edge_thread_cpu_util_max = 0.0;
+    const bool profile_advection_breakdown =
+        config.get_value<bool>("profile_advection_breakdown", false);
+    const bool profile_advection_thread_balance =
+        config.get_value<bool>("profile_advection_thread_balance", false);
+
+    SemiLagrangianStepStats advection_stats;
     SingleFieldCSVLogger csv(config, cycle, t, &ND, x.get_u(), num_it,
-                             &advect_time_s, &solve_time_s);
+                             &advect_time_s, &solve_time_s,
+                             profile_advection_breakdown ? &trace_time_s : nullptr,
+                             profile_advection_breakdown ? &split_time_s : nullptr,
+                             profile_advection_breakdown ? &interior_integral_time_s : nullptr,
+                             profile_advection_breakdown ? &boundary_integral_time_s : nullptr,
+                             profile_advection_breakdown ? &split_calls : nullptr,
+                             profile_advection_breakdown ? &total_segments : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_min_s : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_avg_s : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_max_s : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_imbalance : nullptr,
+                             profile_advection_thread_balance ? &edge_threads_active : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_edges_min : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_edges_max : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_cpu_min_s : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_cpu_avg_s : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_cpu_max_s : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_cpu_util_min : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_cpu_util_avg : nullptr,
+                             profile_advection_thread_balance ? &edge_thread_cpu_util_max : nullptr);
 
     // ---- Progress bar ----
     int total_cycles = 0;
@@ -251,16 +299,46 @@ int main(int argc, char *argv[])
     {
         // 1. Semi-Lagrangian advection: compute omega_tilde
         auto advect_start = std::chrono::steady_clock::now();
+        advection_stats.enable_breakdown = profile_advection_breakdown;
+        advection_stats.enable_thread_balance = profile_advection_thread_balance;
         advection.Apply(velocity_func, boundary_func, t, dt,
-                        x.get_u(), omega_tilde, /*trace_order=*/1);
+                        x.get_u(), omega_tilde, /*trace_order=*/1,
+                        (profile_advection_breakdown || profile_advection_thread_balance)
+                            ? &advection_stats
+                            : nullptr);
         advect_time_s = std::chrono::duration<double>(
                             std::chrono::steady_clock::now() - advect_start)
                             .count();
+        if (profile_advection_breakdown)
+        {
+            trace_time_s = advection_stats.trace_departure_s;
+            split_time_s = advection_stats.split_line_s;
+            interior_integral_time_s = advection_stats.interior_integral_s;
+            boundary_integral_time_s = advection_stats.boundary_integral_s;
+            split_calls = advection_stats.split_calls;
+            total_segments = advection_stats.total_segments;
+        }
+        if (profile_advection_thread_balance)
+        {
+            edge_thread_min_s = advection_stats.edge_thread_min_s;
+            edge_thread_avg_s = advection_stats.edge_thread_avg_s;
+            edge_thread_max_s = advection_stats.edge_thread_max_s;
+            edge_thread_imbalance = advection_stats.edge_thread_imbalance;
+            edge_threads_active = advection_stats.edge_threads_active;
+            edge_thread_edges_min = advection_stats.edge_thread_edges_min;
+            edge_thread_edges_max = advection_stats.edge_thread_edges_max;
+            edge_thread_cpu_min_s = advection_stats.edge_thread_cpu_min_s;
+            edge_thread_cpu_avg_s = advection_stats.edge_thread_cpu_avg_s;
+            edge_thread_cpu_max_s = advection_stats.edge_thread_cpu_max_s;
+            edge_thread_cpu_util_min = advection_stats.edge_thread_cpu_util_min;
+            edge_thread_cpu_util_avg = advection_stats.edge_thread_cpu_util_avg;
+            edge_thread_cpu_util_max = advection_stats.edge_thread_cpu_util_max;
+        }
 
         // 2. Assemble RHS with omega_tilde (advected field, not u^n)
         rhs.Update(omega_tilde, t, 1./dt);
 
-        // 3. Solve (reuses UMFPack factorization since A is constant)
+        // 3. Solve linear system
         auto solve_start = std::chrono::steady_clock::now();
         solv.Mult(rhs, x);
         solve_time_s = std::chrono::duration<double>(

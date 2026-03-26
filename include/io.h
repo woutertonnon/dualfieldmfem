@@ -612,7 +612,26 @@ public:
                          mfem::GridFunction &u,
                          int &num_it,
                          const double *advect_time_s = nullptr,
-                         const double *solve_time_s = nullptr)
+                         const double *solve_time_s = nullptr,
+                         const double *trace_time_s = nullptr,
+                         const double *split_time_s = nullptr,
+                         const double *interior_integral_time_s = nullptr,
+                         const double *boundary_integral_time_s = nullptr,
+                         const long long *split_calls = nullptr,
+                         const long long *total_segments = nullptr,
+                         const double *edge_thread_min_s = nullptr,
+                         const double *edge_thread_avg_s = nullptr,
+                         const double *edge_thread_max_s = nullptr,
+                         const double *edge_thread_imbalance = nullptr,
+                         const int *edge_threads_active = nullptr,
+                         const long long *edge_thread_edges_min = nullptr,
+                         const long long *edge_thread_edges_max = nullptr,
+                         const double *edge_thread_cpu_min_s = nullptr,
+                         const double *edge_thread_cpu_avg_s = nullptr,
+                         const double *edge_thread_cpu_max_s = nullptr,
+                         const double *edge_thread_cpu_util_min = nullptr,
+                         const double *edge_thread_cpu_util_avg = nullptr,
+                         const double *edge_thread_cpu_util_max = nullptr)
         : CSVLogger(config.get_outputfile()),
           cycle_(cycle), t_(t),
           ND_(ND),
@@ -621,12 +640,37 @@ public:
           num_it_(num_it),
           advect_time_s_(advect_time_s),
           solve_time_s_(solve_time_s),
+          trace_time_s_(trace_time_s),
+          split_time_s_(split_time_s),
+          interior_integral_time_s_(interior_integral_time_s),
+          boundary_integral_time_s_(boundary_integral_time_s),
+          split_calls_(split_calls),
+          total_segments_(total_segments),
+          edge_thread_min_s_(edge_thread_min_s),
+          edge_thread_avg_s_(edge_thread_avg_s),
+          edge_thread_max_s_(edge_thread_max_s),
+          edge_thread_imbalance_(edge_thread_imbalance),
+          edge_threads_active_(edge_threads_active),
+          edge_thread_edges_min_(edge_thread_edges_min),
+          edge_thread_edges_max_(edge_thread_edges_max),
+          edge_thread_cpu_min_s_(edge_thread_cpu_min_s),
+          edge_thread_cpu_avg_s_(edge_thread_cpu_avg_s),
+          edge_thread_cpu_max_s_(edge_thread_cpu_max_s),
+          edge_thread_cpu_util_min_(edge_thread_cpu_util_min),
+          edge_thread_cpu_util_avg_(edge_thread_cpu_util_avg),
+          edge_thread_cpu_util_max_(edge_thread_cpu_util_max),
           time_(std::chrono::steady_clock::now()),
           config_(config)
     {
         get_ofstream() << "runtime_it,cycle,time_full,num_it,||u1||";
         if (advect_time_s_ && solve_time_s_)
             get_ofstream() << ",time_advect_dofs_s,time_solve_s";
+        if (trace_time_s_ && split_time_s_ && interior_integral_time_s_ && boundary_integral_time_s_ && split_calls_ && total_segments_)
+            get_ofstream() << ",time_trace_departure_s,time_split_line_s,time_interior_integral_s,time_boundary_integral_s,split_calls,total_segments";
+        if (edge_thread_min_s_ && edge_thread_avg_s_ && edge_thread_max_s_ && edge_thread_imbalance_ && edge_threads_active_ && edge_thread_edges_min_ && edge_thread_edges_max_)
+            get_ofstream() << ",edge_thread_min_s,edge_thread_avg_s,edge_thread_max_s,edge_thread_imbalance,edge_threads_active,edge_thread_edges_min,edge_thread_edges_max";
+        if (edge_thread_cpu_min_s_ && edge_thread_cpu_avg_s_ && edge_thread_cpu_max_s_ && edge_thread_cpu_util_min_ && edge_thread_cpu_util_avg_ && edge_thread_cpu_util_max_)
+            get_ofstream() << ",edge_thread_cpu_min_s,edge_thread_cpu_avg_s,edge_thread_cpu_max_s,edge_thread_cpu_util_min,edge_thread_cpu_util_avg,edge_thread_cpu_util_max";
         if (config.has_exact_u())
             get_ofstream() << ",u1_err_L2";
         get_ofstream() << std::endl;
@@ -650,6 +694,19 @@ public:
                        << u1_norm;
         if (advect_time_s_ && solve_time_s_)
             get_ofstream() << "," << *advect_time_s_ << "," << *solve_time_s_;
+        if (trace_time_s_ && split_time_s_ && interior_integral_time_s_ && boundary_integral_time_s_ && split_calls_ && total_segments_)
+            get_ofstream() << "," << *trace_time_s_ << "," << *split_time_s_ << ","
+                           << *interior_integral_time_s_ << "," << *boundary_integral_time_s_ << ","
+                           << *split_calls_ << "," << *total_segments_;
+        if (edge_thread_min_s_ && edge_thread_avg_s_ && edge_thread_max_s_ && edge_thread_imbalance_ && edge_threads_active_ && edge_thread_edges_min_ && edge_thread_edges_max_)
+            get_ofstream() << "," << *edge_thread_min_s_ << "," << *edge_thread_avg_s_ << ","
+                           << *edge_thread_max_s_ << "," << *edge_thread_imbalance_ << ","
+                           << *edge_threads_active_ << "," << *edge_thread_edges_min_ << ","
+                           << *edge_thread_edges_max_;
+        if (edge_thread_cpu_min_s_ && edge_thread_cpu_avg_s_ && edge_thread_cpu_max_s_ && edge_thread_cpu_util_min_ && edge_thread_cpu_util_avg_ && edge_thread_cpu_util_max_)
+            get_ofstream() << "," << *edge_thread_cpu_min_s_ << "," << *edge_thread_cpu_avg_s_ << ","
+                           << *edge_thread_cpu_max_s_ << "," << *edge_thread_cpu_util_min_ << ","
+                           << *edge_thread_cpu_util_avg_ << "," << *edge_thread_cpu_util_max_;
         if (config_.has_exact_u())
         {
             mfem::VectorFunctionCoefficient u_exact(3, config_.get_exact_data("exact_data_u"));
@@ -669,6 +726,25 @@ private:
     int &num_it_;
     const double *advect_time_s_;
     const double *solve_time_s_;
+    const double *trace_time_s_;
+    const double *split_time_s_;
+    const double *interior_integral_time_s_;
+    const double *boundary_integral_time_s_;
+    const long long *split_calls_;
+    const long long *total_segments_;
+    const double *edge_thread_min_s_;
+    const double *edge_thread_avg_s_;
+    const double *edge_thread_max_s_;
+    const double *edge_thread_imbalance_;
+    const int *edge_threads_active_;
+    const long long *edge_thread_edges_min_;
+    const long long *edge_thread_edges_max_;
+    const double *edge_thread_cpu_min_s_;
+    const double *edge_thread_cpu_avg_s_;
+    const double *edge_thread_cpu_max_s_;
+    const double *edge_thread_cpu_util_min_;
+    const double *edge_thread_cpu_util_avg_;
+    const double *edge_thread_cpu_util_max_;
     std::chrono::time_point<std::chrono::steady_clock> time_;
     DualFieldConfig config_;
 };

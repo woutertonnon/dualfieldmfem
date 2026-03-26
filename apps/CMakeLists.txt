@@ -18,7 +18,6 @@ add_executable(stokes_nitsche Stokes.cpp)
 target_link_libraries(stokes_nitsche PRIVATE boundaryoperatorslib mfem Boost::program_options dualfield_project_options)
 
 add_executable(semilagrangian_navierstokes_nitsche semilagrangian_navierstokes_nitsche.cpp)
-target_link_libraries(semilagrangian_navierstokes_nitsche PRIVATE boundaryoperatorslib mfem Boost::program_options dualfield_project_options)
-
+target_link_libraries(semilagrangian_navierstokes_nitsche PRIVATE boundaryoperatorslib mfem OpenMP::OpenMP_CXX Boost::program_options dualfield_project_options)
 
 
