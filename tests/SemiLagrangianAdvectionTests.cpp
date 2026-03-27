@@ -347,3 +347,159 @@ TEST(SemiLagrangianAdvection, FullOutsideTransportIn3DUsesTopBoundaryAttribute)
         EXPECT_EQ(attr, kAttrZMax);
     }
 }
+
+// --------------------------------------------------------------------------
+// SplitLineIntoSegments degenerate-case tests
+// --------------------------------------------------------------------------
+
+namespace
+{
+/// Helper: compute total coverage of segments over [0,1].
+double SegmentCoverage(const std::vector<LineSegment> &segments)
+{
+    double cov = 0.0;
+    for (const auto &seg : segments) { cov += seg.s_end - seg.s_start; }
+    return cov;
+}
+
+/// Helper: build a simple Cartesian triangle mesh and initialize its tables.
+Mesh MakeSimpleTriMesh(int nx, int ny)
+{
+    Mesh mesh = Mesh::MakeCartesian2D(nx, ny, Element::TRIANGLE,
+                                      true, 1.0, 1.0, false);
+    mesh.ElementToElementTable();
+    mesh.GetEdgeVertexTable();
+    return mesh;
+}
+} // anonymous namespace
+
+TEST(SplitLineIntoSegments, LineThroughVertex)
+{
+    // Line through interior vertex (0.25,0.25) on a 4x4 triangle mesh.
+    // Starts/ends inside the domain to avoid boundary perturbation issues.
+    Mesh mesh = MakeSimpleTriMesh(4, 4);
+
+    Vector pos1(2), pos2(2);
+    pos1[0] = 0.01; pos1[1] = 0.01;
+    pos2[0] = 0.49; pos2[1] = 0.49;
+
+    std::vector<LineSegment> segments;
+    Array<int> verts;
+    bool ok = SplitLineIntoSegmentsRobust(
+        mesh, 0, pos1, pos2, segments, nullptr, verts);
+
+    EXPECT_TRUE(ok);
+    ASSERT_FALSE(segments.empty());
+    EXPECT_NEAR(SegmentCoverage(segments), 1.0, 1e-6);
+}
+
+TEST(SplitLineIntoSegments, LineAlongEdge)
+{
+    // Line along x=0.25, slightly inside the domain to avoid boundary issues.
+    // Still lies exactly on a vertical mesh edge (degenerate to a face).
+    Mesh mesh = MakeSimpleTriMesh(4, 4);
+
+    Vector pos1(2), pos2(2);
+    pos1[0] = 0.25; pos1[1] = 0.01;
+    pos2[0] = 0.25; pos2[1] = 0.99;
+
+    std::vector<LineSegment> segments;
+    Array<int> verts;
+    bool ok = SplitLineIntoSegmentsRobust(
+        mesh, 0, pos1, pos2, segments, nullptr, verts);
+
+    EXPECT_TRUE(ok);
+    ASSERT_FALSE(segments.empty());
+    EXPECT_NEAR(SegmentCoverage(segments), 1.0, 1e-6);
+}
+
+TEST(SplitLineIntoSegments, LineThroughMultipleVertices)
+{
+    // Near-diagonal line slightly inside the domain, still passes through
+    // interior vertices at (0.25,0.25), (0.5,0.5), (0.75,0.75).
+    Mesh mesh = MakeSimpleTriMesh(4, 4);
+
+    Vector pos1(2), pos2(2);
+    pos1[0] = 0.01; pos1[1] = 0.01;
+    pos2[0] = 0.99; pos2[1] = 0.99;
+
+    std::vector<LineSegment> segments;
+    Array<int> verts;
+    bool ok = SplitLineIntoSegmentsRobust(
+        mesh, 0, pos1, pos2, segments, nullptr, verts);
+
+    EXPECT_TRUE(ok);
+    ASSERT_FALSE(segments.empty());
+    EXPECT_NEAR(SegmentCoverage(segments), 1.0, 1e-6);
+}
+
+TEST(SplitLineIntoSegments, GaussKronrodMatchesCellSplit)
+{
+    // For a non-degenerate line, verify Gauss-Kronrod produces the same
+    // result as cell-split integration (within tolerance).
+    Mesh mesh = MakeSimpleTriMesh(4, 4);
+    ND_FECollection fec(1, mesh.Dimension());
+    FiniteElementSpace nd(&mesh, &fec);
+
+    GridFunction omega(&nd);
+    ProjectAffineField(omega);
+
+    // Non-degenerate line: avoids vertices
+    Vector pos1(2), pos2(2);
+    pos1[0] = 0.1; pos1[1] = 0.15;
+    pos2[0] = 0.7; pos2[1] = 0.85;
+
+    auto segments = SplitLineIntoSegments(mesh, 0, pos1, pos2);
+    ASSERT_FALSE(segments.empty());
+
+    GaussLegendreRule<1> rule;
+    CellSplitWorkspace ws;
+    double cs_result = IntegrateLineTangentialCellSplit(
+        mesh, omega, pos1, pos2, segments, rule, ws);
+
+    double gk_error = 0.0;
+    double gk_result = IntegrateLineTangentialGaussKronrod(
+        mesh, omega, 0, pos1, pos2, 1e-8, 15, &gk_error);
+
+    EXPECT_NEAR(cs_result, gk_result, 1e-5)
+        << "Gauss-Kronrod and cell-split results diverge";
+}
+
+TEST(SplitLineIntoSegments, IntegralAccuracyAfterPerturbation)
+{
+    // Line through interior vertex (0.25,0.25): integral of affine field
+    // computed via the robust (perturbed) cell-split path should match
+    // the Gauss-Kronrod reference to high accuracy.
+    Mesh mesh = MakeSimpleTriMesh(4, 4);
+    ND_FECollection fec(1, mesh.Dimension());
+    FiniteElementSpace nd(&mesh, &fec);
+
+    GridFunction omega(&nd);
+    ProjectAffineField(omega);
+
+    // Interior line through vertex (0.25,0.25)
+    Vector pos1(2), pos2(2);
+    pos1[0] = 0.01; pos1[1] = 0.01;
+    pos2[0] = 0.49; pos2[1] = 0.49;
+
+    // Gauss-Kronrod reference (high accuracy, no cell-splitting)
+    double gk_error = 0.0;
+    double reference = IntegrateLineTangentialGaussKronrod(
+        mesh, omega, 0, pos1, pos2, 1e-10, 15, &gk_error);
+
+    // Use robust path (will trigger perturbation since line goes through vertex)
+    std::vector<LineSegment> segments;
+    Array<int> verts;
+    bool ok = SplitLineIntoSegmentsRobust(
+        mesh, 0, pos1, pos2, segments, nullptr, verts);
+    ASSERT_TRUE(ok);
+
+    GaussLegendreRule<1> rule;
+    CellSplitWorkspace ws;
+    double result = IntegrateLineTangentialCellSplit(
+        mesh, omega, pos1, pos2, segments, rule, ws);
+
+    // Perturbation is O(1e-9), so error should be negligible
+    EXPECT_NEAR(result, reference, 1e-6)
+        << "Integral after perturbation deviates from Gauss-Kronrod reference";
+}

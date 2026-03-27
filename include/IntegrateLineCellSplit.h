@@ -7,7 +7,6 @@
 #include <iostream>
 #include <limits>
 #include <random>
-#include <stdexcept>
 
 /// A sub-segment of a line that lies entirely within one mesh element.
 struct LineSegment
@@ -142,7 +141,12 @@ inline bool FindExitFace(mfem::Mesh &mesh, int elem_id,
 /// Walk the line from pos1 to pos2 through the mesh, splitting it at
 /// element boundaries.  Returns a list of sub-segments, each lying
 /// entirely within one element.
-inline void SplitLineIntoSegments(
+///
+/// Returns true on success.  Returns false if FindExitFace fails
+/// (degenerate geometry: line through a vertex or along a face).
+/// On false, segments is cleared; the caller should retry with
+/// perturbed endpoints via SplitLineIntoSegmentsRobust.
+inline bool SplitLineIntoSegments(
     mfem::Mesh &mesh, int start_elem_id,
     const mfem::Vector &pos1, const mfem::Vector &pos2,
     std::vector<LineSegment> &segments,
@@ -165,11 +169,11 @@ inline void SplitLineIntoSegments(
    // Zero or near-zero length line: nothing to integrate
    double dir_norm_sq = 0.0;
    for (int d = 0; d < dim; ++d) { dir_norm_sq += dir[d] * dir[d]; }
-   if (dir_norm_sq < 1e-18) { return; }
+   if (dir_norm_sq < 1e-18) { return true; }
 
    mfem::IntegrationPoint ip;
    int elem = FindElementBFS(mesh, start_elem_id, pos1, ip);
-   if (elem < 0) { return; }
+   if (elem < 0) { return true; }
 
    // Fast path: if both endpoints are in the same element, no face walk is
    // needed and the line stays in a single segment.
@@ -193,16 +197,13 @@ inline void SplitLineIntoSegments(
           mfem::InverseElementTransformation::Inside)
       {
          segments.push_back({elem, 0.0, 1.0});
-         return;
+         return true;
       }
    }
 
    double s = 0.0;
    int entry_face = -1;
-   constexpr int max_nudge = 5;
-   constexpr double base_nudge = 1e-10;
 
-   int num_nudge = 0;
    while (s < 1.0 - 1e-12)
    {
       double s_exit;
@@ -213,45 +214,11 @@ inline void SplitLineIntoSegments(
 
       if (!found)
       {
-         ++num_nudge;
-         if (num_nudge > max_nudge)
-         {
-            throw std::runtime_error(
-                "SplitLineIntoSegments: exceeded " +
-                std::to_string(max_nudge) +
-                " nudge attempts at s=" + std::to_string(s) +
-                " in element " + std::to_string(elem));
-         }
-         // No exit face found.  This typically happens when the line
-         // passes exactly through a mesh vertex or lies on a face:
-         // all face intersections land at s_current and are rejected.
-         // Nudge forward with exponentially growing step and use BFS
-         // to find the next element.
-         double nudge = base_nudge * std::pow(10.0, num_nudge);
-         double s_nudge = s + nudge;
-         if (s_nudge >= 1.0 - 1e-12)
-         {
-            segments.push_back({elem, s, 1.0});
-            break;
-         }
-
-         segments.push_back({elem, s, s_nudge});
-
-         mfem::Vector nudged_pt(dim);
-         add(pos1, s_nudge, dir, nudged_pt);
-
-         mfem::IntegrationPoint nudged_ip;
-         int next = FindElementBFS(mesh, elem, nudged_pt, nudged_ip);
-         if (next < 0) { break; }
-
-         s = s_nudge;
-         elem = next;
-         entry_face = -1;
-         continue;
+         // Degenerate geometry (line through vertex or along face).
+         // Signal failure so the caller can retry with perturbed endpoints.
+         segments.clear();
+         return false;
       }
-
-      // Successful exit found — reset nudge counter
-      num_nudge = 0;
 
       if (s_exit >= 1.0 - 1e-12)
       {
@@ -276,12 +243,17 @@ inline void SplitLineIntoSegments(
       elem = next;
       entry_face = exit_face;
    }
+
+   return true;
 }
 
 /// Wrapper that retries SplitLineIntoSegments with perturbed endpoints
-/// when the nudge strategy fails.  Perturbs up to @a max_perturb times
-/// with increasing magnitude.  Logs every retry to std::cerr.
-inline void SplitLineIntoSegmentsRobust(
+/// when the base call fails (degenerate geometry).  Perturbs up to
+/// @a max_perturb times with increasing magnitude.
+/// Logs every retry to std::cerr.
+///
+/// Returns true on success, false if all retries are exhausted.
+inline bool SplitLineIntoSegmentsRobust(
     mfem::Mesh &mesh, int start_elem_id,
     const mfem::Vector &pos1, const mfem::Vector &pos2,
     std::vector<LineSegment> &segments,
@@ -292,22 +264,43 @@ inline void SplitLineIntoSegmentsRobust(
     int max_perturb = 10)
 {
    // First attempt: no perturbation
-   try
+   if (SplitLineIntoSegments(mesh, start_elem_id, pos1, pos2, segments,
+                             out_exit_face, verts, eltrans_ws, inv_tr_ws))
    {
-      SplitLineIntoSegments(mesh, start_elem_id, pos1, pos2, segments,
-                            out_exit_face, verts, eltrans_ws, inv_tr_ws);
-      return;
-   }
-   catch (const std::runtime_error &e)
-   {
-      std::cerr << "[SplitLineIntoSegments] WARNING: " << e.what()
-                << "\n  Retrying with perturbed endpoints..." << std::endl;
+      return true;
    }
 
-   // Retry with perturbed endpoints
+   std::cerr << "[SplitLineIntoSegments] WARNING: degenerate geometry "
+                "detected. Retrying with perturbed endpoints..."
+             << std::endl;
+
+   // Retry with perturbed endpoints biased toward the mesh interior.
+   // Using the element center of start_elem guarantees the perturbation
+   // pushes boundary points inward rather than outside the domain.
    const int dim = mesh.SpaceDimension();
    thread_local std::mt19937 rng(42);
-   std::uniform_real_distribution<double> dist(-1.0, 1.0);
+   std::uniform_real_distribution<double> unit_dist(0.0, 1.0);
+
+   // Compute element center of the starting element
+   mfem::Array<int> elem_verts;
+   mesh.GetElementVertices(start_elem_id, elem_verts);
+   mfem::Vector elem_center(dim);
+   elem_center = 0.0;
+   for (int i = 0; i < elem_verts.Size(); ++i)
+   {
+      const double *v = mesh.GetVertex(elem_verts[i]);
+      for (int d = 0; d < dim; ++d) { elem_center[d] += v[d]; }
+   }
+   elem_center /= static_cast<double>(elem_verts.Size());
+
+   // Inward direction for each endpoint (toward element center)
+   mfem::Vector inward1(dim), inward2(dim);
+   subtract(elem_center, pos1, inward1);
+   subtract(elem_center, pos2, inward2);
+   double len1 = inward1.Norml2();
+   double len2 = inward2.Norml2();
+   if (len1 > 1e-15) { inward1 /= len1; }
+   if (len2 > 1e-15) { inward2 /= len2; }
 
    for (int attempt = 1; attempt <= max_perturb; ++attempt)
    {
@@ -315,31 +308,38 @@ inline void SplitLineIntoSegmentsRobust(
       mfem::Vector p1_pert(pos1), p2_pert(pos2);
       for (int d = 0; d < dim; ++d)
       {
-         p1_pert[d] += perturb_mag * dist(rng);
-         p2_pert[d] += perturb_mag * dist(rng);
+         // Random component biased inward: magnitude is random,
+         // but sign always matches the inward direction.
+         double r1 = perturb_mag * unit_dist(rng);
+         double r2 = perturb_mag * unit_dist(rng);
+         p1_pert[d] += r1 * inward1[d];
+         p2_pert[d] += r2 * inward2[d];
       }
 
-      try
+      if (SplitLineIntoSegments(mesh, start_elem_id, p1_pert, p2_pert,
+                                segments, out_exit_face, verts,
+                                eltrans_ws, inv_tr_ws))
       {
-         SplitLineIntoSegments(mesh, start_elem_id, p1_pert, p2_pert,
-                               segments, out_exit_face, verts,
-                               eltrans_ws, inv_tr_ws);
+         if (segments.empty()) { continue; }
+
+         // The exit face from the perturbed line may differ from the
+         // original line near domain corners.  Mark it as unreliable
+         // so the caller uses FindNearestBoundaryAttribute instead.
+         if (out_exit_face) { *out_exit_face = -1; }
          std::cerr << "[SplitLineIntoSegments] Perturbation attempt "
                    << attempt << " succeeded (magnitude="
                    << perturb_mag << ")." << std::endl;
-         return;
+         return true;
       }
-      catch (const std::runtime_error &e)
-      {
-         std::cerr << "[SplitLineIntoSegments] Perturbation attempt "
-                   << attempt << "/" << max_perturb
-                   << " failed: " << e.what() << std::endl;
-      }
+
+      std::cerr << "[SplitLineIntoSegments] Perturbation attempt "
+                << attempt << "/" << max_perturb << " failed."
+                << std::endl;
    }
 
-   throw std::runtime_error(
-       "SplitLineIntoSegments: all " + std::to_string(max_perturb) +
-       " perturbation retries exhausted");
+   std::cerr << "[SplitLineIntoSegments] ERROR: all " << max_perturb
+             << " perturbation retries exhausted." << std::endl;
+   return false;
 }
 
 inline std::vector<LineSegment> SplitLineIntoSegments(
