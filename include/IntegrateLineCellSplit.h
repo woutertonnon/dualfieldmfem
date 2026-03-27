@@ -3,7 +3,11 @@
 
 #include "FindElementBFS.h"
 #include <boost/math/quadrature/gauss.hpp>
+#include <boost/math/quadrature/gauss_kronrod.hpp>
+#include <iostream>
 #include <limits>
+#include <random>
+#include <stdexcept>
 
 /// A sub-segment of a line that lies entirely within one mesh element.
 struct LineSegment
@@ -195,8 +199,10 @@ inline void SplitLineIntoSegments(
 
    double s = 0.0;
    int entry_face = -1;
-   constexpr double nudge_step = 1e-10;
+   constexpr int max_nudge = 5;
+   constexpr double base_nudge = 1e-10;
 
+   int num_nudge = 0;
    while (s < 1.0 - 1e-12)
    {
       double s_exit;
@@ -207,11 +213,22 @@ inline void SplitLineIntoSegments(
 
       if (!found)
       {
+         ++num_nudge;
+         if (num_nudge > max_nudge)
+         {
+            throw std::runtime_error(
+                "SplitLineIntoSegments: exceeded " +
+                std::to_string(max_nudge) +
+                " nudge attempts at s=" + std::to_string(s) +
+                " in element " + std::to_string(elem));
+         }
          // No exit face found.  This typically happens when the line
          // passes exactly through a mesh vertex or lies on a face:
          // all face intersections land at s_current and are rejected.
-         // Nudge forward and use BFS to find the next element.
-         double s_nudge = s + nudge_step;
+         // Nudge forward with exponentially growing step and use BFS
+         // to find the next element.
+         double nudge = base_nudge * std::pow(10.0, num_nudge);
+         double s_nudge = s + nudge;
          if (s_nudge >= 1.0 - 1e-12)
          {
             segments.push_back({elem, s, 1.0});
@@ -232,6 +249,9 @@ inline void SplitLineIntoSegments(
          entry_face = -1;
          continue;
       }
+
+      // Successful exit found — reset nudge counter
+      num_nudge = 0;
 
       if (s_exit >= 1.0 - 1e-12)
       {
@@ -256,6 +276,70 @@ inline void SplitLineIntoSegments(
       elem = next;
       entry_face = exit_face;
    }
+}
+
+/// Wrapper that retries SplitLineIntoSegments with perturbed endpoints
+/// when the nudge strategy fails.  Perturbs up to @a max_perturb times
+/// with increasing magnitude.  Logs every retry to std::cerr.
+inline void SplitLineIntoSegmentsRobust(
+    mfem::Mesh &mesh, int start_elem_id,
+    const mfem::Vector &pos1, const mfem::Vector &pos2,
+    std::vector<LineSegment> &segments,
+    int *out_exit_face,
+    mfem::Array<int> &verts,
+    mfem::IsoparametricTransformation *eltrans_ws = nullptr,
+    mfem::InverseElementTransformation *inv_tr_ws = nullptr,
+    int max_perturb = 10)
+{
+   // First attempt: no perturbation
+   try
+   {
+      SplitLineIntoSegments(mesh, start_elem_id, pos1, pos2, segments,
+                            out_exit_face, verts, eltrans_ws, inv_tr_ws);
+      return;
+   }
+   catch (const std::runtime_error &e)
+   {
+      std::cerr << "[SplitLineIntoSegments] WARNING: " << e.what()
+                << "\n  Retrying with perturbed endpoints..." << std::endl;
+   }
+
+   // Retry with perturbed endpoints
+   const int dim = mesh.SpaceDimension();
+   thread_local std::mt19937 rng(42);
+   std::uniform_real_distribution<double> dist(-1.0, 1.0);
+
+   for (int attempt = 1; attempt <= max_perturb; ++attempt)
+   {
+      double perturb_mag = 1e-9 * std::pow(2.0, attempt);
+      mfem::Vector p1_pert(pos1), p2_pert(pos2);
+      for (int d = 0; d < dim; ++d)
+      {
+         p1_pert[d] += perturb_mag * dist(rng);
+         p2_pert[d] += perturb_mag * dist(rng);
+      }
+
+      try
+      {
+         SplitLineIntoSegments(mesh, start_elem_id, p1_pert, p2_pert,
+                               segments, out_exit_face, verts,
+                               eltrans_ws, inv_tr_ws);
+         std::cerr << "[SplitLineIntoSegments] Perturbation attempt "
+                   << attempt << " succeeded (magnitude="
+                   << perturb_mag << ")." << std::endl;
+         return;
+      }
+      catch (const std::runtime_error &e)
+      {
+         std::cerr << "[SplitLineIntoSegments] Perturbation attempt "
+                   << attempt << "/" << max_perturb
+                   << " failed: " << e.what() << std::endl;
+      }
+   }
+
+   throw std::runtime_error(
+       "SplitLineIntoSegments: all " + std::to_string(max_perturb) +
+       " perturbation retries exhausted");
 }
 
 inline std::vector<LineSegment> SplitLineIntoSegments(
@@ -409,6 +493,61 @@ inline double IntegrateLineTangentialCellSplit(
    CellSplitWorkspace ws;
    return IntegrateLineTangentialCellSplit(
        mesh, gf, start_elem_id, pos1, pos2, rule, ws);
+}
+
+/// Gauss-Kronrod fallback: integrate ∫₀¹ gf(pos1 + s·dir) · dir ds
+/// adaptively without cell-splitting.  Each quadrature-point evaluation
+/// locates the containing element via BFS.  Slower but robust when
+/// cell-splitting fails entirely.
+///
+/// Uses boost::math::quadrature::gauss_kronrod<double,15> with adaptive
+/// refinement to the requested tolerance.
+///
+/// @param tol       absolute error tolerance (default 1e-5).
+/// @param max_depth maximum adaptive subdivision depth (default 10).
+/// @returns the integral value; sets @a error to the estimated error.
+inline double IntegrateLineTangentialGaussKronrod(
+    mfem::Mesh &mesh,
+    mfem::GridFunction &gf,
+    int start_elem_id,
+    const mfem::Vector &pos1,
+    const mfem::Vector &pos2,
+    double tol = 1e-5,
+    unsigned max_depth = 10,
+    double *error = nullptr)
+{
+   const int dim = mesh.SpaceDimension();
+   mfem::Vector dir(dim);
+   subtract(pos2, pos1, dir);
+
+   // The integrand: evaluate gf at pos1 + s*dir and dot with dir
+   auto integrand = [&](double s) -> double
+   {
+      mfem::Vector pt(dim);
+      add(pos1, s, dir, pt);
+
+      mfem::IntegrationPoint ip;
+      int elem = FindElementBFS(mesh, start_elem_id, pt, ip);
+      if (elem < 0) { return 0.0; }
+
+      mfem::IsoparametricTransformation eltrans;
+      mesh.GetElementTransformation(elem, &eltrans);
+      eltrans.SetIntPoint(&ip);
+
+      mfem::Vector val(dim);
+      gf.GetVectorValue(eltrans, ip, val);
+
+      double dot = 0.0;
+      for (int d = 0; d < dim; ++d) { dot += val[d] * dir[d]; }
+      return dot;
+   };
+
+   double err = 0.0;
+   double result = boost::math::quadrature::gauss_kronrod<double, 15>::integrate(
+       integrand, 0.0, 1.0, max_depth, tol, &err);
+
+   if (error) { *error = err; }
+   return result;
 }
 
 #endif // INTEGRATE_LINE_CELL_SPLIT_H

@@ -204,8 +204,56 @@ public:
    {
       const int dim = d0.Size();
 
+      // ---- Gauss-Kronrod fallback wrapper ----
+      // If cell-splitting + perturbation all fail, fall back to adaptive
+      // Gauss-Kronrod quadrature (no cell-splitting, slower but robust).
+      try
+      {
+      return ComputeTransportedDOF_CellSplit(
+          mesh, gf, d0, d1, start_elem, boundary, t_departure, ws,
+          split_line_s, interior_integral_s, boundary_integral_s,
+          split_calls, total_segments);
+      }
+      catch (const std::runtime_error &e)
+      {
+         std::cerr << "[ComputeTransportedDOF] WARNING: cell-split path "
+                      "failed completely: " << e.what()
+                   << "\n  Falling back to Gauss-Kronrod adaptive "
+                      "quadrature (tol=1e-5)..." << std::endl;
+
+         double gk_error = 0.0;
+         double result = IntegrateLineTangentialGaussKronrod(
+             mesh, gf, start_elem, d0, d1, 1e-5, 10, &gk_error);
+
+         std::cerr << "[ComputeTransportedDOF] Gauss-Kronrod result="
+                   << result << ", estimated error=" << gk_error
+                   << std::endl;
+         return result;
+      }
+   }
+
+   /// Inner implementation of ComputeTransportedDOF using cell-splitting.
+   /// May throw std::runtime_error if SplitLineIntoSegmentsRobust fails.
+   double ComputeTransportedDOF_CellSplit(
+       mfem::Mesh &mesh,
+       mfem::GridFunction &gf,
+       const mfem::Vector &d0,
+       const mfem::Vector &d1,
+       int start_elem,
+       const BoundaryFunc &boundary,
+       double t_departure,
+       CellSplitWorkspace &ws,
+       double *split_line_s,
+       double *interior_integral_s,
+       double *boundary_integral_s,
+       long long *split_calls,
+       long long *total_segments) const
+   {
+      const int dim = d0.Size();
+
       // Split the transported edge into sub-segments within mesh elements.
       // Track which face the line exits through (boundary attribute source).
+      // Uses the robust wrapper: nudge → perturb → throw.
       int exit_face_fwd = -1;
       std::chrono::steady_clock::time_point split_start;
       if (split_line_s)
@@ -213,10 +261,10 @@ public:
          split_start = std::chrono::steady_clock::now();
       }
       auto &segments = ws.split_segments;
-      SplitLineIntoSegments(mesh, start_elem, d0, d1, segments,
-                            &exit_face_fwd,
-                            ws.split_verts,
-                            &ws.eltrans, &ws.inv_tr);
+      SplitLineIntoSegmentsRobust(mesh, start_elem, d0, d1, segments,
+                                  &exit_face_fwd,
+                                  ws.split_verts,
+                                  &ws.eltrans, &ws.inv_tr);
       if (split_line_s)
       {
          *split_line_s += std::chrono::duration<double>(
@@ -236,10 +284,10 @@ public:
          {
             split_start = std::chrono::steady_clock::now();
          }
-         SplitLineIntoSegments(mesh, start_elem, d1, d0, segments,
-                                &exit_face_rev,
-                                ws.split_verts,
-                                &ws.eltrans, &ws.inv_tr);
+         SplitLineIntoSegmentsRobust(mesh, start_elem, d1, d0, segments,
+                                     &exit_face_rev,
+                                     ws.split_verts,
+                                     &ws.eltrans, &ws.inv_tr);
          if (split_line_s)
          {
             *split_line_s += std::chrono::duration<double>(
@@ -577,7 +625,15 @@ private:
        int start_elem) const
    {
       int exit_face = -1;
-      SplitLineIntoSegments(mesh_, start_elem, origin, target, &exit_face);
+      try
+      {
+         SplitLineIntoSegments(mesh_, start_elem, origin, target, &exit_face);
+      }
+      catch (const std::runtime_error &)
+      {
+         // Boundary attribute lookup is best-effort; return 0 on failure.
+         return 0;
+      }
       if (exit_face >= 0 && exit_face < (int)face_bdr_attr_.size())
       {
          return face_bdr_attr_[exit_face];
