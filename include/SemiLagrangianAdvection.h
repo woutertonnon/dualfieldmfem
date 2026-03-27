@@ -204,22 +204,36 @@ public:
    {
       const int dim = d0.Size();
 
-      // ---- Gauss-Kronrod fallback wrapper ----
-      // If cell-splitting + perturbation all fail, fall back to adaptive
-      // Gauss-Kronrod quadrature (no cell-splitting, slower but robust).
-      try
+      // Split the transported edge into sub-segments within mesh elements.
+      // Track which face the line exits through (boundary attribute source).
+      // Uses the robust wrapper: perturb on degenerate geometry.
+      // If perturbation also fails, fall back to Gauss-Kronrod.
+      int exit_face_fwd = -1;
+      std::chrono::steady_clock::time_point split_start;
+      if (split_line_s)
       {
-      return ComputeTransportedDOF_CellSplit(
-          mesh, gf, d0, d1, start_elem, boundary, t_departure, ws,
-          split_line_s, interior_integral_s, boundary_integral_s,
-          split_calls, total_segments);
+         split_start = std::chrono::steady_clock::now();
       }
-      catch (const std::runtime_error &e)
+      auto &segments = ws.split_segments;
+      bool split_ok = SplitLineIntoSegmentsRobust(
+          mesh, start_elem, d0, d1, segments,
+          &exit_face_fwd,
+          ws.split_verts,
+          &ws.eltrans, &ws.inv_tr);
+      if (split_line_s)
+      {
+         *split_line_s += std::chrono::duration<double>(
+                              std::chrono::steady_clock::now() - split_start)
+                              .count();
+      }
+      if (split_calls) { (*split_calls)++; }
+
+      // Gauss-Kronrod fallback if cell-split + perturbation both failed
+      if (!split_ok)
       {
          std::cerr << "[ComputeTransportedDOF] WARNING: cell-split path "
-                      "failed completely: " << e.what()
-                   << "\n  Falling back to Gauss-Kronrod adaptive "
-                      "quadrature (tol=1e-5)..." << std::endl;
+                      "failed completely. Falling back to Gauss-Kronrod "
+                      "adaptive quadrature (tol=1e-5)..." << std::endl;
 
          double gk_error = 0.0;
          double result = IntegrateLineTangentialGaussKronrod(
@@ -230,48 +244,7 @@ public:
                    << std::endl;
          return result;
       }
-   }
 
-   /// Inner implementation of ComputeTransportedDOF using cell-splitting.
-   /// May throw std::runtime_error if SplitLineIntoSegmentsRobust fails.
-   double ComputeTransportedDOF_CellSplit(
-       mfem::Mesh &mesh,
-       mfem::GridFunction &gf,
-       const mfem::Vector &d0,
-       const mfem::Vector &d1,
-       int start_elem,
-       const BoundaryFunc &boundary,
-       double t_departure,
-       CellSplitWorkspace &ws,
-       double *split_line_s,
-       double *interior_integral_s,
-       double *boundary_integral_s,
-       long long *split_calls,
-       long long *total_segments) const
-   {
-      const int dim = d0.Size();
-
-      // Split the transported edge into sub-segments within mesh elements.
-      // Track which face the line exits through (boundary attribute source).
-      // Uses the robust wrapper: nudge → perturb → throw.
-      int exit_face_fwd = -1;
-      std::chrono::steady_clock::time_point split_start;
-      if (split_line_s)
-      {
-         split_start = std::chrono::steady_clock::now();
-      }
-      auto &segments = ws.split_segments;
-      SplitLineIntoSegmentsRobust(mesh, start_elem, d0, d1, segments,
-                                  &exit_face_fwd,
-                                  ws.split_verts,
-                                  &ws.eltrans, &ws.inv_tr);
-      if (split_line_s)
-      {
-         *split_line_s += std::chrono::duration<double>(
-                              std::chrono::steady_clock::now() - split_start)
-                              .count();
-      }
-      if (split_calls) { (*split_calls)++; }
       if (total_segments) { *total_segments += static_cast<long long>(segments.size()); }
 
       // If no segments found (departure entirely outside), try reversed
@@ -284,10 +257,11 @@ public:
          {
             split_start = std::chrono::steady_clock::now();
          }
-         SplitLineIntoSegmentsRobust(mesh, start_elem, d1, d0, segments,
-                                     &exit_face_rev,
-                                     ws.split_verts,
-                                     &ws.eltrans, &ws.inv_tr);
+         bool rev_ok = SplitLineIntoSegmentsRobust(
+             mesh, start_elem, d1, d0, segments,
+             &exit_face_rev,
+             ws.split_verts,
+             &ws.eltrans, &ws.inv_tr);
          if (split_line_s)
          {
             *split_line_s += std::chrono::duration<double>(
@@ -295,6 +269,22 @@ public:
                                  .count();
          }
          if (split_calls) { (*split_calls)++; }
+
+         if (!rev_ok)
+         {
+            // Both forward and reversed cell-split failed — Gauss-Kronrod
+            std::cerr << "[ComputeTransportedDOF] WARNING: reversed "
+                         "cell-split also failed. Falling back to "
+                         "Gauss-Kronrod." << std::endl;
+            double gk_error = 0.0;
+            double result = IntegrateLineTangentialGaussKronrod(
+                mesh, gf, start_elem, d0, d1, 1e-5, 10, &gk_error);
+            std::cerr << "[ComputeTransportedDOF] Gauss-Kronrod result="
+                      << result << ", estimated error=" << gk_error
+                      << std::endl;
+            return result;
+         }
+
          if (total_segments) { *total_segments += static_cast<long long>(segments.size()); }
          reversed = true;
       }
@@ -341,12 +331,11 @@ public:
          return bdr_val;
       }
 
-      // Look up boundary attribute from exit face
+      // Boundary attribute is determined below via ray-boundary
+      // intersection rather than the cell-split exit face, which
+      // can be ambiguous at domain corners (shared vertex between
+      // two boundary faces).
       int bdr_attr = 0;
-      if (exit_face >= 0 && exit_face < (int)face_bdr_attr_.size())
-      {
-         bdr_attr = face_bdr_attr_[exit_face];
-      }
 
       // Compute coverage: fraction of [0,1] covered by segments
       double coverage = 0.0;
@@ -622,23 +611,107 @@ private:
    int FindNearestBoundaryAttribute(
        const mfem::Vector &origin,
        const mfem::Vector &target,
-       int start_elem) const
+       int /*start_elem*/) const
    {
-      int exit_face = -1;
-      try
+      // Find which boundary face the ray from origin→target crosses first.
+      // Direct ray-boundary intersection avoids the corner-ambiguity bug
+      // where the cell-split walk picks the wrong exit face at shared
+      // vertices.
+      mfem::Vector ray_dir(dim_);
+      subtract(target, origin, ray_dir);
+      double ray_len = ray_dir.Norml2();
+      if (ray_len < 1e-15) { return 0; }
+
+      double best_t = std::numeric_limits<double>::max();
+      double best_alignment = -1.0;
+      int best_attr = 0;
+
+      for (int be = 0; be < mesh_.GetNBE(); ++be)
       {
-         SplitLineIntoSegments(mesh_, start_elem, origin, target, &exit_face);
+         mfem::Array<int> bverts;
+         mesh_.GetBdrElementVertices(be, bverts);
+
+         double t = -1.0;
+         double alignment = 0.0;
+
+         if (dim_ == 2 && bverts.Size() == 2)
+         {
+            // Ray–edge intersection in 2D.
+            const double *va = mesh_.GetVertex(bverts[0]);
+            const double *vb = mesh_.GetVertex(bverts[1]);
+            double ex = vb[0] - va[0], ey = vb[1] - va[1];
+            double dx = va[0] - origin[0], dy = va[1] - origin[1];
+
+            double det = ex * ray_dir[1] - ey * ray_dir[0];
+            if (std::abs(det) < 1e-15) { continue; } // parallel
+
+            t = (ex * dy - ey * dx) / det;
+            double s = (ray_dir[0] * dy - ray_dir[1] * dx) / det;
+            if (t < -1e-10 || s < -1e-10 || s > 1.0 + 1e-10) { continue; }
+
+            double edge_len = std::sqrt(ex * ex + ey * ey);
+            alignment = std::abs(det) / (ray_len * edge_len);
+         }
+         else if (dim_ == 3 && bverts.Size() >= 3)
+         {
+            // Möller–Trumbore ray–triangle intersection in 3D.
+            const double *A = mesh_.GetVertex(bverts[0]);
+            const double *B = mesh_.GetVertex(bverts[1]);
+            const double *C = mesh_.GetVertex(bverts[2]);
+
+            double e1[3] = {B[0]-A[0], B[1]-A[1], B[2]-A[2]};
+            double e2[3] = {C[0]-A[0], C[1]-A[1], C[2]-A[2]};
+
+            double h[3] = {
+               ray_dir[1]*e2[2] - ray_dir[2]*e2[1],
+               ray_dir[2]*e2[0] - ray_dir[0]*e2[2],
+               ray_dir[0]*e2[1] - ray_dir[1]*e2[0]
+            };
+            double a = e1[0]*h[0] + e1[1]*h[1] + e1[2]*h[2];
+            if (std::abs(a) < 1e-15) { continue; }
+
+            double f = 1.0 / a;
+            double sv[3] = {origin[0]-A[0], origin[1]-A[1], origin[2]-A[2]};
+            double u = f * (sv[0]*h[0] + sv[1]*h[1] + sv[2]*h[2]);
+            if (u < -1e-10 || u > 1.0 + 1e-10) { continue; }
+
+            double q[3] = {
+               sv[1]*e1[2] - sv[2]*e1[1],
+               sv[2]*e1[0] - sv[0]*e1[2],
+               sv[0]*e1[1] - sv[1]*e1[0]
+            };
+            double v = f*(ray_dir[0]*q[0]+ray_dir[1]*q[1]+ray_dir[2]*q[2]);
+            if (v < -1e-10 || u + v > 1.0 + 1e-10) { continue; }
+
+            t = f * (e2[0]*q[0] + e2[1]*q[1] + e2[2]*q[2]);
+            if (t < -1e-10) { continue; }
+
+            // Face normal for alignment tiebreaker.
+            double n[3] = {
+               e1[1]*e2[2] - e1[2]*e2[1],
+               e1[2]*e2[0] - e1[0]*e2[2],
+               e1[0]*e2[1] - e1[1]*e2[0]
+            };
+            double nlen = std::sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);
+            if (nlen > 1e-15)
+            {
+               alignment = std::abs(
+                  n[0]*ray_dir[0]+n[1]*ray_dir[1]+n[2]*ray_dir[2])
+                  / (ray_len * nlen);
+            }
+         }
+         else { continue; }
+
+         // Prefer smallest t; at corners (same t), prefer better alignment.
+         if (t < best_t - 1e-10 ||
+             (t < best_t + 1e-10 && alignment > best_alignment + 1e-10))
+         {
+            best_t = t;
+            best_alignment = alignment;
+            best_attr = mesh_.GetBdrAttribute(be);
+         }
       }
-      catch (const std::runtime_error &)
-      {
-         // Boundary attribute lookup is best-effort; return 0 on failure.
-         return 0;
-      }
-      if (exit_face >= 0 && exit_face < (int)face_bdr_attr_.size())
-      {
-         return face_bdr_attr_[exit_face];
-      }
-      return 0;
+      return best_attr;
    }
 
    /// Integrate the boundary value function along the sub-interval
