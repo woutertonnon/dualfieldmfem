@@ -27,9 +27,15 @@ set -euo pipefail
 #   PLACES_POLICY        OMP_PLACES (default: cores)
 #   DYNAMIC_POLICY       OMP_DYNAMIC (default: false)
 #   OUTPUTFILE_OVERRIDE  override JSON outputfile string (optional)
-#   BUILD_BINARY         set 1 to rebuild target before run
+#   BUILD_BINARY         set 1 to rebuild target before run (auto-enabled if EXE is missing)
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# In Slurm batch mode, BASH_SOURCE may point to a spool copy of the script.
+# Prefer submission directory (repo root when submitted from there).
+if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+    ROOT_DIR="$SLURM_SUBMIT_DIR"
+else
+    ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
 cd "$ROOT_DIR"
 
 EXE="${EXE:-./build/semilagrangian_navierstokes_nitsche}"
@@ -44,8 +50,9 @@ DYNAMIC_POLICY="${DYNAMIC_POLICY:-false}"
 BUILD_BINARY="${BUILD_BINARY:-0}"
 
 if [[ ! -x "$EXE" ]]; then
-    echo "[error] Executable not found or not executable: $EXE"
-    exit 1
+    echo "[warn] Executable not found: $EXE"
+    echo "[warn] Enabling BUILD_BINARY=1 to build it inside the job"
+    BUILD_BINARY=1
 fi
 if [[ ! -f "$BASE_CONFIG" ]]; then
     echo "[error] Base config not found: $BASE_CONFIG"
@@ -57,8 +64,18 @@ if ! [[ "$THREADS" =~ ^[0-9]+$ ]] || (( THREADS < 1 )); then
 fi
 
 if [[ "$BUILD_BINARY" == "1" ]]; then
-    echo "[info] Rebuilding solver binary..."
+    if [[ ! -f "build/CMakeCache.txt" ]]; then
+        echo "[info] Configuring CMake build directory..."
+        cmake -S . -B build
+    fi
+    echo "[info] Building solver binary..."
     cmake --build build --target semilagrangian_navierstokes_nitsche -j"${SLURM_CPUS_PER_TASK:-8}"
+fi
+
+if [[ ! -x "$EXE" ]]; then
+    echo "[error] Executable still not found or not executable after build step: $EXE"
+    echo "[error] Override with --export=ALL,EXE=<path-to-binary> if needed"
+    exit 1
 fi
 
 JOB_TAG="${SLURM_JOB_ID:-local-$(date +%Y%m%d-%H%M%S)}"

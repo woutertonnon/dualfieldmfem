@@ -30,7 +30,13 @@ set -euo pipefail
 #   PRINTLEVEL_OVERRIDE, TOL_OVERRIDE, DT_OVERRIDE, T_OVERRIDE, REFINEMENTS_OVERRIDE
 #
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# In Slurm batch mode, BASH_SOURCE may point to a spool copy of the script.
+# Prefer submission directory (repo root when submitted from there).
+if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+    ROOT_DIR="$SLURM_SUBMIT_DIR"
+else
+    ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
 cd "$ROOT_DIR"
 
 EXE="${EXE:-./build/semilagrangian_navierstokes_nitsche}"
