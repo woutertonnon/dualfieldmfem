@@ -683,7 +683,7 @@ public:
 
     void WriteRow() override
     {
-        double u1_norm = MatrixConservedVariable(mass_ND_, u_);
+        double u1_norm = std::sqrt(MatrixConservedVariable(mass_ND_, u_));
 
         std::chrono::duration<double> runtime_it = std::chrono::steady_clock::now() - time_;
         time_ = std::chrono::steady_clock::now();
