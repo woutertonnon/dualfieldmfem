@@ -4,7 +4,7 @@ L      = 1.0;
 halfL  = L/2.0;
 
 xmin   = -5.0*L;
-xmax   = 15.0*L;
+xmax   = 22.5*L;
 ymin   = -5.0*L;
 ymax   =  5.0*L;
 zmin   = -5.0*L;

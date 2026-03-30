@@ -32,6 +32,13 @@ from dualfield_benchmarks import generate_box_mesh, compile_latex_report, benchm
 
 EXECUTABLE = "./build/semilagrangian_navierstokes_nitsche"
 
+# Benchmark default: Euler tracing with edge-dihedral arrival velocity averaging.
+EULER_DIHEDRAL_OVERRIDES = {
+    "trace_order": 1,
+    "settls_iterations": 2,
+    "vertex_velocity_mode": "edge_dihedral",
+}
+
 
 class ConstantFieldSemiLag(benchmark):
     """Constant uniform-flow benchmark for the semi-Lagrangian solver.
@@ -59,7 +66,8 @@ class ConstantFieldSemiLag(benchmark):
             u_boundary=u, u_init=init_u)
         SimulationHelper = NavierStokesBenchmarkHelper(
             exact, name, mesh=meshname, visualisation=1, printlevel=2,
-            executable=executable, linear_solver=solver)
+            executable=executable, linear_solver=solver,
+            legacy_overrides=EULER_DIHEDRAL_OVERRIDES)
         data_processor = SimulationDataProcessor(name)
 
         super().__init__(
@@ -97,14 +105,15 @@ class RigidRotationSemiLag(benchmark):
             u_init=sp.Matrix([0, 0, 0]), u_boundary=u)
         SimulationHelper = NavierStokesBenchmarkHelper(
             exact, name, mesh=meshname, visualisation=1, printlevel=2,
-            executable=executable, linear_solver=solver)
+            executable=executable, linear_solver=solver,
+            legacy_overrides=EULER_DIHEDRAL_OVERRIDES)
         data_processor = SimulationDataProcessor(name)
 
         super().__init__(
             name=name,
             SimulationHelper=SimulationHelper,
             SimulationDataProcessor=data_processor,
-            dts=lambda order, refinements: 0.1,
+            dts=lambda order, refinements: 0.025,
             T=T,
             refinements=lambda order: [0],
             orders=[1],
@@ -138,7 +147,8 @@ class TaylorGreenSemiLag(benchmark):
 
         simulation_helper = NavierStokesBenchmarkHelper(
             exact, name, mesh=meshname, visualisation=0, printlevel=1,
-            executable=executable, linear_solver=solver)
+            executable=executable, linear_solver=solver,
+            legacy_overrides=EULER_DIHEDRAL_OVERRIDES)
         data_processor = SimulationDataProcessor(name)
 
         super().__init__(
@@ -197,7 +207,8 @@ class TravelingABCSemiLag(benchmark):
 
         simulation_helper = NavierStokesBenchmarkHelper(
             exact, name, mesh=meshname, visualisation=0, printlevel=1,
-            executable=executable, linear_solver=solver)
+            executable=executable, linear_solver=solver,
+            legacy_overrides=EULER_DIHEDRAL_OVERRIDES)
         data_processor = SimulationDataProcessor(name)
 
         super().__init__(
@@ -243,7 +254,8 @@ class LidDrivenCavity3DExactSemiLag(benchmark):
             lid_attributes=[16])
         SimulationHelper = NavierStokesBenchmarkHelper(
             exact, name, mesh=meshname, visualisation=1, printlevel=0,
-            executable=executable, linear_solver=solver)
+            executable=executable, linear_solver=solver,
+            legacy_overrides=EULER_DIHEDRAL_OVERRIDES)
         data_processor = SimulationDataProcessor(name)
 
         super().__init__(

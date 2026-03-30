@@ -155,6 +155,49 @@ TEST(SemiLagrangianAdvection, ZeroVelocityIsIdentity)
     EXPECT_LT(max_abs_diff, 1e-12);
 }
 
+TEST(SemiLagrangianAdvection, SettlsMatchesEulerForSteadyVelocity)
+{
+    Mesh mesh = MakeAttributedUnitSquareMesh(4, 4);
+    ND_FECollection fec(1, mesh.Dimension());
+    FiniteElementSpace nd(&mesh, &fec);
+
+    GridFunction omega_old(&nd);
+    GridFunction omega_euler(&nd);
+    GridFunction omega_settls(&nd);
+    ProjectAffineField(omega_old);
+    omega_euler = 0.0;
+    omega_settls = 0.0;
+
+    SemiLagrangianAdvection1Form<1> advection(nd);
+
+    SemiLagrangianAdvection1Form<1>::BoundaryFunc boundary =
+        [](const Vector &, double, int, Vector &v)
+    {
+        v.SetSize(2);
+        v = 0.0;
+    };
+
+    auto velocity_n = ConstantVelocity(0.25, -0.15);
+    SemiLagrangianAdvection1Form<1>::VelocityFunc velocity_nm1 =
+        ConstantVelocity(0.25, -0.15);
+
+    advection.Apply(velocity_n, boundary,
+                    0.3, 0.1, omega_old, omega_euler, 1);
+
+    advection.Apply(velocity_n, boundary,
+                    0.3, 0.1, omega_old, omega_settls,
+                    3, nullptr, &velocity_nm1, 2);
+
+    double max_abs_diff = 0.0;
+    for (int i = 0; i < nd.GetNDofs(); ++i)
+    {
+        max_abs_diff = std::max(max_abs_diff,
+                                std::abs(omega_euler(i) - omega_settls(i)));
+    }
+
+    EXPECT_LT(max_abs_diff, 1e-12);
+}
+
 TEST(SemiLagrangianAdvection, FullOutsideTransportUsesCorrectBoundaryAttributePerSide)
 {
     struct Case

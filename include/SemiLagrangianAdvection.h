@@ -95,6 +95,13 @@ public:
    using VelocityFunc =
        std::function<void(const mfem::Vector &, double, int, mfem::Vector &)>;
 
+   enum VertexVelocityMode
+   {
+      kSingleElement = 0,
+      kVertexSolidAngle = 1,
+      kEdgeDihedral = 2
+   };
+
    /// Boundary value: g(x, t, bdr_attr) → v.  Evaluated at physical points
    /// outside the mesh domain to supply DOF contributions for the exited
    /// portion of transported edges.  The boundary attribute @a bdr_attr
@@ -130,7 +137,14 @@ public:
    /// @a boundary     maps (x, t) → boundary 1-form value for outside portions.
    /// @a t            current time (arrival time t^n).
    /// @a dt           timestep size τ.
-   /// @a trace_order  ODE order for characteristic tracing (1=Euler, 2=Heun).
+   /// @a trace_order  ODE order for characteristic tracing
+   ///                 (1=Euler, 2=Heun, 3=SETTLS).
+   /// @a velocity_prev optional previous-step velocity callback for SETTLS.
+   /// @a settls_iterations fixed-point iterations for SETTLS (>=1 recommended).
+   /// @a vertex_velocity_mode controls arrival-point velocity evaluation:
+   ///   0 = single-element evaluation via callback (legacy behavior),
+   ///   1 = solid-angle weighted vertex average,
+   ///   2 = dihedral-angle weighted edge-star average.
    /// @a omega_new may NOT alias @a omega_old.
    void Apply(const VelocityFunc &velocity,
               const BoundaryFunc &boundary,
@@ -138,12 +152,17 @@ public:
               mfem::GridFunction &omega_old,
               mfem::GridFunction &omega_new,
               int trace_order = 1,
-              SemiLagrangianStepStats *step_stats = nullptr)
+              SemiLagrangianStepStats *step_stats = nullptr,
+              const VelocityFunc *velocity_prev = nullptr,
+              int settls_iterations = 2,
+              int vertex_velocity_mode = kSingleElement)
    {
       if (step_stats) { step_stats->Reset(); }
       mfem::Vector dofs_pulled(fes_.GetNDofs());
       ComputePullbackDOFs(velocity, boundary, t, dt,
-                          omega_old, dofs_pulled, trace_order, step_stats);
+                          omega_old, dofs_pulled, trace_order, step_stats,
+                          velocity_prev, settls_iterations,
+                          vertex_velocity_mode);
 
       for (int i = 0; i < fes_.GetNDofs(); ++i)
       {
@@ -169,9 +188,11 @@ public:
       mfem::Vector dofs1(ndofs), dofs2(ndofs);
 
       ComputePullbackDOFs(velocity, boundary, t, dt,
-                          omega_n1, dofs1, trace_order, nullptr);
+                          omega_n1, dofs1, trace_order, nullptr,
+                          nullptr, 2, kSingleElement);
       ComputePullbackDOFs(velocity, boundary, t, 2.0 * dt,
-                          omega_n2, dofs2, trace_order, nullptr);
+                          omega_n2, dofs2, trace_order, nullptr,
+                          nullptr, 2, kSingleElement);
 
       for (int i = 0; i < ndofs; ++i)
       {
@@ -752,21 +773,425 @@ private:
       return result;
    }
 
+   static double Clamp(double x, double lo, double hi)
+   {
+      return std::max(lo, std::min(hi, x));
+   }
+
+   double ComputeElementVertexWeight(int elem,
+                                     int local_vert,
+                                     const mfem::Array<int> &elem_verts) const
+   {
+      if (dim_ == 2 && elem_verts.Size() == 3)
+      {
+         int ids[2];
+         int k = 0;
+         for (int i = 0; i < 3; ++i)
+         {
+            if (i != local_vert) { ids[k++] = elem_verts[i]; }
+         }
+         const double *p0 = mesh_.GetVertex(elem_verts[local_vert]);
+         const double *p1 = mesh_.GetVertex(ids[0]);
+         const double *p2 = mesh_.GetVertex(ids[1]);
+
+         const double ax = p1[0] - p0[0];
+         const double ay = p1[1] - p0[1];
+         const double bx = p2[0] - p0[0];
+         const double by = p2[1] - p0[1];
+
+         const double na = std::sqrt(ax * ax + ay * ay);
+         const double nb = std::sqrt(bx * bx + by * by);
+         if (na < 1e-15 || nb < 1e-15) { return 0.0; }
+
+         const double dot = ax * bx + ay * by;
+         const double c = Clamp(dot / (na * nb), -1.0, 1.0);
+         const double theta = std::acos(c);
+         return (std::isfinite(theta) && theta > 0.0) ? theta : 0.0;
+      }
+
+      if (dim_ == 3 && elem_verts.Size() == 4 &&
+          mesh_.GetElementGeometry(elem) == mfem::Geometry::TETRAHEDRON)
+      {
+         int ids[3];
+         int k = 0;
+         for (int i = 0; i < 4; ++i)
+         {
+            if (i != local_vert) { ids[k++] = elem_verts[i]; }
+         }
+
+         const double *p0 = mesh_.GetVertex(elem_verts[local_vert]);
+         const double *p1 = mesh_.GetVertex(ids[0]);
+         const double *p2 = mesh_.GetVertex(ids[1]);
+         const double *p3 = mesh_.GetVertex(ids[2]);
+
+         const double ax = p1[0] - p0[0];
+         const double ay = p1[1] - p0[1];
+         const double az = p1[2] - p0[2];
+
+         const double bx = p2[0] - p0[0];
+         const double by = p2[1] - p0[1];
+         const double bz = p2[2] - p0[2];
+
+         const double cx = p3[0] - p0[0];
+         const double cy = p3[1] - p0[1];
+         const double cz = p3[2] - p0[2];
+
+         const double na = std::sqrt(ax * ax + ay * ay + az * az);
+         const double nb = std::sqrt(bx * bx + by * by + bz * bz);
+         const double nc = std::sqrt(cx * cx + cy * cy + cz * cz);
+         if (na < 1e-15 || nb < 1e-15 || nc < 1e-15) { return 0.0; }
+
+         const double bxc_x = by * cz - bz * cy;
+         const double bxc_y = bz * cx - bx * cz;
+         const double bxc_z = bx * cy - by * cx;
+         const double triple = ax * bxc_x + ay * bxc_y + az * bxc_z;
+
+         const double ab = ax * bx + ay * by + az * bz;
+         const double bc = bx * cx + by * cy + bz * cz;
+         const double ac = ax * cx + ay * cy + az * cz;
+         const double denom = na * nb * nc + ab * nc + bc * na + ac * nb;
+
+         const double omega = 2.0 * std::atan2(std::abs(triple), denom);
+         return (std::isfinite(omega) && omega > 0.0) ? omega : 0.0;
+      }
+
+      // Fallback for unsupported geometries.
+      return 1.0;
+   }
+
+   void PrecomputeVertexVelocities(const mfem::GridFunction &u_gf,
+                                   mfem::DenseMatrix &vertex_vel)
+   {
+      const int nv = mesh_.GetNV();
+      vertex_vel.SetSize(nv, dim_);
+      vertex_vel = 0.0;
+      std::vector<double> total_weight(nv, 0.0);
+
+      mfem::Table *v2e = mesh_.GetVertexToElementTable();
+      MFEM_VERIFY(v2e != nullptr,
+                  "SemiLagrangianAdvection: vertex-to-element table is null.");
+
+      mfem::Array<int> elem_verts;
+      mfem::IsoparametricTransformation eltrans;
+      mfem::Vector vel_local(dim_);
+
+      for (int v = 0; v < nv; ++v)
+      {
+         const int ne = v2e->RowSize(v);
+         const int *elems = v2e->GetRow(v);
+
+         for (int i = 0; i < ne; ++i)
+         {
+            const int el = elems[i];
+            mesh_.GetElementVertices(el, elem_verts);
+
+            int local_idx = -1;
+            for (int li = 0; li < elem_verts.Size(); ++li)
+            {
+               if (elem_verts[li] == v)
+               {
+                  local_idx = li;
+                  break;
+               }
+            }
+            if (local_idx < 0) { continue; }
+
+            const double w = ComputeElementVertexWeight(el, local_idx, elem_verts);
+            if (w <= 0.0) { continue; }
+
+            const mfem::IntegrationRule *ref_verts =
+                mfem::Geometries.GetVertices(mesh_.GetElementGeometry(el));
+            if (ref_verts == nullptr || local_idx >= ref_verts->GetNPoints())
+            {
+               continue;
+            }
+
+            const mfem::IntegrationPoint &ip = ref_verts->IntPoint(local_idx);
+            mesh_.GetElementTransformation(el, &eltrans);
+            eltrans.SetIntPoint(&ip);
+            u_gf.GetVectorValue(eltrans, ip, vel_local);
+
+            for (int d = 0; d < dim_; ++d)
+            {
+               vertex_vel(v, d) += w * vel_local[d];
+            }
+            total_weight[v] += w;
+         }
+
+         // Degenerate fallback: if weights vanished, use first incident element.
+         if (total_weight[v] <= 0.0 && ne > 0)
+         {
+            const int el = elems[0];
+            mesh_.GetElementVertices(el, elem_verts);
+
+            int local_idx = -1;
+            for (int li = 0; li < elem_verts.Size(); ++li)
+            {
+               if (elem_verts[li] == v)
+               {
+                  local_idx = li;
+                  break;
+               }
+            }
+
+            const mfem::IntegrationRule *ref_verts =
+                mfem::Geometries.GetVertices(mesh_.GetElementGeometry(el));
+            if (local_idx >= 0 && ref_verts != nullptr &&
+                local_idx < ref_verts->GetNPoints())
+            {
+               const mfem::IntegrationPoint &ip = ref_verts->IntPoint(local_idx);
+               mesh_.GetElementTransformation(el, &eltrans);
+               eltrans.SetIntPoint(&ip);
+               u_gf.GetVectorValue(eltrans, ip, vel_local);
+               for (int d = 0; d < dim_; ++d)
+               {
+                  vertex_vel(v, d) = vel_local[d];
+               }
+               total_weight[v] = 1.0;
+            }
+         }
+      }
+
+      delete v2e;
+
+      for (int v = 0; v < nv; ++v)
+      {
+         if (total_weight[v] <= 0.0) { continue; }
+         const double inv_w = 1.0 / total_weight[v];
+         for (int d = 0; d < dim_; ++d)
+         {
+            vertex_vel(v, d) *= inv_w;
+         }
+      }
+   }
+
+   double ComputeElementEdgeDihedralWeight(
+       int elem,
+       int edge_v0,
+       int edge_v1,
+       const mfem::Array<int> &elem_verts) const
+   {
+      if (!(dim_ == 3 && elem_verts.Size() == 4 &&
+            mesh_.GetElementGeometry(elem) == mfem::Geometry::TETRAHEDRON))
+      {
+         return 1.0;
+      }
+
+      int others[2];
+      int k = 0;
+      for (int i = 0; i < elem_verts.Size(); ++i)
+      {
+         const int vid = elem_verts[i];
+         if (vid != edge_v0 && vid != edge_v1 && k < 2)
+         {
+            others[k++] = vid;
+         }
+      }
+      if (k != 2) { return 0.0; }
+
+      const double *pa = mesh_.GetVertex(edge_v0);
+      const double *pb = mesh_.GetVertex(edge_v1);
+      const double *pc = mesh_.GetVertex(others[0]);
+      const double *pd = mesh_.GetVertex(others[1]);
+
+      const double ex = pb[0] - pa[0];
+      const double ey = pb[1] - pa[1];
+      const double ez = pb[2] - pa[2];
+      const double ne = std::sqrt(ex * ex + ey * ey + ez * ez);
+      if (ne < 1e-15) { return 0.0; }
+      const double inv_ne = 1.0 / ne;
+      const double ehx = ex * inv_ne;
+      const double ehy = ey * inv_ne;
+      const double ehz = ez * inv_ne;
+
+      const double acx = pc[0] - pa[0];
+      const double acy = pc[1] - pa[1];
+      const double acz = pc[2] - pa[2];
+      const double adx = pd[0] - pa[0];
+      const double ady = pd[1] - pa[1];
+      const double adz = pd[2] - pa[2];
+
+      const double ac_dot_eh = acx * ehx + acy * ehy + acz * ehz;
+      const double ad_dot_eh = adx * ehx + ady * ehy + adz * ehz;
+
+      const double ux = acx - ac_dot_eh * ehx;
+      const double uy = acy - ac_dot_eh * ehy;
+      const double uz = acz - ac_dot_eh * ehz;
+
+      const double vx = adx - ad_dot_eh * ehx;
+      const double vy = ady - ad_dot_eh * ehy;
+      const double vz = adz - ad_dot_eh * ehz;
+
+      const double nu = std::sqrt(ux * ux + uy * uy + uz * uz);
+      const double nv = std::sqrt(vx * vx + vy * vy + vz * vz);
+      if (nu < 1e-15 || nv < 1e-15) { return 0.0; }
+
+      const double c = Clamp((ux * vx + uy * vy + uz * vz) / (nu * nv), -1.0, 1.0);
+      const double theta = std::acos(c);
+      return (std::isfinite(theta) && theta > 0.0) ? theta : 0.0;
+   }
+
+   void ComputeEdgeDihedralEndpointVelocities(
+       const mfem::GridFunction &u_gf,
+       int edge,
+       mfem::Vector &vel_v0,
+       mfem::Vector &vel_v1) const
+   {
+      vel_v0.SetSize(dim_);
+      vel_v1.SetSize(dim_);
+      vel_v0 = 0.0;
+      vel_v1 = 0.0;
+
+      mfem::Array<int> edge_verts;
+      mesh_.GetEdgeVertices(edge, edge_verts);
+      MFEM_VERIFY(edge_verts.Size() == 2,
+                  "SemiLagrangianAdvection: edge does not have two vertices.");
+      const int v0_id = edge_verts[0];
+      const int v1_id = edge_verts[1];
+
+      const int ne = edge_to_elems_.RowSize(edge);
+      const int *elems = edge_to_elems_.GetRow(edge);
+
+      mfem::Array<int> elem_verts;
+      mfem::IsoparametricTransformation eltrans;
+      mfem::Vector vel_local(dim_);
+      double total_w = 0.0;
+
+      for (int i = 0; i < ne; ++i)
+      {
+         const int el = elems[i];
+         mesh_.GetElementVertices(el, elem_verts);
+
+         int local_v0 = -1;
+         int local_v1 = -1;
+         for (int li = 0; li < elem_verts.Size(); ++li)
+         {
+            if (elem_verts[li] == v0_id) { local_v0 = li; }
+            if (elem_verts[li] == v1_id) { local_v1 = li; }
+         }
+         if (local_v0 < 0 || local_v1 < 0) { continue; }
+
+         const double w = ComputeElementEdgeDihedralWeight(el, v0_id, v1_id,
+                                                            elem_verts);
+         if (w <= 0.0) { continue; }
+
+         const mfem::IntegrationRule *ref_verts =
+             mfem::Geometries.GetVertices(mesh_.GetElementGeometry(el));
+         if (ref_verts == nullptr ||
+             local_v0 >= ref_verts->GetNPoints() ||
+             local_v1 >= ref_verts->GetNPoints())
+         {
+            continue;
+         }
+
+         mesh_.GetElementTransformation(el, &eltrans);
+
+         const mfem::IntegrationPoint &ip0 = ref_verts->IntPoint(local_v0);
+         eltrans.SetIntPoint(&ip0);
+         u_gf.GetVectorValue(eltrans, ip0, vel_local);
+         for (int d = 0; d < dim_; ++d)
+         {
+            vel_v0[d] += w * vel_local[d];
+         }
+
+         const mfem::IntegrationPoint &ip1 = ref_verts->IntPoint(local_v1);
+         eltrans.SetIntPoint(&ip1);
+         u_gf.GetVectorValue(eltrans, ip1, vel_local);
+         for (int d = 0; d < dim_; ++d)
+         {
+            vel_v1[d] += w * vel_local[d];
+         }
+
+         total_w += w;
+      }
+
+      // Fallback for degenerate weights.
+      if (total_w <= 0.0 && ne > 0)
+      {
+         const int el = elems[0];
+         mesh_.GetElementVertices(el, elem_verts);
+         int local_v0 = -1;
+         int local_v1 = -1;
+         for (int li = 0; li < elem_verts.Size(); ++li)
+         {
+            if (elem_verts[li] == v0_id) { local_v0 = li; }
+            if (elem_verts[li] == v1_id) { local_v1 = li; }
+         }
+
+         const mfem::IntegrationRule *ref_verts =
+             mfem::Geometries.GetVertices(mesh_.GetElementGeometry(el));
+         if (local_v0 >= 0 && local_v1 >= 0 && ref_verts != nullptr &&
+             local_v0 < ref_verts->GetNPoints() &&
+             local_v1 < ref_verts->GetNPoints())
+         {
+            mesh_.GetElementTransformation(el, &eltrans);
+
+            const mfem::IntegrationPoint &ip0 = ref_verts->IntPoint(local_v0);
+            eltrans.SetIntPoint(&ip0);
+            u_gf.GetVectorValue(eltrans, ip0, vel_local);
+            for (int d = 0; d < dim_; ++d)
+            {
+               vel_v0[d] = vel_local[d];
+            }
+
+            const mfem::IntegrationPoint &ip1 = ref_verts->IntPoint(local_v1);
+            eltrans.SetIntPoint(&ip1);
+            u_gf.GetVectorValue(eltrans, ip1, vel_local);
+            for (int d = 0; d < dim_; ++d)
+            {
+               vel_v1[d] = vel_local[d];
+            }
+
+            total_w = 1.0;
+         }
+      }
+
+      if (total_w > 0.0)
+      {
+         const double inv_w = 1.0 / total_w;
+         for (int d = 0; d < dim_; ++d)
+         {
+            vel_v0[d] *= inv_w;
+            vel_v1[d] *= inv_w;
+         }
+      }
+   }
+
    /// Trace a point backward along the characteristic curve by time dt.
    /// @a order = 1: explicit Euler,  d = x - dt * u(x, t).
    /// @a order = 2: Heun's method,
    ///   d = x - dt/2 * (u(x, t) + u(x - dt*u(x, t), t - dt)).
+   /// @a order = 3: SETTLS fixed-point iteration,
+   ///   D^(0) = x - dt * u^n(x)
+   ///   D^(l+1) = x - dt/2 * ( u^n(x)
+   ///                        + 2*u^n(D^(l)) - u^(n-1)(D^(l)) )
+   /// If @a vel_at_vertex is non-null, use it for u^n(x) instead of calling
+   /// velocity(x, t, ...).  This enables angle-weighted vertex velocities.
+   /// If @a velocity_prev is null, order=3 falls back to Euler.
    static void TraceDeparture(const VelocityFunc &velocity,
-                               double t, double dt,
-                               const mfem::Vector &x, mfem::Vector &d,
-                               int order,
-                               int start_elem_hint)
+                                const VelocityFunc *velocity_prev,
+                                 double t, double dt,
+                                 const mfem::Vector &x, mfem::Vector &d,
+                                 int order,
+                                int start_elem_hint,
+                                int settls_iterations,
+                                const mfem::Vector *vel_at_vertex)
    {
       const int dim = x.Size();
       d.SetSize(dim);
 
       mfem::Vector vel(dim);
-      velocity(x, t, start_elem_hint, vel);
+      if (vel_at_vertex && vel_at_vertex->Size() == dim)
+      {
+         for (int i = 0; i < dim; ++i)
+         {
+            vel[i] = (*vel_at_vertex)[i];
+         }
+      }
+      else
+      {
+         velocity(x, t, start_elem_hint, vel);
+      }
 
       if (order == 1)
       {
@@ -775,7 +1200,7 @@ private:
             d[i] = x[i] - dt * vel[i];
          }
       }
-      else
+      else if (order == 2)
       {
          // Predictor
          for (int i = 0; i < dim; ++i)
@@ -788,6 +1213,32 @@ private:
          for (int i = 0; i < dim; ++i)
          {
             d[i] = x[i] - 0.5 * dt * (vel[i] + vel2[i]);
+         }
+      }
+      else
+      {
+         // SETTLS (ECMWF-style two-time-level trajectory iteration)
+         for (int i = 0; i < dim; ++i)
+         {
+            d[i] = x[i] - dt * vel[i];
+         }
+
+         if (!velocity_prev)
+         {
+            return;
+         }
+
+         const int num_iters = std::max(1, settls_iterations);
+         mfem::Vector vel_n_at_d(dim), vel_nm1_at_d(dim);
+         for (int it = 0; it < num_iters; ++it)
+         {
+            velocity(d, t, start_elem_hint, vel_n_at_d);
+            (*velocity_prev)(d, t - dt, start_elem_hint, vel_nm1_at_d);
+            for (int i = 0; i < dim; ++i)
+            {
+               const double v_extrap = 2.0 * vel_n_at_d[i] - vel_nm1_at_d[i];
+               d[i] = x[i] - 0.5 * dt * (vel[i] + v_extrap);
+            }
          }
       }
    }
@@ -810,7 +1261,10 @@ private:
                             mfem::GridFunction &gf_old,
                             mfem::Vector &dof_values,
                             int trace_order,
-                            SemiLagrangianStepStats *step_stats)
+                            SemiLagrangianStepStats *step_stats,
+                            const VelocityFunc *velocity_prev,
+                            int settls_iterations,
+                            int vertex_velocity_mode)
    {
       const int n_edges = mesh_.GetNEdges();
       double t_departure = t - dt;
@@ -841,6 +1295,17 @@ private:
          edge_loop_edges.assign(max_threads, 0);
       }
 
+      const bool use_vertex_weighted_velocity =
+          (vertex_velocity_mode == kVertexSolidAngle);
+      const bool use_edge_dihedral_velocity =
+          (vertex_velocity_mode == kEdgeDihedral);
+
+      mfem::DenseMatrix weighted_vertex_vel;
+      if (use_vertex_weighted_velocity)
+      {
+         PrecomputeVertexVelocities(gf_old, weighted_vertex_vel);
+      }
+
 #pragma omp parallel reduction(+:trace_departure_s,split_line_s,interior_integral_s,boundary_integral_s,split_calls,total_segments)
       {
          CellSplitWorkspace ws;
@@ -848,6 +1313,7 @@ private:
          mfem::Array<int> dofs;
          mfem::Vector v0(dim_), v1(dim_);
          mfem::Vector dep0(dim_), dep1(dim_);
+         mfem::Vector vel_v0(dim_), vel_v1(dim_);
 
          int tid = 0;
 #ifdef _OPENMP
@@ -888,8 +1354,31 @@ private:
             {
                trace_start = std::chrono::steady_clock::now();
             }
-            TraceDeparture(velocity, t, dt, v0, dep0, trace_order, start_hint);
-            TraceDeparture(velocity, t, dt, v1, dep1, trace_order, start_hint);
+            const mfem::Vector *vel_v0_ptr = nullptr;
+            const mfem::Vector *vel_v1_ptr = nullptr;
+            if (use_vertex_weighted_velocity)
+            {
+               for (int d = 0; d < dim_; ++d)
+               {
+                  vel_v0[d] = weighted_vertex_vel(v0_id, d);
+                  vel_v1[d] = weighted_vertex_vel(v1_id, d);
+               }
+               vel_v0_ptr = &vel_v0;
+               vel_v1_ptr = &vel_v1;
+            }
+            else if (use_edge_dihedral_velocity)
+            {
+               ComputeEdgeDihedralEndpointVelocities(gf_old, e, vel_v0, vel_v1);
+               vel_v0_ptr = &vel_v0;
+               vel_v1_ptr = &vel_v1;
+            }
+
+            TraceDeparture(velocity, velocity_prev, t, dt,
+                           v0, dep0, trace_order, start_hint,
+                           settls_iterations, vel_v0_ptr);
+            TraceDeparture(velocity, velocity_prev, t, dt,
+                           v1, dep1, trace_order, start_hint,
+                           settls_iterations, vel_v1_ptr);
             if (collect_breakdown)
             {
                trace_departure_s += std::chrono::duration<double>(

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cctype>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -88,6 +89,65 @@ int main(int argc, char *argv[])
     double Cw = 100.;
     double dt = config.get_dt();
     double T = config.get_T();
+    int trace_order = config.get_value<int>("trace_order", 1);
+    int settls_iterations = config.get_value<int>("settls_iterations", 2);
+    bool weighted_vertex_velocity_legacy =
+        config.get_value<bool>("weighted_vertex_velocity", false);
+    std::string vertex_velocity_mode_name =
+        config.get_value<std::string>("vertex_velocity_mode", "");
+    for (char &ch : vertex_velocity_mode_name)
+    {
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+
+    int vertex_velocity_mode = SemiLagrangianAdvection1Form<1>::kSingleElement;
+    if (vertex_velocity_mode_name.empty())
+    {
+        // Backward-compatible legacy switch.
+        vertex_velocity_mode = weighted_vertex_velocity_legacy
+                                   ? SemiLagrangianAdvection1Form<1>::kVertexSolidAngle
+                                   : SemiLagrangianAdvection1Form<1>::kSingleElement;
+    }
+    else if (vertex_velocity_mode_name == "single" ||
+             vertex_velocity_mode_name == "single_element" ||
+             vertex_velocity_mode_name == "random" ||
+             vertex_velocity_mode_name == "legacy")
+    {
+        vertex_velocity_mode = SemiLagrangianAdvection1Form<1>::kSingleElement;
+    }
+    else if (vertex_velocity_mode_name == "vertex" ||
+             vertex_velocity_mode_name == "weighted" ||
+             vertex_velocity_mode_name == "vertex_solid_angle" ||
+             vertex_velocity_mode_name == "solid_angle")
+    {
+        vertex_velocity_mode = SemiLagrangianAdvection1Form<1>::kVertexSolidAngle;
+    }
+    else if (vertex_velocity_mode_name == "edge_dihedral" ||
+             vertex_velocity_mode_name == "dihedral" ||
+             vertex_velocity_mode_name == "edge")
+    {
+        vertex_velocity_mode = SemiLagrangianAdvection1Form<1>::kEdgeDihedral;
+    }
+    else
+    {
+        std::cerr << "[warn] Unsupported vertex_velocity_mode='"
+                  << vertex_velocity_mode_name
+                  << "', using legacy single-element mode." << std::endl;
+        vertex_velocity_mode = SemiLagrangianAdvection1Form<1>::kSingleElement;
+    }
+
+    if (trace_order < 1 || trace_order > 3)
+    {
+        std::cerr << "[warn] Unsupported trace_order=" << trace_order
+                  << ", using Euler (trace_order=1)." << std::endl;
+        trace_order = 1;
+    }
+    if (settls_iterations < 1)
+    {
+        std::cerr << "[warn] settls_iterations must be >= 1, using 1."
+                  << std::endl;
+        settls_iterations = 1;
+    }
 
     // ---- Mesh and FE spaces ----
     Mesh mesh(mesh_string.c_str(), 1, 1);
@@ -131,10 +191,36 @@ int main(int argc, char *argv[])
     // ---- Semi-Lagrangian advection operator ----
     SemiLagrangianAdvection1Form<1> advection(ND);
     mfem::GridFunction omega_tilde(&ND);
+    mfem::GridFunction u_prev(&ND);
+    mfem::GridFunction u_n_snapshot(&ND);
+    bool has_prev_velocity = false;
 
     // Velocity function: evaluate current velocity GridFunction at arbitrary
     // physical points via BFS element search.
     auto velocity_func = [&mesh, &u_gf = x.get_u(), dim](
+        const mfem::Vector &pt, double, int start_elem_hint, mfem::Vector &v) {
+        v.SetSize(dim);
+        mfem::IntegrationPoint ip;
+        int elem = FindElementBFS(mesh, start_elem_hint, pt, ip);
+        if (elem < 0 && start_elem_hint != 0)
+        {
+            elem = FindElementBFS(mesh, 0, pt, ip);
+        }
+        if (elem >= 0)
+        {
+            mfem::IsoparametricTransformation eltrans;
+            mesh.GetElementTransformation(elem, &eltrans);
+            eltrans.SetIntPoint(&ip);
+            u_gf.GetVectorValue(eltrans, ip, v);
+        }
+        else
+        {
+            v = 0.0;
+        }
+    };
+
+    SemiLagrangianAdvection1Form<1>::VelocityFunc velocity_prev_func =
+        [&mesh, &u_gf = u_prev, dim](
         const mfem::Vector &pt, double, int start_elem_hint, mfem::Vector &v) {
         v.SetSize(dim);
         mfem::IntegrationPoint ip;
@@ -297,15 +383,22 @@ int main(int argc, char *argv[])
     // ---- Time loop ----
     for (t = dt, cycle = 1; t < T + tol; t += dt, cycle++)
     {
+        u_n_snapshot = x.get_u();
+
         // 1. Semi-Lagrangian advection: compute omega_tilde
         auto advect_start = std::chrono::steady_clock::now();
         advection_stats.enable_breakdown = profile_advection_breakdown;
         advection_stats.enable_thread_balance = profile_advection_thread_balance;
+        const SemiLagrangianAdvection1Form<1>::VelocityFunc *velocity_prev_ptr =
+            (trace_order == 3 && has_prev_velocity) ? &velocity_prev_func : nullptr;
         advection.Apply(velocity_func, boundary_func, t, dt,
-                        x.get_u(), omega_tilde, /*trace_order=*/1,
+                        x.get_u(), omega_tilde, trace_order,
                         (profile_advection_breakdown || profile_advection_thread_balance)
                             ? &advection_stats
-                            : nullptr);
+                            : nullptr,
+                        velocity_prev_ptr,
+                        settls_iterations,
+                        vertex_velocity_mode);
         advect_time_s = std::chrono::duration<double>(
                             std::chrono::steady_clock::now() - advect_start)
                             .count();
@@ -345,6 +438,10 @@ int main(int argc, char *argv[])
                            std::chrono::steady_clock::now() - solve_start)
                            .count();
         num_it = solv.GetNumIterations();
+
+        // Update previous-step velocity history for SETTLS.
+        u_prev = u_n_snapshot;
+        has_prev_velocity = true;
 
         // 4. Log + progress
         csv.WriteRow();

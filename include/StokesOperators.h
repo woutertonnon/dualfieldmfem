@@ -110,6 +110,87 @@ public:
 };
 
 
+#ifdef MFEM_USE_SUITESPARSE
+/// UMFPack solver that caches the symbolic factorization across calls
+/// to SetOperator when the sparsity pattern is unchanged.
+class CachedUMFPackSolver : public mfem::Solver
+{
+private:
+    mfem::SparseMatrix *mat_ = nullptr;
+    void *Symbolic_ = nullptr;
+    void *Numeric_ = nullptr;
+    int cached_height_ = -1;
+    int cached_nnz_ = -1;
+
+public:
+    mfem::real_t Control[UMFPACK_CONTROL];
+    mutable mfem::real_t Info[UMFPACK_INFO];
+
+    CachedUMFPackSolver()
+    {
+        umfpack_di_defaults(Control);
+        Control[UMFPACK_PRL] = 0;
+    }
+
+    void SetOperator(const mfem::Operator &op) override
+    {
+        mat_ = const_cast<mfem::SparseMatrix *>(
+            dynamic_cast<const mfem::SparseMatrix *>(&op));
+        MFEM_VERIFY(mat_, "CachedUMFPackSolver: not a SparseMatrix");
+
+        mat_->SortColumnIndices();
+        height = mat_->Height();
+        width = mat_->Width();
+        MFEM_VERIFY(width == height, "not a square matrix");
+
+        const int *Ap = mat_->HostReadI();
+        const int *Ai = mat_->HostReadJ();
+        const mfem::real_t *Ax = mat_->HostReadData();
+        const int nnz = Ap[height];
+
+        if (Numeric_) { umfpack_di_free_numeric(&Numeric_); }
+
+        bool need_symbolic = (Symbolic_ == nullptr ||
+                              height != cached_height_ ||
+                              nnz != cached_nnz_);
+        if (need_symbolic)
+        {
+            if (Symbolic_) { umfpack_di_free_symbolic(&Symbolic_); }
+            int status = umfpack_di_symbolic(height, height, Ap, Ai, Ax,
+                                             &Symbolic_, Control, Info);
+            MFEM_VERIFY(status >= 0,
+                        "CachedUMFPackSolver: umfpack_di_symbolic failed");
+            cached_height_ = height;
+            cached_nnz_ = nnz;
+        }
+
+        int status = umfpack_di_numeric(Ap, Ai, Ax, Symbolic_, &Numeric_,
+                                         Control, Info);
+        MFEM_VERIFY(status >= 0,
+                    "CachedUMFPackSolver: umfpack_di_numeric failed");
+    }
+
+    void Mult(const mfem::Vector &b, mfem::Vector &x) const override
+    {
+        MFEM_VERIFY(mat_ && Numeric_, "CachedUMFPackSolver: not initialized");
+        b.HostRead();
+        x.HostReadWrite();
+        int status = umfpack_di_solve(UMFPACK_At,
+                                       mat_->HostReadI(), mat_->HostReadJ(),
+                                       mat_->HostReadData(),
+                                       x.HostWrite(), b.HostRead(),
+                                       Numeric_, Control, Info);
+        MFEM_VERIFY(status >= 0, "CachedUMFPackSolver: umfpack_di_solve failed");
+    }
+
+    ~CachedUMFPackSolver()
+    {
+        if (Numeric_) { umfpack_di_free_numeric(&Numeric_); }
+        if (Symbolic_) { umfpack_di_free_symbolic(&Symbolic_); }
+    }
+};
+#endif
+
 
 namespace hcurl{
     class StokesSolution
@@ -247,7 +328,7 @@ namespace hcurl{
         mfem::FiniteElementSpace *ND_, *CG_;
         mfem::MixedBilinearForm blf_B;
         mfem::TransposeOperator BT;
-        mfem::SparseMatrix *BT_mat, *A_mat, *C_mat;
+        mfem::SparseMatrix *BT_mat, *A_mat, *A_static_ = nullptr, *C_mat;
         double mass_, viscosity_, theta_, Cw_, sigma_, gamma_, upwind_scale_, delta_;
 
     public:
@@ -280,6 +361,7 @@ namespace hcurl{
 
             BT_mat = mfem::Transpose(blf_B.SpMat());
             // hook blocks
+            A_static_ = new mfem::SparseMatrix(blf_A.SpMat()); // deep copy of static part
             A_mat = blf_A.LoseMat();
             SetBlock(0, 0, A_mat);
             SetBlock(0, 1, &blf_B.SpMat());
@@ -320,38 +402,29 @@ namespace hcurl{
             mfem::VectorCoefficient &face_wind =
                 upwind_coef ? *upwind_coef : w_coef;
 
-            mfem::ConstantCoefficient mass_coef(mass_), viscosity_coef(viscosity_);
-
             delete A_mat;
 
-            mfem::BilinearForm blf_A(ND_);
-            blf_A.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(mass_coef));
-            blf_A.AddDomainIntegrator(new mfem::CurlCurlIntegrator(viscosity_coef));
+            mfem::BilinearForm blf_dyn(ND_);
             // Convection: (w x u, v)
             {
                 auto *conv = new mfem::MixedCrossProductIntegrator(w_coef);
                 const int k = ND_->GetMaxElementOrder();
                 conv->SetIntRule(&mfem::IntRules.Get(
-                    ND_->GetMesh()->GetElementGeometry(0), 5 * k));
-                blf_A.AddDomainIntegrator(conv);
+                    ND_->GetMesh()->GetElementGeometry(0), 3 * k + 1));
+                blf_dyn.AddDomainIntegrator(conv);
             }
-            blf_A.AddInteriorFaceIntegrator(new ND_DGPenaltyIntegrator(sigma_, viscosity_));
-            blf_A.AddInteriorFaceIntegrator(new ND_CurlJumpIntegrator(gamma_, viscosity_));
-            // Heumann upwind: |beta.n_F| [[u]]·[[v]] with beta = transport velocity.
-            // Wind-dependent, so included only in Update(), not the constructor.
-            blf_A.AddInteriorFaceIntegrator(new ND_UpwindIntegrator(face_wind, upwind_scale_));
-            blf_A.AddBdrFaceIntegrator(new ND_NitscheIntegrator(theta_, Cw_, viscosity_));
-            blf_A.Assemble();
-            blf_A.Finalize();
+            // Heumann upwind
+            blf_dyn.AddInteriorFaceIntegrator(new ND_UpwindIntegrator(face_wind, upwind_scale_));
+            blf_dyn.Assemble();
+            blf_dyn.Finalize();
 
-            A_mat = blf_A.LoseMat();
-
+            A_mat = mfem::Add(1.0, *A_static_, 1.0, blf_dyn.SpMat());
             SetBlock(0, 0, A_mat);
-
         }
 
         ~StokesSystem() {
             delete A_mat;
+            delete A_static_;
             delete C_mat;
         }
     };
@@ -607,10 +680,11 @@ namespace hcurl{
         int &iterations_;
         double rel_tol_;
 
-        mutable mfem::UMFPackSolver solver_A_;
+        mutable CachedUMFPackSolver solver_A_;
         mfem::BilinearForm prec_p_;
         mfem::UMFPackSolver solver_p_;
         mutable mfem::BlockDiagonalPreconditioner prec_;
+        mutable mfem::GMRESSolver gmres_;
 
     public:
         GMRESSolver(mfem::FiniteElementSpace &ND,
@@ -631,6 +705,13 @@ namespace hcurl{
             prec_p_.Assemble();
             prec_p_.Finalize();
             solver_p_.SetOperator(prec_p_.SpMat());
+
+            gmres_.iterative_mode = true;
+            gmres_.SetRelTol(rel_tol_);
+            gmres_.SetAbsTol(1e-10);
+            gmres_.SetMaxIter(100000);
+            gmres_.SetKDim(200);
+            gmres_.SetPrintLevel(0);
         }
 
         void SetOperator(const mfem::Operator &op) override
@@ -645,23 +726,15 @@ namespace hcurl{
             solver_A_.SetOperator(op.GetBlock(0, 0));
             prec_.SetDiagonalBlock(0, &solver_A_);
             prec_.SetDiagonalBlock(1, &solver_p_);
+            gmres_.SetOperator(*op_);
+            gmres_.SetPreconditioner(prec_);
         }
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
         {
-            mfem::GMRESSolver gmres;
-            gmres.iterative_mode = true;
-            gmres.SetOperator(*op_);
-            gmres.SetPreconditioner(prec_);
-            gmres.SetRelTol(rel_tol_);
-            gmres.SetAbsTol(1e-10);
-            gmres.SetMaxIter(100000);
-            gmres.SetKDim(5000);
-            gmres.SetPrintLevel(0);
-
             y.SetSize(op_->Height());
-            gmres.Mult(x, y);
-            iterations_ = gmres.GetNumIterations();
+            gmres_.Mult(x, y);
+            iterations_ = gmres_.GetNumIterations();
         }
     };
 
@@ -681,6 +754,7 @@ namespace hcurl{
         mfem::BilinearForm prec_p_;
         mfem::UMFPackSolver solver_p_;
         mutable mfem::BlockDiagonalPreconditioner prec_;
+        mutable mfem::FGMRESSolver gmres_;
 
         mutable std::unique_ptr<mfem::HypreParMatrix> parA_;
         mutable std::unique_ptr<mfem::HypreAMS> ams_;
@@ -730,6 +804,13 @@ namespace hcurl{
             prec_p_.Assemble();
             prec_p_.Finalize();
             solver_p_.SetOperator(prec_p_.SpMat());
+
+            gmres_.iterative_mode = true;
+            gmres_.SetRelTol(rel_tol_);
+            gmres_.SetAbsTol(1e-10);
+            gmres_.SetMaxIter(100000);
+            gmres_.SetKDim(200);
+            gmres_.SetPrintLevel(0);
         }
 
         void SetOperator(const mfem::Operator &op) override
@@ -756,23 +837,15 @@ namespace hcurl{
 
             prec_.SetDiagonalBlock(0, ams_.get());
             prec_.SetDiagonalBlock(1, &solver_p_);
+            gmres_.SetOperator(*op_);
+            gmres_.SetPreconditioner(prec_);
         }
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
         {
-            mfem::FGMRESSolver gmres;
-            gmres.iterative_mode = true;
-            gmres.SetOperator(*op_);
-            gmres.SetPreconditioner(prec_);
-            gmres.SetRelTol(rel_tol_);
-            gmres.SetAbsTol(1e-10);
-            gmres.SetMaxIter(100000);
-            gmres.SetKDim(5000);
-            gmres.SetPrintLevel(0);
-
             y.SetSize(op_->Height());
-            gmres.Mult(x, y);
-            iterations_ = gmres.GetNumIterations();
+            gmres_.Mult(x, y);
+            iterations_ = gmres_.GetNumIterations();
         }
     };
 #else
@@ -834,7 +907,7 @@ namespace hdiv{
         mfem::MixedBilinearForm blf_B, blf_C, blf_BT, blf_CT;
         mfem::BilinearForm blf_D_;
         mfem::TransposeOperator BT, CT;
-        mfem::SparseMatrix *BT_mat, *CT_mat, *A_mat;
+        mfem::SparseMatrix *BT_mat, *CT_mat, *A_mat, *A_static_ = nullptr;
         double mass_, viscosity_, sigma_, gamma_, Cw_;
         mfem::ConstantCoefficient minus_one_coef_, viscosity_coef_;
         const mfem::Array<int> &ess_tdof_list_;
@@ -886,6 +959,7 @@ namespace hdiv{
 
             CT_mat = mfem::Transpose(blf_C.SpMat());
             // hook blocks
+            A_static_ = new mfem::SparseMatrix(blf_A.SpMat()); // deep copy of static part
             A_mat = blf_A.LoseMat();
             SetBlock(0, 0, A_mat);
             SetBlock(0, 1, &blf_BT.SpMat());
@@ -906,38 +980,29 @@ namespace hdiv{
 
         void Update(mfem::VectorCoefficient &w_coef)
         {
-
-            mfem::ConstantCoefficient mass_coef(mass_);
-
             delete A_mat;
-            
-            mfem::BilinearForm blf_A(RT_);
-            blf_A.AddDomainIntegrator(new mfem::VectorFEMassIntegrator(mass_coef));
+
+            mfem::BilinearForm blf_dyn(RT_);
             // Convection: (w x u, v)
             {
                 auto *conv = new mfem::MixedCrossProductIntegrator(w_coef);
                 const int k = RT_->GetMaxElementOrder();
                 conv->SetIntRule(&mfem::IntRules.Get(
-                    RT_->GetMesh()->GetElementGeometry(0), 5 * k));
-                blf_A.AddDomainIntegrator(conv);
+                    RT_->GetMesh()->GetElementGeometry(0), 3 * k + 1));
+                blf_dyn.AddDomainIntegrator(conv);
             }
-            blf_A.AddInteriorFaceIntegrator(new RT_DGPenaltyIntegrator(sigma_, viscosity_));
-            blf_A.AddInteriorFaceIntegrator(new RT_DivJumpIntegrator(gamma_, viscosity_));
-            if (Cw_ > 0.0)
-                blf_A.AddBdrFaceIntegrator(new RT_BdrTangentPenaltyIntegrator(Cw_));
-            blf_A.Assemble();
-            blf_A.Finalize();
+            blf_dyn.Assemble();
+            blf_dyn.Finalize();
 
-            A_mat = blf_A.LoseMat();
-
+            A_mat = mfem::Add(1.0, *A_static_, 1.0, blf_dyn.SpMat());
             SetBlock(0, 0, A_mat);
             for(int i: ess_tdof_list_)
                 GetBlock(0,0).EliminateRow(i, mfem::Operator::DiagonalPolicy::DIAG_ONE);
-
         }
 
         ~StokesSystem() {
             delete A_mat;
+            delete A_static_;
         }
     };
 
@@ -954,6 +1019,8 @@ namespace hdiv{
         mfem::Array<int> bdr_marker_;   // boundary attribute marker for lid faces
         double viscosity_, Cw_;
         bool has_lid_;
+        mfem::GridFunction tr_u_cached_;
+        double cached_time_ = -1e300;
 
     public:
         /// Construct the RHS.  If \p bdr_marker is non-null, tr_u is applied
@@ -977,7 +1044,8 @@ namespace hdiv{
             tr_u_coef_(DG.GetMesh()->Dimension(), std::move(tr_u)),
             viscosity_(viscosity),
             Cw_(Cw),
-            has_lid_(bdr_marker != nullptr)
+            has_lid_(bdr_marker != nullptr),
+            tr_u_cached_(&RT)
         {
             if (has_lid_)
             {
@@ -998,8 +1066,11 @@ namespace hdiv{
             f_coef_.SetTime(t);
             tr_u_coef_.SetTime(t);
 
-            mfem::GridFunction tr_u(RT_);
-            tr_u.ProjectCoefficient(tr_u_coef_);
+            if (t != cached_time_)
+            {
+                tr_u_cached_.ProjectCoefficient(tr_u_coef_);
+                cached_time_ = t;
+            }
 
             mfem::LinearForm f_lf(RT_);
             f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(mass_u_prev_coef));
@@ -1019,13 +1090,13 @@ namespace hdiv{
                 for (int i = 0; i < ess_tdof_list_.Size(); ++i)
                     f_lf[ess_tdof_list_[i]] = 0.0;
                 for (int i = 0; i < ess_tdof_lid_.Size(); ++i)
-                    f_lf[ess_tdof_lid_[i]] = tr_u[ess_tdof_lid_[i]];
+                    f_lf[ess_tdof_lid_[i]] = tr_u_cached_[ess_tdof_lid_[i]];
             }
             else
             {
                 // Apply tr_u on all essential DOFs
                 for (int i = 0; i < ess_tdof_list_.Size(); ++i)
-                    f_lf[ess_tdof_list_[i]] = tr_u[ess_tdof_list_[i]];
+                    f_lf[ess_tdof_list_[i]] = tr_u_cached_[ess_tdof_list_[i]];
             }
 
             GetBlock(0).Set(1., f_lf);
@@ -1077,7 +1148,7 @@ namespace hdiv{
         double mass_;
 
         // A block: exact solve, re-set each timestep
-        mutable mfem::UMFPackSolver solver_A_;
+        mutable CachedUMFPackSolver solver_A_;
 
         // D block: exact solve on -M_ND (static, set once in constructor)
         mfem::BilinearForm mass_D_;
@@ -1235,6 +1306,7 @@ namespace hdiv{
 
         // Block-diagonal exact preconditioner
         mutable BlockDiagPreconditioner prec_;
+        mutable mfem::GMRESSolver gmres_;
 
     public:
         GMRESSolver(mfem::FiniteElementSpace &RT,
@@ -1249,7 +1321,14 @@ namespace hdiv{
               op_(nullptr),
               rel_tol_(rel_tol),
               prec_(RT, ND, DG, mass)
-        {}
+        {
+            gmres_.iterative_mode = true;
+            gmres_.SetRelTol(rel_tol_);
+            gmres_.SetAbsTol(1e-10);
+            gmres_.SetMaxIter(100000);
+            gmres_.SetKDim(200);
+            gmres_.SetPrintLevel(0);
+        }
 
         void SetOperator(const mfem::Operator &op) override
         {
@@ -1261,23 +1340,15 @@ namespace hdiv{
         {
             op_ = &op;
             prec_.SetOperator(op);
+            gmres_.SetOperator(*op_);
+            gmres_.SetPreconditioner(prec_);
         }
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
         {
-            mfem::GMRESSolver gmres;
-            gmres.iterative_mode = true;
-            gmres.SetOperator(*op_);
-            gmres.SetPreconditioner(prec_);
-            gmres.SetRelTol(rel_tol_);
-            gmres.SetAbsTol(1e-10);
-            gmres.SetMaxIter(100000);
-            gmres.SetKDim(5000);
-            gmres.SetPrintLevel(0);
-
             y.SetSize(op_->Height());
-            gmres.Mult(x, y);
-            iterations_ = gmres.GetNumIterations();
+            gmres_.Mult(x, y);
+            iterations_ = gmres_.GetNumIterations();
         }
     };
 
@@ -1396,6 +1467,7 @@ namespace hdiv{
         int &iterations_;
         double rel_tol_;
         mutable ADSBlockDiagPreconditioner prec_;
+        mutable mfem::FGMRESSolver gmres_;
 
     public:
         GMRESADSSolver(mfem::FiniteElementSpace &RT,
@@ -1411,6 +1483,12 @@ namespace hdiv{
               rel_tol_(rel_tol),
               prec_(RT, ND, DG, mass)
         {
+            gmres_.iterative_mode = true;
+            gmres_.SetRelTol(rel_tol_);
+            gmres_.SetAbsTol(1e-10);
+            gmres_.SetMaxIter(100000);
+            gmres_.SetKDim(200);
+            gmres_.SetPrintLevel(0);
         }
 
         void SetOperator(const mfem::Operator &op) override
@@ -1423,23 +1501,15 @@ namespace hdiv{
         {
             op_ = &op;
             prec_.SetOperator(op);
+            gmres_.SetOperator(*op_);
+            gmres_.SetPreconditioner(prec_);
         }
 
         void Mult(const mfem::Vector &x, mfem::Vector &y) const override
         {
-            mfem::FGMRESSolver gmres;
-            gmres.iterative_mode = true;
-            gmres.SetOperator(*op_);
-            gmres.SetPreconditioner(prec_);
-            gmres.SetRelTol(rel_tol_);
-            gmres.SetAbsTol(1e-10);
-            gmres.SetMaxIter(100000);
-            gmres.SetKDim(5000);
-            gmres.SetPrintLevel(0);
-
             y.SetSize(op_->Height());
-            gmres.Mult(x, y);
-            iterations_ = gmres.GetNumIterations();
+            gmres_.Mult(x, y);
+            iterations_ = gmres_.GetNumIterations();
         }
     };
 #else
