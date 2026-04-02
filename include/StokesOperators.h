@@ -317,6 +317,67 @@ namespace hcurl{
                 GetBlock(1).Add(1., stab_lf);
             }
         }
+
+        /// BDF2 RHS update for the second-order semi-Lagrangian scheme (Eq. 34).
+        ///
+        /// Assembles: (4/(2dt)) * M * omega_tilde_1
+        ///          - (1/(2dt)) * M * omega_tilde_2
+        ///          + f(t) + Nitsche terms
+        ///
+        /// @a omega_tilde_1  I_{h,2}(X̄*_{τ} ω^{n-1})
+        /// @a omega_tilde_2  I_{h,2}(X̄*_{2τ} ω^{n-2})
+        /// @a t              current time
+        /// @a dt             timestep τ
+        void UpdateBDF2(mfem::GridFunction &omega_tilde_1,
+                        mfem::GridFunction &omega_tilde_2,
+                        double t, double dt)
+        {
+            const double c1 = 2.0 / dt;       // = 4/(2dt)
+            const double c2 = -0.5 / dt;      // = -1/(2dt)
+
+            mfem::VectorGridFunctionCoefficient coef1(&omega_tilde_1);
+            mfem::VectorGridFunctionCoefficient coef2(&omega_tilde_2);
+            mfem::ScalarVectorProductCoefficient sc1(c1, coef1);
+            mfem::ScalarVectorProductCoefficient sc2(c2, coef2);
+
+            f_coef_.SetTime(t);
+            tr_u_coef_.SetTime(t);
+
+            mfem::LinearForm f_lf(ND_);
+            f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(sc1));
+            f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(sc2));
+            f_lf.AddDomainIntegrator(new mfem::VectorFEDomainLFIntegrator(f_coef_));
+            if (bdr_marker_.Size() > 0)
+                f_lf.AddBdrFaceIntegrator(new ND_NitscheLFIntegrator(theta_, Cw_, tr_u_coef_, viscosity_), bdr_marker_);
+            else
+                f_lf.AddBdrFaceIntegrator(new ND_NitscheLFIntegrator(theta_, Cw_, tr_u_coef_, viscosity_));
+            f_lf.Assemble();
+
+            mfem::LinearForm g_lf(CG_);
+            if (bdr_marker_.Size() > 0)
+                g_lf.AddBoundaryIntegrator(new mfem::BoundaryNormalLFIntegrator(tr_u_coef_), bdr_marker_);
+            else
+                g_lf.AddBoundaryIntegrator(new mfem::BoundaryNormalLFIntegrator(tr_u_coef_));
+            g_lf.Assemble();
+
+            GetBlock(0).Set(1., f_lf);
+            GetBlock(1).Set(1., g_lf);
+
+            if (delta_ > 0.0)
+            {
+                mfem::ScalarVectorProductCoefficient delta_f(delta_, f_coef_);
+                mfem::ScalarVectorProductCoefficient delta_c1(delta_ * c1, coef1);
+                mfem::ScalarVectorProductCoefficient delta_c2(delta_ * c2, coef2);
+
+                mfem::LinearForm stab_lf(CG_);
+                stab_lf.AddDomainIntegrator(new mfem::DomainLFGradIntegrator(delta_f));
+                stab_lf.AddDomainIntegrator(new mfem::DomainLFGradIntegrator(delta_c1));
+                stab_lf.AddDomainIntegrator(new mfem::DomainLFGradIntegrator(delta_c2));
+                stab_lf.Assemble();
+
+                GetBlock(1).Add(1., stab_lf);
+            }
+        }
     };
 
     class StokesSystem

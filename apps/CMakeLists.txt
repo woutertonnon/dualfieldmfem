@@ -20,4 +20,5 @@ target_link_libraries(stokes_nitsche PRIVATE boundaryoperatorslib mfem Boost::pr
 add_executable(semilagrangian_navierstokes_nitsche semilagrangian_navierstokes_nitsche.cpp)
 target_link_libraries(semilagrangian_navierstokes_nitsche PRIVATE boundaryoperatorslib mfem OpenMP::OpenMP_CXX Boost::program_options dualfield_project_options)
 
-
+add_executable(semilagrangian_navierstokes_nitsche_order2 semilagrangian_navierstokes_nitsche_order2.cpp)
+target_link_libraries(semilagrangian_navierstokes_nitsche_order2 PRIVATE boundaryoperatorslib mfem OpenMP::OpenMP_CXX Boost::program_options dualfield_project_options)

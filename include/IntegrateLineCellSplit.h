@@ -270,9 +270,9 @@ inline bool SplitLineIntoSegmentsRobust(
       return true;
    }
 
-   std::cerr << "[SplitLineIntoSegments] WARNING: degenerate geometry "
-                "detected. Retrying with perturbed endpoints..."
-             << std::endl;
+   // Degenerate geometry is common at mesh edges/vertices; only warn
+   // when many perturbation attempts are needed (threshold: 5).
+   constexpr int perturb_warn_threshold = 5;
 
    // Retry with perturbed endpoints biased toward the mesh interior.
    // Using the element center of start_elem guarantees the perturbation
@@ -326,15 +326,21 @@ inline bool SplitLineIntoSegmentsRobust(
          // original line near domain corners.  Mark it as unreliable
          // so the caller uses FindNearestBoundaryAttribute instead.
          if (out_exit_face) { *out_exit_face = -1; }
-         std::cerr << "[SplitLineIntoSegments] Perturbation attempt "
-                   << attempt << " succeeded (magnitude="
-                   << perturb_mag << ")." << std::endl;
+         if (attempt > perturb_warn_threshold)
+         {
+            std::cerr << "[SplitLineIntoSegments] WARNING: degenerate geometry "
+                         "resolved after " << attempt << " perturbation attempts "
+                         "(magnitude=" << perturb_mag << ")." << std::endl;
+         }
          return true;
       }
 
-      std::cerr << "[SplitLineIntoSegments] Perturbation attempt "
-                << attempt << "/" << max_perturb << " failed."
-                << std::endl;
+      if (attempt > perturb_warn_threshold)
+      {
+         std::cerr << "[SplitLineIntoSegments] Perturbation attempt "
+                   << attempt << "/" << max_perturb << " failed."
+                   << std::endl;
+      }
    }
 
    std::cerr << "[SplitLineIntoSegments] ERROR: all " << max_perturb

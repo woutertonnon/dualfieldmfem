@@ -269,13 +269,257 @@ class LidDrivenCavity3DExactSemiLag(benchmark):
             slice_normal="y")
 
 
+EXECUTABLE_ORDER2 = "./build/semilagrangian_navierstokes_nitsche_order2"
+
+# Order-2 default: Euler tracing (trace_order=1).
+# Heun tracing (trace_order=2) degrades convergence because the corrector
+# mixes dihedral-averaged velocity at arrival points with raw ND₂ GF
+# evaluation at departure points, introducing noise from normal-component
+# discontinuities.
+HEUN_ORDER2_OVERRIDES = {
+    "trace_order": 1,
+}
+
+
+class ConstantFieldSemiLagOrder2(benchmark):
+    """Constant uniform-flow benchmark for the second-order semi-Lagrangian
+    solver (ND₂/H1₂ with Rapetti small-edge transport and BDF2 time stepping).
+
+    Verifies that the solver reproduces the exact steady-state solution
+    u = (1, 0, 0), p = 0 on the unit cube with matching Dirichlet data.
+    """
+    def __init__(self, executable=EXECUTABLE_ORDER2, solver="MINRES"):
+        T = 0.2
+
+        x0, x1, x2, t = sp.symbols('x0 x1 x2 t', real=True)
+        coords = [x0, x1, x2]
+        nu = .001
+        u = sp.Matrix([1, 0, 0])
+        p = sp.Integer(0)
+        init_u = sp.Matrix([0, 0, 0])
+        name = "ConstantFieldSemiLagOrder2"
+        meshname = "./geo/mesh/ConstantField.msh"
+
+        generate_box_mesh(Lx=1, Ly=1, Lz=1, lc=0.4, out=meshname)
+
+        exact = IBVPNavierStokesSolution(
+            u=u, p=p, nu=nu, coords=coords, t=t,
+            u_boundary=u, u_init=init_u)
+        SimulationHelper = NavierStokesBenchmarkHelper(
+            exact, name, mesh=meshname, visualisation=1, printlevel=2,
+            executable=executable, linear_solver=solver,
+            legacy_overrides=HEUN_ORDER2_OVERRIDES)
+        data_processor = SimulationDataProcessor(name)
+
+        super().__init__(
+            name=name,
+            SimulationHelper=SimulationHelper,
+            SimulationDataProcessor=data_processor,
+            dts=lambda order, refinements: 0.1,
+            T=T,
+            refinements=lambda order: [0],
+            orders=[2],
+            slice_normal="z")
+
+
+class RigidRotationSemiLagOrder2(benchmark):
+    """Rigid rotation benchmark for the second-order semi-Lagrangian solver.
+
+    Solid-body rotation u = (-y, x, 0), p = 0 on the unit cube.
+    """
+    def __init__(self, executable=EXECUTABLE_ORDER2, solver="MINRES"):
+        T = 5.
+
+        x0, x1, x2, t = sp.symbols('x0 x1 x2 t', real=True)
+        coords = [x0, x1, x2]
+        nu = .001
+        u = sp.Matrix([-x1, x0, 0])
+        p = sp.Integer(0)
+        name = "RigidRotationSemiLagOrder2"
+        meshname = "./geo/mesh/RigidRotation.msh"
+
+        generate_box_mesh(Lx=1, Ly=1, Lz=1, lc=0.4, out=meshname)
+
+        exact = IBVPNavierStokesSolution(
+            u=u, p=p, nu=nu, coords=coords, t=t,
+            u_init=sp.Matrix([0, 0, 0]), u_boundary=u)
+        SimulationHelper = NavierStokesBenchmarkHelper(
+            exact, name, mesh=meshname, visualisation=1, printlevel=2,
+            executable=executable, linear_solver=solver,
+            legacy_overrides=HEUN_ORDER2_OVERRIDES)
+        data_processor = SimulationDataProcessor(name)
+
+        super().__init__(
+            name=name,
+            SimulationHelper=SimulationHelper,
+            SimulationDataProcessor=data_processor,
+            dts=lambda order, refinements: 0.025,
+            T=T,
+            refinements=lambda order: [0],
+            orders=[2],
+            slice_normal="z")
+
+
+class TaylorGreenSemiLagOrder2(benchmark):
+    """Taylor-Green convergence benchmark for the second-order semi-Lagrangian
+    solver (ND₂/H1₂ with Rapetti small-edge transport and BDF2 time stepping).
+
+    Tests combined space-time convergence on a tetrahedral unit cube.
+    Expects O(h²) spatial convergence in the L² norm.
+
+    Note: uses inline tet mesh instead of ref-cube.mesh because the Rapetti
+    small-edge framework requires simplicial (tet) elements.
+    """
+    def __init__(self, executable=EXECUTABLE_ORDER2, solver="MINRES"):
+        T = 0.125
+        name = "TaylorGreenSemiLagOrder2"
+        meshname = "./data/meshes/unit-cube-tet.mesh"
+
+        x0, x1, x2, t = sp.symbols("x0 x1 x2 t", real=True)
+        coords = [x0, x1, x2]
+        nu = sp.Float(0.01)
+        k = sp.Float(1.0)
+        decay = sp.exp(-sp.Float(2.0) * nu * k * k * t)
+
+        u = sp.Matrix([
+            sp.Mul(sp.sin(k * x0), sp.cos(k * x1), decay),
+            sp.Mul(-1, sp.cos(k * x0), sp.sin(k * x1), decay),
+            sp.Integer(0),
+        ])
+
+        p = sp.Integer(0)
+        exact = ManufacturedNavierStokes(u=u, p=p, nu=nu, coords=coords, t=t)
+
+        simulation_helper = NavierStokesBenchmarkHelper(
+            exact, name, mesh=meshname, visualisation=0, printlevel=1,
+            executable=executable, linear_solver=solver,
+            legacy_overrides=HEUN_ORDER2_OVERRIDES)
+        data_processor = SimulationDataProcessor(name)
+
+        super().__init__(
+            name=name,
+            SimulationHelper=simulation_helper,
+            SimulationDataProcessor=data_processor,
+            dts=lambda order, refinement: 0.5 / (8 * (2 ** refinement)),
+            T=T,
+            refinements=lambda order: range(0, 6 - order),
+            orders=[2],
+            slice_normal="z",
+        )
+
+
+class TravelingABCSemiLagOrder2(benchmark):
+    """Traveling ABC flow benchmark for the second-order semi-Lagrangian solver.
+
+    Advection-dominated manufactured solution testing the full BDF2 pipeline.
+
+    Note: uses inline tet mesh instead of ref-cube.mesh because the Rapetti
+    small-edge framework requires simplicial (tet) elements.
+    """
+    def __init__(self, executable=EXECUTABLE_ORDER2, solver="MINRES"):
+        T = 0.25
+        name = "TravelingABCSemiLagOrder2"
+        meshname = "./data/meshes/unit-cube-tet.mesh"
+
+        x0, x1, x2, t = sp.symbols("x0 x1 x2 t", real=True)
+        coords = [x0, x1, x2]
+        nu = sp.Float(0.001)
+
+        A = sp.sqrt(3)
+        B = sp.sqrt(2)
+        C = sp.Integer(1)
+        k = 2 * sp.pi
+        c = sp.Integer(1)
+
+        alpha = k * (x0 - c * t)
+        beta = k * (x1 - c * t)
+        gamma = k * (x2 - c * t)
+
+        u = sp.Matrix([
+            A * sp.sin(gamma) + C * sp.cos(beta),
+            B * sp.sin(alpha) + A * sp.cos(gamma),
+            C * sp.sin(beta) + B * sp.cos(alpha),
+        ])
+        p = sp.Integer(0)
+
+        exact = ManufacturedNavierStokes(u=u, p=p, nu=nu, coords=coords, t=t)
+
+        simulation_helper = NavierStokesBenchmarkHelper(
+            exact, name, mesh=meshname, visualisation=0, printlevel=1,
+            executable=executable, linear_solver=solver,
+            legacy_overrides=HEUN_ORDER2_OVERRIDES)
+        data_processor = SimulationDataProcessor(name)
+
+        super().__init__(
+            name=name,
+            SimulationHelper=simulation_helper,
+            SimulationDataProcessor=data_processor,
+            dts=lambda order, refinement: 0.5 / (8 * (4 ** refinement)),
+            T=T,
+            refinements=lambda order: range(0, 6 - order),
+            orders=[2],
+            slice_normal="z",
+        )
+
+
+class LidDrivenCavity3DExactSemiLagOrder2(benchmark):
+    """3D lid-driven cavity for the second-order semi-Lagrangian solver.
+
+    Top lid (attribute 16) driven by u_x = tanh(2t), all other faces
+    homogeneous Dirichlet.
+    """
+    def __init__(self, executable=EXECUTABLE_ORDER2, solver="MINRES"):
+        Lz = 1
+        T = 15
+
+        x0, x1, x2, t = sp.symbols('x0 x1 x2 t', real=True)
+        coords = [x0, x1, x2]
+        nu = 0.001
+
+        ramp = sp.tanh(2 * t)
+        tr_u = ramp * sp.Matrix([
+            sp.Integer(1),
+            sp.Integer(0),
+            sp.Integer(0),
+        ])
+        init_u = sp.Matrix([0, 0, 0])
+        name = "LidDrivenCavity3DExactSemiLagOrder2"
+        meshname = "./geo/mesh/LidDrivenCavity3DExactSemiLag.msh"
+
+        generate_box_mesh(Lx=1, Ly=1, Lz=Lz, lc=0.5, out=meshname)
+
+        exact = IBVPNavierStokes(
+            u_init=init_u, nu=nu, coords=coords, t=t, u_boundary=tr_u,
+            lid_attributes=[16])
+        SimulationHelper = NavierStokesBenchmarkHelper(
+            exact, name, mesh=meshname, visualisation=1, printlevel=0,
+            executable=executable, linear_solver=solver,
+            legacy_overrides=HEUN_ORDER2_OVERRIDES)
+        data_processor = SimulationDataProcessor(name)
+
+        super().__init__(
+            name=name,
+            SimulationHelper=SimulationHelper,
+            SimulationDataProcessor=data_processor,
+            dts=lambda order, refinements: 0.025,
+            T=T,
+            refinements=lambda order: [0],
+            orders=[2],
+            slice_normal="y")
+
+
 if __name__ == "__main__":
     benchmark_map = {
-        "ConstantFieldSemiLag": ConstantFieldSemiLag,
-        "RigidRotationSemiLag": RigidRotationSemiLag,
-        "TaylorGreenSemiLag": TaylorGreenSemiLag,
-        "TravelingABCSemiLag": TravelingABCSemiLag,
-        "LidDrivenCavity3DExactSemiLag": LidDrivenCavity3DExactSemiLag,
+        #"ConstantFieldSemiLag": ConstantFieldSemiLag,
+        #"RigidRotationSemiLag": RigidRotationSemiLag,
+        #"TaylorGreenSemiLag": TaylorGreenSemiLag,
+        #"TravelingABCSemiLag": TravelingABCSemiLag,
+        #"LidDrivenCavity3DExactSemiLag": LidDrivenCavity3DExactSemiLag,
+        #"ConstantFieldSemiLagOrder2": ConstantFieldSemiLagOrder2,
+        #"RigidRotationSemiLagOrder2": RigidRotationSemiLagOrder2,
+        #"TaylorGreenSemiLagOrder2": TaylorGreenSemiLagOrder2,
+        "TravelingABCSemiLagOrder2": TravelingABCSemiLagOrder2,
+        #"LidDrivenCavity3DExactSemiLagOrder2": LidDrivenCavity3DExactSemiLagOrder2,
     }
 
     parser = argparse.ArgumentParser(description="Run semi-Lagrangian Navier-Stokes benchmarks")
@@ -298,7 +542,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--executable",
-        default=EXECUTABLE,
+        default=None,
         help="Override executable path used by the selected benchmark",
     )
     parser.add_argument(
@@ -331,6 +575,12 @@ if __name__ == "__main__":
         help="Override refinement used for the slice variant",
     )
     parser.add_argument(
+        "--omp-threads",
+        type=int,
+        default=None,
+        help="Set OMP_NUM_THREADS for parallel semi-Lagrangian advection",
+    )
+    parser.add_argument(
         "--fail-fast",
         action="store_true",
         help="Stop immediately if one benchmark fails",
@@ -342,6 +592,10 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    if args.omp_threads is not None:
+        os.environ["OMP_NUM_THREADS"] = str(args.omp_threads)
+        print(f"[info] OMP_NUM_THREADS={args.omp_threads}")
+
     selected = benchmark_map.keys() if args.benchmark == "all" else [args.benchmark]
     failures = []
 
@@ -349,7 +603,7 @@ if __name__ == "__main__":
         try:
             bench_cls = benchmark_map[bench_name]
             solver_name = args.solver
-            if args.executable:
+            if args.executable is not None:
                 bench = bench_cls(executable=args.executable, solver=solver_name)
             else:
                 bench = bench_cls(solver=solver_name)

@@ -9,6 +9,7 @@
 #include <functional>
 #include <limits>
 #include <ctime>
+#include <unordered_map>
 #include <vector>
 
 #ifdef _OPENMP
@@ -1157,6 +1158,170 @@ private:
       }
    }
 
+public:
+   /// Precompute dihedral-angle-weighted velocity at mesh edge endpoints and
+   /// midpoints.  Returns an (n_edges × 3*dim) matrix where row e stores:
+   ///   [vel_v0[0..dim), vel_mid[0..dim), vel_v1[0..dim)]
+   /// These are used by the order-2 code for arrival-point velocity in Heun.
+   void PrecomputeEdgeDihedralVelocities(
+       const mfem::GridFunction &u_gf,
+       mfem::DenseMatrix &edge_vel) const
+   {
+      const int n_edges = mesh_.GetNEdges();
+      edge_vel.SetSize(n_edges, 3 * dim_);
+      edge_vel = 0.0;
+
+      mfem::Array<int> edge_verts;
+      mfem::Array<int> elem_verts;
+      mfem::IsoparametricTransformation eltrans;
+      mfem::Vector vel_local(dim_);
+
+      for (int e = 0; e < n_edges; ++e)
+      {
+         mesh_.GetEdgeVertices(e, edge_verts);
+         const int v0_id = edge_verts[0];
+         const int v1_id = edge_verts[1];
+
+         const int ne = edge_to_elems_.RowSize(e);
+         const int *elems = edge_to_elems_.GetRow(e);
+
+         double total_w = 0.0;
+         double acc_v0[3] = {}, acc_mid[3] = {}, acc_v1[3] = {};
+
+         for (int i = 0; i < ne; ++i)
+         {
+            const int el = elems[i];
+            mesh_.GetElementVertices(el, elem_verts);
+
+            int local_v0 = -1, local_v1 = -1;
+            for (int li = 0; li < elem_verts.Size(); ++li)
+            {
+               if (elem_verts[li] == v0_id) { local_v0 = li; }
+               if (elem_verts[li] == v1_id) { local_v1 = li; }
+            }
+            if (local_v0 < 0 || local_v1 < 0) { continue; }
+
+            const double w = ComputeElementEdgeDihedralWeight(
+                el, v0_id, v1_id, elem_verts);
+            if (w <= 0.0) { continue; }
+
+            const mfem::IntegrationRule *ref_verts =
+                mfem::Geometries.GetVertices(mesh_.GetElementGeometry(el));
+            if (!ref_verts ||
+                local_v0 >= ref_verts->GetNPoints() ||
+                local_v1 >= ref_verts->GetNPoints())
+            {
+               continue;
+            }
+
+            mesh_.GetElementTransformation(el, &eltrans);
+
+            // Evaluate at v0
+            const mfem::IntegrationPoint &ip0 = ref_verts->IntPoint(local_v0);
+            eltrans.SetIntPoint(&ip0);
+            u_gf.GetVectorValue(eltrans, ip0, vel_local);
+            for (int d = 0; d < dim_; ++d) { acc_v0[d] += w * vel_local[d]; }
+
+            // Evaluate at midpoint in reference coordinates
+            mfem::IntegrationPoint ip_mid;
+            ip_mid.Set3(0.5 * (ip0.x + ref_verts->IntPoint(local_v1).x),
+                        0.5 * (ip0.y + ref_verts->IntPoint(local_v1).y),
+                        0.5 * (ip0.z + ref_verts->IntPoint(local_v1).z));
+            eltrans.SetIntPoint(&ip_mid);
+            u_gf.GetVectorValue(eltrans, ip_mid, vel_local);
+            for (int d = 0; d < dim_; ++d) { acc_mid[d] += w * vel_local[d]; }
+
+            // Evaluate at v1
+            const mfem::IntegrationPoint &ip1 = ref_verts->IntPoint(local_v1);
+            eltrans.SetIntPoint(&ip1);
+            u_gf.GetVectorValue(eltrans, ip1, vel_local);
+            for (int d = 0; d < dim_; ++d) { acc_v1[d] += w * vel_local[d]; }
+
+            total_w += w;
+         }
+
+         if (total_w > 0.0)
+         {
+            const double inv_w = 1.0 / total_w;
+            for (int d = 0; d < dim_; ++d)
+            {
+               edge_vel(e, d)           = acc_v0[d] * inv_w;
+               edge_vel(e, dim_ + d)    = acc_mid[d] * inv_w;
+               edge_vel(e, 2*dim_ + d)  = acc_v1[d] * inv_w;
+            }
+         }
+         else if (ne > 0)
+         {
+            // Fallback: single-element evaluation
+            const int el = elems[0];
+            mesh_.GetElementVertices(el, elem_verts);
+            int local_v0 = -1, local_v1 = -1;
+            for (int li = 0; li < elem_verts.Size(); ++li)
+            {
+               if (elem_verts[li] == v0_id) { local_v0 = li; }
+               if (elem_verts[li] == v1_id) { local_v1 = li; }
+            }
+            if (local_v0 >= 0 && local_v1 >= 0)
+            {
+               const mfem::IntegrationRule *ref_verts =
+                   mfem::Geometries.GetVertices(mesh_.GetElementGeometry(el));
+               mesh_.GetElementTransformation(el, &eltrans);
+               const mfem::IntegrationPoint &ip0 = ref_verts->IntPoint(local_v0);
+               eltrans.SetIntPoint(&ip0);
+               u_gf.GetVectorValue(eltrans, ip0, vel_local);
+               for (int d = 0; d < dim_; ++d) { edge_vel(e, d) = vel_local[d]; }
+
+               mfem::IntegrationPoint ip_mid;
+               ip_mid.Set3(0.5 * (ip0.x + ref_verts->IntPoint(local_v1).x),
+                           0.5 * (ip0.y + ref_verts->IntPoint(local_v1).y),
+                           0.5 * (ip0.z + ref_verts->IntPoint(local_v1).z));
+               eltrans.SetIntPoint(&ip_mid);
+               u_gf.GetVectorValue(eltrans, ip_mid, vel_local);
+               for (int d = 0; d < dim_; ++d) { edge_vel(e, dim_ + d) = vel_local[d]; }
+
+               const mfem::IntegrationPoint &ip1 = ref_verts->IntPoint(local_v1);
+               eltrans.SetIntPoint(&ip1);
+               u_gf.GetVectorValue(eltrans, ip1, vel_local);
+               for (int d = 0; d < dim_; ++d) { edge_vel(e, 2*dim_ + d) = vel_local[d]; }
+            }
+         }
+      }
+   }
+
+   /// Build (or retrieve cached) vertex-pair → edge index lookup.
+   /// Call once; subsequent calls return the same map.
+   const std::unordered_map<int64_t, int> &GetVertexPairToEdgeMap()
+   {
+      if (vp2edge_.empty())
+      {
+         mfem::Array<int> everts;
+         const int nv = mesh_.GetNV();
+         for (int e = 0; e < mesh_.GetNEdges(); ++e)
+         {
+            mesh_.GetEdgeVertices(e, everts);
+            int a = everts[0], b = everts[1];
+            if (a > b) { std::swap(a, b); }
+            int64_t key = static_cast<int64_t>(a) * nv + b;
+            vp2edge_[key] = e;
+         }
+      }
+      return vp2edge_;
+   }
+
+   /// Get global edge index for vertex pair (ga, gb).  Returns -1 if missing.
+   int FindGlobalEdge(int ga, int gb)
+   {
+      const auto &map = GetVertexPairToEdgeMap();
+      int a = ga, b = gb;
+      if (a > b) { std::swap(a, b); }
+      int64_t key = static_cast<int64_t>(a) * mesh_.GetNV() + b;
+      auto it = map.find(key);
+      return (it != map.end()) ? it->second : -1;
+   }
+
+   /// Access mesh for edge-vertex lookups.
+   const mfem::Mesh &GetMesh() const { return mesh_; }
+
    /// Trace a point backward along the characteristic curve by time dt.
    /// @a order = 1: explicit Euler,  d = x - dt * u(x, t).
    /// @a order = 2: Heun's method,
@@ -1243,6 +1408,7 @@ private:
       }
    }
 
+private:
    static double ThreadCPUSeconds()
    {
       struct timespec ts;
@@ -1488,6 +1654,7 @@ private:
    GaussLegendreRule<N_gauss> gl_rule_;
    mfem::Table edge_to_elems_;
    std::vector<int> face_bdr_attr_;  ///< face index → boundary attribute (0=interior)
+   std::unordered_map<int64_t, int> vp2edge_;  ///< vertex-pair → edge index
 };
 
 #endif // SEMI_LAGRANGIAN_ADVECTION_H
