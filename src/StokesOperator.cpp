@@ -150,18 +150,20 @@ void StokesNitscheOperator::initNitsche(
 StokesNitscheOperator::StokesNitscheOperator(
     std::shared_ptr<mfem::Mesh> mesh_ptr,
     const double                tau,
+    const double                nu,
     const unsigned              order,
     const double                theta,
     const double                penalty,
     const double                factor,
     const MassLumping           ml)
-    : mfem::Operator(), tau_(tau), order_(order), mesh_(mesh_ptr), ml_(ml)
+    : mfem::Operator(), tau_(tau), order_(order), nu_(nu),
+      mesh_(mesh_ptr), ml_(ml)
 {
     initFESpaces();
     initIncidence();
     initMass();
     initLumpedMass();
-    initNitsche(theta, penalty, factor);
+    initNitsche(theta, penalty, factor * nu);
 
     offsets_.SetSize(3);
     offsets_[0] = 0;
@@ -176,6 +178,7 @@ StokesNitscheOperator::StokesNitscheOperator(
 std::unique_ptr<mfem::SparseMatrix>
 StokesNitscheOperator::getFullGalerkinSystem() const
 {
+    mfem::ConstantCoefficient visc(nu_);
     mfem::ConstantCoefficient one(1.0);
     const int                 nv = h1_space_->GetNDofs();
     const int                 ne = hcurl_space_->GetNDofs();
@@ -201,7 +204,7 @@ StokesNitscheOperator::getFullGalerkinSystem() const
     // CurlCurl Block + Nitsche + Mass (Time-stepping)
     {
         auto cc = std::make_unique<mfem::BilinearForm>(hcurl_space_.get());
-        cc->AddDomainIntegrator(new mfem::CurlCurlIntegrator(one));
+        cc->AddDomainIntegrator(new mfem::CurlCurlIntegrator(visc));
         cc->Assemble();
         cc->Finalize();
 
@@ -232,7 +235,6 @@ StokesNitscheOperator::getFullGalerkinSystem() const
 
     mfem::Vector mass_x_ones(nv);
 
-    // Mult works perfectly with both Partial and Full assembly!
     mass_h1_->Mult(ones, mass_x_ones);
 
     mean.AddRow(0, cols, mass_x_ones);
@@ -280,6 +282,8 @@ std::unique_ptr<mfem::SparseMatrix> StokesNitscheOperator::getFullDECSystem()
 
         auto product =
             std::unique_ptr<mfem::SparseMatrix>(mfem::Mult(*d1T, *tmp));
+        // Multiply by viscosity (at some point before adding nitsche)
+        *product *= nu_;
 
         curlcurl = std::unique_ptr<mfem::SparseMatrix>(
             mfem::Add(*product, nitsche_->SpMat()));
@@ -404,6 +408,9 @@ void StokesNitscheOperator::MultDEC(const mfem::Vector& x, mfem::Vector& y)
 
     // Curl-Curl part
     d1_.Mult(x_u, tmp_du);
+    // Mult with visc before adding nitsche
+    tmp_du *= nu_;
+
     tmp_du *= mass_hdiv_or_l2_lumped_;
     d1_.MultTranspose(tmp_du, y_u);
 
@@ -449,6 +456,8 @@ void StokesNitscheOperator::MultGalerkin(const mfem::Vector& x, mfem::Vector& y)
     d1_.Mult(x_u, tmp_du);
     mass_hdiv_or_l2_->Mult(tmp_du, tmp_mdu);
     d1_.MultTranspose(tmp_mdu, y_u);
+
+    y_u *= nu_;
 
     // Gradient Term
     d0_.Mult(x_p, tmp_u);

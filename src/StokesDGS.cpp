@@ -71,6 +71,7 @@ void StokesNitscheDGS::initTransformedSystem()
             product =
                 std::unique_ptr<mfem::SparseMatrix>(mfem::Mult(*d1T, *tmp));
         }
+        *product *= op_->getVisc();
 
         curlcurl_nitsche = std::unique_ptr<mfem::SparseMatrix>(
             mfem::Add(*product, op_->getNitsche().SpMat()));

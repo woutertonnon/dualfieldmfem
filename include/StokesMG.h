@@ -44,6 +44,7 @@ public:
     StokesMG(
         std::shared_ptr<mfem::Mesh> coarse_mesh,
         const double                tau     = 0.0,
+        const double                nu      = 1.0,
         const double                theta   = 1,
         const double                penalty = -1,
         const double                factor  = 1,
@@ -158,7 +159,7 @@ private:
 #endif
 
     double             tau_;
-    const double       theta_, penalty_, factor_, penalty_bound_coarse_;
+    const double       theta_, penalty_, factor_, penalty_bound_coarse_, nu_;
     const MassLumping  ml_;
     const SmootherType st_;
     unsigned           order_ = 1;

@@ -16,9 +16,8 @@ void testResidualComp(const unsigned n,
         mfem::Mesh::MakeCartesian3D(n, n, n, el_type)
     );
 
-    // Added tau = 0.0
     auto op_ptr = std::make_shared<StokesNitsche::StokesNitscheOperator>(
-        mesh_ptr, 0.0, p, theta, penalty, factor
+        mesh_ptr, 0.0, 1, p, theta, penalty, factor
     );
 
     op_ptr->setOperatorMode(StokesNitsche::OperatorMode::DEC);
@@ -82,7 +81,7 @@ void testConvergence(const unsigned n,
 
     // Added tau = 0.0
     auto op_ptr = std::make_shared<StokesNitsche::StokesNitscheOperator>(
-        mesh_ptr, 0.0, p, theta, penalty, factor
+        mesh_ptr, 0.0, 1, p, theta, penalty, factor
     );
 
     op_ptr->setOperatorMode(StokesNitsche::OperatorMode::DEC);

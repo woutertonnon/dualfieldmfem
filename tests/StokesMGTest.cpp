@@ -5,6 +5,9 @@
 #include "StokesOperator.h"
 #include "StokesMG.h"
 
+#define nu 0.01
+#define tau 10.0
+
 // Helper function that tests both V-Cycle convergence and GMRES preconditioning.
 // 1. Sets up the MG hierarchy.
 // 2. Runs a standalone V-Cycle convergence test.
@@ -21,7 +24,7 @@ void RunStokesMGTest(std::shared_ptr<mfem::Mesh> mesh_ptr,
 #endif
     // 1. Initialize MG Solver & Hierarchy
     // Added tau = 0.0
-    StokesNitsche::StokesMG mg(mesh_ptr, 0.0, 1.0, 10.0);
+    StokesNitsche::StokesMG mg(mesh_ptr, tau, nu, 1.0, 10.0);
 
     for (int i = 0; i < geomref; ++i)
         mg.addRefinement();

@@ -32,6 +32,7 @@ public:
     StokesNitscheOperator(
         std::shared_ptr<mfem::Mesh> mesh_ptr,
         const double                tau,
+        const double                nu,
         const unsigned              order,
         const double                theta,
         const double                penalty,
@@ -48,6 +49,8 @@ public:
 
     double getTau() const { return tau_; }
     void setTau(const double tau) { tau_ = tau; }
+
+    double getVisc() const { return nu_; }
     
     const mfem::SparseMatrix& getD0() const { return d0_; }
     const mfem::SparseMatrix& getD1() const { return d1_; }
@@ -120,6 +123,7 @@ private:
 
     std::shared_ptr<mfem::Mesh> mesh_;
     const unsigned              order_;
+    const double                nu_;
     double                      tau_ = 0.0;
     const MassLumping           ml_;
     mfem::Array<int>            offsets_;

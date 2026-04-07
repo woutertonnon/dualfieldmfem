@@ -21,7 +21,7 @@ TEST(StokesOperatorTest, MatrixRegularityGalerkinP1)
             std::move(mesh)
         );
     // Added tau = 0.0
-    StokesNitscheOperator op(mesh_ptr, 0.0, p,
+    StokesNitscheOperator op(mesh_ptr, 0.0, 1, p,
                              theta, penalty, factor);
 
     ASSERT_EQ(op.getOperatorMode(), OperatorMode::Galerkin);
@@ -58,7 +58,7 @@ TEST(StokesOperatorTest, MatrixRegularityDECP1)
             std::move(mesh)
         );
     // Added tau = 0.0
-    StokesNitscheOperator op(mesh_ptr, 0.0, p,
+    StokesNitscheOperator op(mesh_ptr, 0.0, 1, p,
                              theta, penalty, factor,
                              MassLumping::Diagonal);
 
@@ -98,7 +98,7 @@ TEST(StokesOperatorTest, MatrixRegularityGalerkinP2)
         std::move(mesh)
     );
     // Added tau = 0.0
-    StokesNitscheOperator op(mesh_ptr, 0.0, p,
+    StokesNitscheOperator op(mesh_ptr, 0.0, 1, p,
                              theta, penalty, factor);
 
     ASSERT_EQ(op.getOperatorMode(), OperatorMode::Galerkin);
@@ -135,7 +135,7 @@ TEST(StokesOperatorTest, MatrixRegularityDECP2)
         std::move(mesh)
     );
     // Added tau = 0.0
-    StokesNitscheOperator op(mesh_ptr, 0.0, p,
+    StokesNitscheOperator op(mesh_ptr, 0.0, 1, p,
                              theta, penalty, factor,
                              MassLumping::Diagonal);
 
@@ -174,7 +174,7 @@ TEST(StokesOperatorTest, OperatorGalerkinP1)
             std::move(mesh)
         );
     // Added tau = 0.0
-    StokesNitscheOperator op(mesh_ptr, 0.0, p,
+    StokesNitscheOperator op(mesh_ptr, 0.0, 1, p,
                              theta, penalty, factor);
 
     const int nv = op.getH1Space().GetNDofs(),
@@ -220,7 +220,7 @@ TEST(StokesOperatorTest, OperatorDECP1)
             std::move(mesh)
         );
     // Added tau = 0.0
-    StokesNitscheOperator op(mesh_ptr, 0.0, p,
+    StokesNitscheOperator op(mesh_ptr, 0.0, 1, p,
                              theta, penalty, factor,
                              MassLumping::Diagonal);
     op.setOperatorMode(StokesNitsche::OperatorMode::DEC);
@@ -268,7 +268,7 @@ TEST(StokesOperatorTest, OperatorGalerkinP2)
         std::move(mesh)
     );
     // Added tau = 0.0
-    StokesNitscheOperator op(mesh_ptr, 0.0, p,
+    StokesNitscheOperator op(mesh_ptr, 0.0, 1, p,
                              theta, penalty, factor);
 
     const int nv = op.getH1Space().GetNDofs(),
@@ -314,7 +314,7 @@ TEST(StokesOperatorTest, OperatorDECP2)
         std::move(mesh)
     );
     // Added tau = 0.0
-    StokesNitscheOperator op(mesh_ptr, 0.0, p,
+    StokesNitscheOperator op(mesh_ptr, 0.0, 1, p,
                              theta, penalty, factor,
                              MassLumping::Diagonal);
     op.setOperatorMode(StokesNitsche::OperatorMode::DEC);
