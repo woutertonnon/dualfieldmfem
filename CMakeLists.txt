@@ -39,9 +39,9 @@ else()
 endif()
 
 
-
 add_subdirectory(extern)
 add_subdirectory(apps)
+add_subdirectory(src)
 
 if(BUILD_TESTING)
   add_subdirectory(tests)
