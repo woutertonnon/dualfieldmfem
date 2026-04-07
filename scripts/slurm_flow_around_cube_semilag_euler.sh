@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=flowcube-semilag
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=04:00:00
 #SBATCH --mem-per-cpu=4096
@@ -9,19 +9,26 @@
 set -euo pipefail
 
 # Run the flow-around-cube semi-Lagrangian case on Euler in one Slurm job.
+# Supports both the serial and MPI executables (hybrid MPI+OpenMP).
 #
-# Submit:
+# Submit (serial, default):
 #   sbatch scripts/slurm_flow_around_cube_semilag_euler.sh
 #
-# Useful overrides:
-#   sbatch --cpus-per-task=16 --time=24:00:00 \
-#     --export=ALL,THREADS=16,SCHEDULE_POLICY=dynamic,64 \
+# Submit (MPI, 2 nodes x 8 threads):
+#   sbatch --nodes=2 --ntasks-per-node=1 --cpus-per-task=8 \
+#     --export=ALL,USE_MPI=1 \
+#     scripts/slurm_flow_around_cube_semilag_euler.sh
+#
+# Submit (MPI, 4 ranks on 1 node x 4 threads each):
+#   sbatch --nodes=1 --ntasks-per-node=4 --cpus-per-task=4 \
+#     --export=ALL,USE_MPI=1 \
 #     scripts/slurm_flow_around_cube_semilag_euler.sh
 #
 # Environment overrides:
-#   EXE                  solver executable path
+#   USE_MPI              set 1 to use the MPI executable (default: 0 = serial)
+#   EXE                  solver executable path (auto-selected based on USE_MPI)
 #   BASE_CONFIG          base JSON config path
-#   THREADS              OpenMP thread count (default: SLURM_CPUS_PER_TASK)
+#   THREADS              OpenMP threads per rank (default: SLURM_CPUS_PER_TASK)
 #   SCHEDULE_POLICY      OMP_SCHEDULE (default: dynamic,64)
 #   PROC_BIND_POLICY     OMP_PROC_BIND (default: close)
 #   PLACES_POLICY        OMP_PLACES (default: cores)
@@ -38,7 +45,14 @@ else
 fi
 cd "$ROOT_DIR"
 
-EXE="${EXE:-./build/semilagrangian_navierstokes_nitsche}"
+USE_MPI="${USE_MPI:-0}"
+if [[ "$USE_MPI" == "1" ]]; then
+    EXE="${EXE:-./build/semilagrangian_navierstokes_nitsche_mpi}"
+    BUILD_TARGET="semilagrangian_navierstokes_nitsche_mpi"
+else
+    EXE="${EXE:-./build/semilagrangian_navierstokes_nitsche}"
+    BUILD_TARGET="semilagrangian_navierstokes_nitsche"
+fi
 BASE_CONFIG="${BASE_CONFIG:-data/config/FlowAroundCubeSemiLag/FlowAroundCubeSemiLag_outer100_cube000_order1_ref0.json}"
 
 THREADS="${THREADS:-${SLURM_CPUS_PER_TASK:-8}}"
@@ -48,6 +62,9 @@ PLACES_POLICY="${PLACES_POLICY:-cores}"
 DYNAMIC_POLICY="${DYNAMIC_POLICY:-false}"
 
 BUILD_BINARY="${BUILD_BINARY:-0}"
+
+NRANKS="${SLURM_NTASKS:-1}"
+NNODES="${SLURM_NNODES:-1}"
 
 if [[ ! -x "$EXE" ]]; then
     echo "[warn] Executable not found: $EXE"
@@ -69,7 +86,7 @@ if [[ "$BUILD_BINARY" == "1" ]]; then
         cmake -S . -B build
     fi
     echo "[info] Building solver binary..."
-    cmake --build build --target semilagrangian_navierstokes_nitsche -j"${SLURM_CPUS_PER_TASK:-8}"
+    cmake --build build --target "$BUILD_TARGET" -j"${SLURM_CPUS_PER_TASK:-8}"
 fi
 
 if [[ ! -x "$EXE" ]]; then
@@ -106,18 +123,31 @@ LOG_FILE="$LOG_DIR/run_${JOB_TAG}.log"
 
 echo "[info] Root:            $ROOT_DIR"
 echo "[info] Executable:      $EXE"
+echo "[info] Mode:            $(if [[ "$USE_MPI" == "1" ]]; then echo "MPI+OpenMP (hybrid)"; else echo "OpenMP (serial)"; fi)"
 echo "[info] Base config:     $BASE_CONFIG"
 echo "[info] Runtime config:  $RUNTIME_CFG"
-echo "[info] Threads:         $THREADS"
+if [[ "$USE_MPI" == "1" ]]; then
+    echo "[info] Nodes:           $NNODES"
+    echo "[info] MPI ranks:       $NRANKS"
+fi
+echo "[info] Threads/rank:    $THREADS"
 echo "[info] OMP schedule:    $SCHEDULE_POLICY"
 echo "[info] OMP places:      $PLACES_POLICY"
 echo "[info] OMP proc bind:   $PROC_BIND_POLICY"
 echo "[info] Output prefix:   out/data/${out_rel}"
 echo "[info] Log file:        $LOG_FILE"
 
-launcher=()
-if [[ -n "${SLURM_JOB_ID:-}" ]] && command -v srun >/dev/null 2>&1; then
-    launcher=(srun --cpu-bind=cores)
+if [[ "$USE_MPI" == "1" ]]; then
+    # Hybrid MPI+OpenMP launch via srun
+    launcher=(srun
+        --ntasks="$NRANKS"
+        --cpus-per-task="$THREADS"
+        --cpu-bind=cores)
+else
+    launcher=()
+    if [[ -n "${SLURM_JOB_ID:-}" ]] && command -v srun >/dev/null 2>&1; then
+        launcher=(srun --cpu-bind=cores)
+    fi
 fi
 
 set +e
