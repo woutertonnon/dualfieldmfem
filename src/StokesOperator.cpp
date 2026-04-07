@@ -129,7 +129,7 @@ void StokesNitscheOperator::initLumpedMass()
             break;
         }
         default:
-            std::unreachable();
+            throw std::runtime_error("Unreachable!");
     }
 }
 

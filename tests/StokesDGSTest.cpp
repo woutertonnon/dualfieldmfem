@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "mfem.hpp"
-#include "StokesDGS.hpp"
-#include "StokesOperator.hpp"
+#include "StokesDGS.h"
+#include "StokesOperator.h"
 
 void testResidualComp(const unsigned n,
                       const unsigned p,

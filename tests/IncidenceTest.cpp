@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "mfem.hpp"
-#include "incidence.hpp"
+#include "incidence.h"
 
 void runIncidenceTest(mfem::Mesh& mesh,
                       const unsigned order = 1)

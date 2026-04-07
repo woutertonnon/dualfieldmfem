@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
 #include <iomanip>
 #include "mfem.hpp"
-#include "StokesDGS.hpp"
-#include "StokesOperator.hpp"
-#include "StokesMG.hpp"
+#include "StokesDGS.h"
+#include "StokesOperator.h"
+#include "StokesMG.h"
 
 // Helper function that tests both V-Cycle convergence and GMRES preconditioning.
 // 1. Sets up the MG hierarchy.

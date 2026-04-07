@@ -22,7 +22,7 @@ target_include_directories(dualfield_project_options
     "/usr/include/suitesparse"   # consider making this a find_package later
 )
 
-target_compile_features(dualfield_project_options INTERFACE cxx_std_17) # Same as MFEM
+target_compile_features(dualfield_project_options INTERFACE cxx_std_23) # Same as MFEM
 
 # Boost usage requirements (modern: prefer imported targets if available)
 # If your Boost provides Boost::program_options, Boost::filesystem targets, use them:

@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include "mfem.hpp"
-#include "StokesOperator.hpp"
+#include "StokesOperator.h"
 
 using namespace StokesNitsche;
 

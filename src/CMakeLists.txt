@@ -1,4 +1,6 @@
 # --- Base Libraries ---
+include_directories(../include)
+
 add_library(incidence incidence.cpp)
 target_link_libraries(incidence PUBLIC mfem)
 
