@@ -14,6 +14,7 @@
 #include "io.h"
 #include "StokesOperators.h"
 #include "SemiLagrangianAdvection.h"
+#include "StokesMG.h"
 
 using namespace mfem;
 using namespace std;
@@ -86,7 +87,7 @@ int main(int argc, char *argv[])
     std::string mesh_string = config.get_mesh();
     std::string output_file = config.get_outputfile();
     double theta = 1.;
-    double Cw = 100.;
+    double Cw = 40.;
     double dt = config.get_dt();
     double T = config.get_T();
     int trace_order = config.get_value<int>("trace_order", 1);
@@ -149,18 +150,33 @@ int main(int argc, char *argv[])
         settls_iterations = 1;
     }
 
-    // ---- Mesh and FE spaces ----
-    Mesh mesh(mesh_string.c_str(), 1, 1);
+
+
+    
+
+        // ---- Mesh and FE spaces ----
+    auto mesh_ptr = std::make_shared<mfem::Mesh>(mesh_string.c_str(), 1, 1);
+    StokesNitsche::StokesMG mg_solver(mesh_ptr, 1./dt,
+        theta, Cw);
+    mg_solver.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);
+    mg_solver.setIterativeMode(false);
+    mg_solver.setCycleType(StokesNitsche::MGCycleType::VCycle);
+    mg_solver.setSmoothIterations(1, 1);
     for (int l = 0; l < refinements; l++)
     {
-        mesh.UniformRefinement();
+        mg_solver.addRefinement();
     }
-    int dim = mesh.Dimension();
+    int dim = mesh_ptr->Dimension();
+
+
+    StokesNitsche::StokesNitscheOperator& op =
+            *const_cast<StokesNitsche::StokesNitscheOperator*>(&mg_solver.getFinestOperator());
+    op.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);
 
     mfem::FiniteElementCollection *fec_ND = new mfem::ND_FECollection(order, dim);
     mfem::FiniteElementCollection *fec_CG = new mfem::H1_FECollection(order, dim);
-    mfem::FiniteElementSpace ND(&mesh, fec_ND);
-    mfem::FiniteElementSpace CG(&mesh, fec_CG);
+    mfem::FiniteElementSpace ND(&op.getMesh(), fec_ND);
+    mfem::FiniteElementSpace CG(&op.getMesh(), fec_CG);
 
     int num_it = 0;
 
@@ -169,7 +185,7 @@ int main(int argc, char *argv[])
     const mfem::Array<int> *lid_marker_ptr = nullptr;
     if (config.has_lid_attributes())
     {
-        lid_marker = config.get_lid_marker(mesh.bdr_attributes.Max());
+        lid_marker = config.get_lid_marker(mesh_ptr->bdr_attributes.Max());
         lid_marker_ptr = &lid_marker;
     }
 
@@ -197,19 +213,19 @@ int main(int argc, char *argv[])
 
     // Velocity function: evaluate current velocity GridFunction at arbitrary
     // physical points via BFS element search.
-    auto velocity_func = [&mesh, &u_gf = x.get_u(), dim](
+    auto velocity_func = [mesh_ptr, &u_gf = x.get_u(), dim](
         const mfem::Vector &pt, double, int start_elem_hint, mfem::Vector &v) {
         v.SetSize(dim);
         mfem::IntegrationPoint ip;
-        int elem = FindElementBFS(mesh, start_elem_hint, pt, ip);
+        int elem = FindElementBFS(*mesh_ptr, start_elem_hint, pt, ip);
         if (elem < 0 && start_elem_hint != 0)
         {
-            elem = FindElementBFS(mesh, 0, pt, ip);
+            elem = FindElementBFS(*mesh_ptr, 0, pt, ip);
         }
         if (elem >= 0)
         {
             mfem::IsoparametricTransformation eltrans;
-            mesh.GetElementTransformation(elem, &eltrans);
+            mesh_ptr->GetElementTransformation(elem, &eltrans);
             eltrans.SetIntPoint(&ip);
             u_gf.GetVectorValue(eltrans, ip, v);
         }
@@ -220,19 +236,19 @@ int main(int argc, char *argv[])
     };
 
     SemiLagrangianAdvection1Form<1>::VelocityFunc velocity_prev_func =
-        [&mesh, &u_gf = u_prev, dim](
+        [mesh_ptr, &u_gf = u_prev, dim](
         const mfem::Vector &pt, double, int start_elem_hint, mfem::Vector &v) {
         v.SetSize(dim);
         mfem::IntegrationPoint ip;
-        int elem = FindElementBFS(mesh, start_elem_hint, pt, ip);
+        int elem = FindElementBFS(*mesh_ptr, start_elem_hint, pt, ip);
         if (elem < 0 && start_elem_hint != 0)
         {
-            elem = FindElementBFS(mesh, 0, pt, ip);
+            elem = FindElementBFS(*mesh_ptr, 0, pt, ip);
         }
         if (elem >= 0)
         {
             mfem::IsoparametricTransformation eltrans;
-            mesh.GetElementTransformation(elem, &eltrans);
+            mesh_ptr->GetElementTransformation(elem, &eltrans);
             eltrans.SetIntPoint(&ip);
             u_gf.GetVectorValue(eltrans, ip, v);
         }
@@ -278,7 +294,7 @@ int main(int argc, char *argv[])
     solv.SetPrintLevel(0);
 
     // ---- ParaView output ----
-    mfem::ParaViewDataCollection vtk_dc("./out/paraview/" + output_file, &mesh);
+    mfem::ParaViewDataCollection vtk_dc("./out/paraview/" + output_file, mesh_ptr.get());
     if (visualisation > 0)
     {
         vtk_dc.RegisterField("u1", &x.get_u());
@@ -380,6 +396,16 @@ int main(int argc, char *argv[])
 
     print_progress(0, 0.0);
 
+
+
+    mfem::FGMRESSolver gmres;
+    gmres.SetAbsTol(1e-12);
+    gmres.SetRelTol(1e-6);
+    gmres.SetMaxIter(500);
+    gmres.SetPrintLevel(1);
+    gmres.SetOperator(op);
+    gmres.SetPreconditioner(mg_solver);
+    gmres.SetKDim(128);
     // ---- Time loop ----
     for (t = dt, cycle = 1; t < T + tol; t += dt, cycle++)
     {
@@ -433,11 +459,13 @@ int main(int argc, char *argv[])
 
         // 3. Solve linear system
         auto solve_start = std::chrono::steady_clock::now();
-        solv.Mult(rhs, x);
+
+        gmres.Mult(rhs, x);
+        op.eliminateConstants(x);
         solve_time_s = std::chrono::duration<double>(
                            std::chrono::steady_clock::now() - solve_start)
                            .count();
-        num_it = solv.GetNumIterations();
+        num_it = gmres.GetNumIterations();
 
         // Update previous-step velocity history for SETTLS.
         u_prev = u_n_snapshot;
