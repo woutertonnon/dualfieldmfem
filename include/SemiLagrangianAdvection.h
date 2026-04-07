@@ -156,14 +156,17 @@ public:
               SemiLagrangianStepStats *step_stats = nullptr,
               const VelocityFunc *velocity_prev = nullptr,
               int settls_iterations = 2,
-              int vertex_velocity_mode = kSingleElement)
+              int vertex_velocity_mode = kSingleElement,
+              int edge_start = 0,
+              int edge_end = -1)
    {
       if (step_stats) { step_stats->Reset(); }
       mfem::Vector dofs_pulled(fes_.GetNDofs());
       ComputePullbackDOFs(velocity, boundary, t, dt,
                           omega_old, dofs_pulled, trace_order, step_stats,
                           velocity_prev, settls_iterations,
-                          vertex_velocity_mode);
+                          vertex_velocity_mode,
+                          edge_start, edge_end);
 
       for (int i = 0; i < fes_.GetNDofs(); ++i)
       {
@@ -1420,7 +1423,8 @@ private:
              1e-9 * static_cast<double>(ts.tv_nsec);
    }
 
-   /// Compute the pullback DOF values for all edges.
+   /// Compute the pullback DOF values for edges in [edge_start, edge_end).
+   /// Default values (0, -1) process all edges (backward compatible).
    void ComputePullbackDOFs(const VelocityFunc &velocity,
                             const BoundaryFunc &boundary,
                             double t, double dt,
@@ -1430,9 +1434,12 @@ private:
                             SemiLagrangianStepStats *step_stats,
                             const VelocityFunc *velocity_prev,
                             int settls_iterations,
-                            int vertex_velocity_mode)
+                            int vertex_velocity_mode,
+                            int edge_start = 0,
+                            int edge_end = -1)
    {
       const int n_edges = mesh_.GetNEdges();
+      if (edge_end < 0) edge_end = n_edges;
       double t_departure = t - dt;
       const bool collect_breakdown =
           (step_stats != nullptr && step_stats->enable_breakdown);
@@ -1496,7 +1503,7 @@ private:
          long long local_edge_count = 0;
 
 #pragma omp for schedule(runtime)
-         for (int e = 0; e < n_edges; ++e)
+         for (int e = edge_start; e < edge_end; ++e)
          {
             // Get edge vertices (v0 < v1 in MFEM convention)
             mesh_.GetEdgeVertices(e, verts);

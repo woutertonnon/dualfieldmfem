@@ -32,6 +32,25 @@ target_link_libraries(stokes_tests PRIVATE GTest::gtest GTest::gtest_main)
 
 add_test(NAME stokes_tests COMMAND stokes_tests)
 
+# MPI semi-Lagrangian tests (separate executable with custom main)
+add_executable(semilag_mpi_tests
+  SemiLagrangianMPITests.cpp
+)
+target_link_libraries(semilag_mpi_tests
+  PRIVATE
+    mfem
+    boundaryoperatorslib
+    MPI::MPI_CXX
+    OpenMP::OpenMP_CXX
+    Threads::Threads
+    dualfield_project_options
+    GTest::gtest
+)
+# Run with 1, 2, and 4 MPI ranks
+add_test(NAME semilag_mpi_np1 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 $<TARGET_FILE:semilag_mpi_tests>)
+add_test(NAME semilag_mpi_np2 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:semilag_mpi_tests>)
+add_test(NAME semilag_mpi_np4 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:semilag_mpi_tests>)
+
 add_test(
   NAME dualfield_smoke_umfpack
   COMMAND $<TARGET_FILE:dualfieldnavierstokes_nitsche>

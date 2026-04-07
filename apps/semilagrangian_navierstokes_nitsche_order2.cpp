@@ -98,6 +98,21 @@ int main(int argc, char *argv[])
         trace_order = 1;
     }
 
+    // Velocity evaluation mode for characteristic tracing:
+    //   "none"           — raw ND₂ GridFunction evaluation (no averaging)
+    //   "dihedral"       — dihedral-angle-weighted averaging at arrival points
+    //   "cg_projection"  — L²-project ND₂ → CG² for a globally continuous velocity
+    std::string velocity_mode =
+        config.get_value<std::string>("velocity_mode", "dihedral");
+    for (char &ch : velocity_mode)
+    {
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    const bool use_dihedral = (velocity_mode == "dihedral");
+    const bool use_cg_proj  = (velocity_mode == "cg_projection" ||
+                               velocity_mode == "cg_proj" ||
+                               velocity_mode == "cg");
+
     // ---- Mesh and FE spaces (order 2) ----
     Mesh mesh(mesh_string.c_str(), 1, 1);
     for (int l = 0; l < refinements; l++)
@@ -114,6 +129,46 @@ int main(int argc, char *argv[])
 
     int num_it = 0;
 
+    // ---- CG projection velocity field (optional) ----
+    // Vector-valued H¹ space for globally continuous velocity.
+    mfem::FiniteElementCollection *fec_VCG = nullptr;
+    mfem::FiniteElementSpace *VCG = nullptr;
+    mfem::GridFunction *u_cg = nullptr;
+    mfem::BilinearForm *mass_cg = nullptr;
+    mfem::CGSolver *cg_solver = nullptr;
+    if (use_cg_proj)
+    {
+        fec_VCG = new mfem::H1_FECollection(order, dim);
+        VCG = new mfem::FiniteElementSpace(&mesh, fec_VCG, dim);
+        u_cg = new mfem::GridFunction(VCG);
+        *u_cg = 0.0;
+
+        mass_cg = new mfem::BilinearForm(VCG);
+        mass_cg->AddDomainIntegrator(new mfem::VectorMassIntegrator);
+        mass_cg->Assemble();
+        mass_cg->Finalize();
+
+        cg_solver = new mfem::CGSolver;
+        cg_solver->SetOperator(mass_cg->SpMat());
+        cg_solver->SetRelTol(1e-12);
+        cg_solver->SetAbsTol(1e-15);
+        cg_solver->SetMaxIter(200);
+        cg_solver->SetPrintLevel(0);
+    }
+
+    // Helper: L²-project an ND₂ GridFunction onto the vector CG space.
+    auto project_to_cg = [&](const mfem::GridFunction &u_nd) {
+        if (!use_cg_proj) { return; }
+        // RHS = (u_nd, φ_CG)_{L²}
+        mfem::LinearForm rhs_cg(VCG);
+        mfem::VectorGridFunctionCoefficient u_coeff(
+            const_cast<mfem::GridFunction *>(&u_nd));
+        rhs_cg.AddDomainIntegrator(
+            new mfem::VectorDomainLFIntegrator(u_coeff));
+        rhs_cg.Assemble();
+        cg_solver->Mult(rhs_cg, *u_cg);
+    };
+
     std::cout << "Second-order semi-Lagrangian Navier-Stokes (Eq. 34)\n"
               << "  dim=" << dim << ", order=" << order
               << ", ND DOFs=" << ND.GetNDofs()
@@ -121,7 +176,8 @@ int main(int argc, char *argv[])
               << ", elements=" << mesh.GetNE()
               << ", dt=" << dt << ", T=" << T
               << ", viscosity=" << viscosity
-              << ", trace_order=" << trace_order << std::endl;
+              << ", trace_order=" << trace_order
+              << ", velocity_mode=" << velocity_mode << std::endl;
 
     // ---- Boundary attribute marker (optional) ----
     mfem::Array<int> lid_marker;
@@ -164,15 +220,12 @@ int main(int argc, char *argv[])
     // Save ω⁰ so BDF2 can use it as ω^{n-2} in the second timestep
     omega_nm1 = x.get_u();
 
-    // Direct grid function evaluation for Heun corrector step.
-    // Dihedral averaging at arrival points is handled internally by
-    // the advection operator; this callback is only used at predicted
-    // departure points (typically interior to an element).
-    auto velocity_func = [&mesh, &x](
+    // Velocity callback for characteristic tracing (Heun corrector).
+    // In CG projection mode, evaluates the smooth CG field instead of ND₂.
+    auto velocity_func = [&mesh, &x, &u_cg, use_cg_proj](
         const mfem::Vector &pt, double t, int start_elem_hint, mfem::Vector &v) {
         const int dim = mesh.SpaceDimension();
         v.SetSize(dim);
-        // Find the element containing pt via BFS from hint
         mfem::IntegrationPoint ip;
         int elem = FindElementBFS(mesh, start_elem_hint, pt, ip);
         if (elem < 0 && start_elem_hint != 0)
@@ -184,12 +237,17 @@ int main(int argc, char *argv[])
             v = 0.0;
             return;
         }
-        // Use a local IsoparametricTransformation for thread safety
-        // (mesh.GetElementTransformation(elem) returns a shared pointer).
         mfem::IsoparametricTransformation eltrans;
         mesh.GetElementTransformation(elem, &eltrans);
         eltrans.SetIntPoint(&ip);
-        x.get_u().GetVectorValue(eltrans, ip, v);
+        if (use_cg_proj)
+        {
+            u_cg->GetVectorValue(eltrans, ip, v);
+        }
+        else
+        {
+            x.get_u().GetVectorValue(eltrans, ip, v);
+        }
     };
 
     // Boundary function
@@ -299,12 +357,18 @@ int main(int argc, char *argv[])
         if (cycle == 1)
         {
             // ---- BDF1 bootstrap step ----
-            // Only ω⁰ is available. Apply BDF1:
-            //   ω̃ = I_{h,2}(X̄*_{τ} ω⁰)
-            //   [M/dt + εK, B; B^T, 0] [ω¹; p¹] = [(1/dt)M·ω̃ + f; 0]
+            if (use_cg_proj) { project_to_cg(x.get_u()); }
+
+            // velocity_gf controls dihedral averaging at arrival points:
+            //   dihedral mode  → &x.get_u() (ND₂ field for dihedral weights)
+            //   cg_projection  → nullptr (CG callback is already continuous)
+            //   none           → nullptr
+            mfem::GridFunction *vel_gf =
+                use_dihedral ? &x.get_u() : nullptr;
+
             advection.Apply(velocity_func, boundary_func, t, dt,
                             x.get_u(), omega_tilde_1, trace_order,
-                            &x.get_u());
+                            vel_gf);
 
             advect_time_s = std::chrono::duration<double>(
                                 std::chrono::steady_clock::now() - advect_start)
@@ -328,14 +392,15 @@ int main(int argc, char *argv[])
         else
         {
             // ---- BDF2 step ----
-            // ω̃₁ = I_{h,2}(X̄*_{τ} ω^{n-1})
-            // ω̃₂ = I_{h,2}(X̄*_{2τ} ω^{n-2})
-            // [3M/(2dt) + εK, B; B^T, 0] [ωⁿ; pⁿ]
-            //   = [(4/(2dt))M·ω̃₁ - (1/(2dt))M·ω̃₂ + f; 0]
+            if (use_cg_proj) { project_to_cg(omega_nm1); }
+
+            mfem::GridFunction *vel_gf =
+                use_dihedral ? &omega_nm1 : nullptr;
+
             advection.ApplyBDF2(velocity_func, boundary_func, t, dt,
                                 omega_nm1, omega_nm2,
                                 omega_tilde_1, omega_tilde_2, trace_order,
-                                &omega_nm1);
+                                vel_gf);
 
             advect_time_s = std::chrono::duration<double>(
                                 std::chrono::steady_clock::now() - advect_start)
@@ -370,6 +435,11 @@ int main(int argc, char *argv[])
 
     delete fec_ND;
     delete fec_CG;
+    delete cg_solver;
+    delete mass_cg;
+    delete u_cg;
+    delete VCG;
+    delete fec_VCG;
 
     return 0;
 }

@@ -271,13 +271,13 @@ class LidDrivenCavity3DExactSemiLag(benchmark):
 
 EXECUTABLE_ORDER2 = "./build/semilagrangian_navierstokes_nitsche_order2"
 
-# Order-2 default: Euler tracing (trace_order=1).
-# Heun tracing (trace_order=2) degrades convergence because the corrector
-# mixes dihedral-averaged velocity at arrival points with raw ND₂ GF
-# evaluation at departure points, introducing noise from normal-component
-# discontinuities.
+# Order-2 default: Heun tracing with CG projection velocity.
+# L²-projects ND₂ velocity onto a globally continuous CG² field before
+# characteristic tracing, avoiding normal-component discontinuities that
+# degrade convergence with raw ND₂ evaluation or dihedral averaging.
 HEUN_ORDER2_OVERRIDES = {
-    "trace_order": 1,
+    "trace_order": 2,
+    "velocity_mode": "cg_projection",
 }
 
 
@@ -454,7 +454,7 @@ class TravelingABCSemiLagOrder2(benchmark):
             name=name,
             SimulationHelper=simulation_helper,
             SimulationDataProcessor=data_processor,
-            dts=lambda order, refinement: 0.5 / (8 * (4 ** refinement)),
+            dts=lambda order, refinement: 0.5 / (32 * (2 ** refinement)),
             T=T,
             refinements=lambda order: range(0, 6 - order),
             orders=[2],
