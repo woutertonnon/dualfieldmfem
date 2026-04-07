@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=flowcube-semilag
-#SBATCH --nodes=1
+#SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --time=04:00:00
@@ -8,25 +8,17 @@
 
 set -euo pipefail
 
-# Run the flow-around-cube semi-Lagrangian case on Euler in one Slurm job.
-# Supports both the serial and MPI executables (hybrid MPI+OpenMP).
+# Run the flow-around-cube semi-Lagrangian case on Euler (hybrid MPI+OpenMP).
 #
-# Submit (serial, default):
+# Submit (defaults: 2 nodes x 1 rank x 8 threads):
 #   sbatch scripts/slurm_flow_around_cube_semilag_euler.sh
 #
-# Submit (MPI, 2 nodes x 8 threads):
-#   sbatch --nodes=2 --ntasks-per-node=1 --cpus-per-task=8 \
-#     --export=ALL,USE_MPI=1 \
-#     scripts/slurm_flow_around_cube_semilag_euler.sh
-#
-# Submit (MPI, 4 ranks on 1 node x 4 threads each):
-#   sbatch --nodes=1 --ntasks-per-node=4 --cpus-per-task=4 \
-#     --export=ALL,USE_MPI=1 \
+# Submit (4 nodes x 1 rank x 16 threads):
+#   sbatch --nodes=4 --cpus-per-task=16 \
 #     scripts/slurm_flow_around_cube_semilag_euler.sh
 #
 # Environment overrides:
-#   USE_MPI              set 1 to use the MPI executable (default: 0 = serial)
-#   EXE                  solver executable path (auto-selected based on USE_MPI)
+#   EXE                  solver executable path
 #   BASE_CONFIG          base JSON config path
 #   THREADS              OpenMP threads per rank (default: SLURM_CPUS_PER_TASK)
 #   SCHEDULE_POLICY      OMP_SCHEDULE (default: dynamic,64)
@@ -45,14 +37,7 @@ else
 fi
 cd "$ROOT_DIR"
 
-USE_MPI="${USE_MPI:-0}"
-if [[ "$USE_MPI" == "1" ]]; then
-    EXE="${EXE:-./build/semilagrangian_navierstokes_nitsche_mpi}"
-    BUILD_TARGET="semilagrangian_navierstokes_nitsche_mpi"
-else
-    EXE="${EXE:-./build/semilagrangian_navierstokes_nitsche}"
-    BUILD_TARGET="semilagrangian_navierstokes_nitsche"
-fi
+EXE="${EXE:-./build/semilagrangian_navierstokes_nitsche_mpi}"
 BASE_CONFIG="${BASE_CONFIG:-data/config/FlowAroundCubeSemiLag/FlowAroundCubeSemiLag_outer100_cube000_order1_ref0.json}"
 
 THREADS="${THREADS:-${SLURM_CPUS_PER_TASK:-8}}"
@@ -86,7 +71,7 @@ if [[ "$BUILD_BINARY" == "1" ]]; then
         cmake -S . -B build
     fi
     echo "[info] Building solver binary..."
-    cmake --build build --target "$BUILD_TARGET" -j"${SLURM_CPUS_PER_TASK:-8}"
+    cmake --build build --target semilagrangian_navierstokes_nitsche_mpi -j"${SLURM_CPUS_PER_TASK:-8}"
 fi
 
 if [[ ! -x "$EXE" ]]; then
@@ -123,32 +108,16 @@ LOG_FILE="$LOG_DIR/run_${JOB_TAG}.log"
 
 echo "[info] Root:            $ROOT_DIR"
 echo "[info] Executable:      $EXE"
-echo "[info] Mode:            $(if [[ "$USE_MPI" == "1" ]]; then echo "MPI+OpenMP (hybrid)"; else echo "OpenMP (serial)"; fi)"
 echo "[info] Base config:     $BASE_CONFIG"
 echo "[info] Runtime config:  $RUNTIME_CFG"
-if [[ "$USE_MPI" == "1" ]]; then
-    echo "[info] Nodes:           $NNODES"
-    echo "[info] MPI ranks:       $NRANKS"
-fi
+echo "[info] Nodes:           $NNODES"
+echo "[info] MPI ranks:       $NRANKS"
 echo "[info] Threads/rank:    $THREADS"
 echo "[info] OMP schedule:    $SCHEDULE_POLICY"
 echo "[info] OMP places:      $PLACES_POLICY"
 echo "[info] OMP proc bind:   $PROC_BIND_POLICY"
 echo "[info] Output prefix:   out/data/${out_rel}"
 echo "[info] Log file:        $LOG_FILE"
-
-if [[ "$USE_MPI" == "1" ]]; then
-    # Hybrid MPI+OpenMP launch via srun
-    launcher=(srun
-        --ntasks="$NRANKS"
-        --cpus-per-task="$THREADS"
-        --cpu-bind=cores)
-else
-    launcher=()
-    if [[ -n "${SLURM_JOB_ID:-}" ]] && command -v srun >/dev/null 2>&1; then
-        launcher=(srun --cpu-bind=cores)
-    fi
-fi
 
 set +e
 env \
@@ -157,7 +126,8 @@ env \
     OMP_PROC_BIND="$PROC_BIND_POLICY" \
     OMP_PLACES="$PLACES_POLICY" \
     OMP_SCHEDULE="$SCHEDULE_POLICY" \
-    "${launcher[@]}" "$EXE" -c "$RUNTIME_CFG" 2>&1 | tee "$LOG_FILE"
+    srun --ntasks="$NRANKS" --cpus-per-task="$THREADS" --cpu-bind=cores \
+    "$EXE" -c "$RUNTIME_CFG" 2>&1 | tee "$LOG_FILE"
 rc=${PIPESTATUS[0]}
 set -e
 
