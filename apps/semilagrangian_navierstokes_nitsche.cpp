@@ -166,17 +166,6 @@ int main(int argc, char *argv[])
     {
         mg_solver.addRefinement();
     }
-    // Replace UMFPack coarse solve with iterative solver (avoids OOM on large meshes)
-    {
-        mg_solver.getOperator(0).setOperatorMode(StokesNitsche::OperatorMode::DEC);
-        auto coarse_gmres = std::make_shared<mfem::GMRESSolver>();
-        coarse_gmres->SetOperator(mg_solver.getOperator(0));
-        coarse_gmres->SetRelTol(1e-8);
-        coarse_gmres->SetAbsTol(0.0);
-        coarse_gmres->SetMaxIter(500);
-        coarse_gmres->SetPrintLevel(0);
-        mg_solver.setCoarseSolver(coarse_gmres);
-    }
     StokesNitsche::StokesNitscheOperator& op =
             *const_cast<StokesNitsche::StokesNitscheOperator*>(&mg_solver.getFinestOperator());
     op.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);
