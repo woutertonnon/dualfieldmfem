@@ -206,7 +206,7 @@ int main(int argc, char *argv[])
 
     // ---- Mesh and FE spaces (replicated on every rank) ----
     auto mesh_ptr = std::make_shared<mfem::Mesh>(mesh_string.c_str(), 1, 1);
-    StokesNitsche::StokesMG mg_solver(mesh_ptr, 1./dt,
+    StokesNitsche::StokesMG mg_solver(mesh_ptr, 1./(dt*viscosity),
         theta, Cw);
     mg_solver.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);
     mg_solver.setIterativeMode(false);
@@ -216,11 +216,11 @@ int main(int argc, char *argv[])
     {
         mg_solver.addRefinement();
     }
-    int dim = mesh_ptr->Dimension();
-
     StokesNitsche::StokesNitscheOperator& op =
             *const_cast<StokesNitsche::StokesNitscheOperator*>(&mg_solver.getFinestOperator());
     op.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);
+    auto fine_mesh_ptr = op.getMeshPtr();
+    int dim = fine_mesh_ptr->Dimension();
 
     mfem::FiniteElementCollection *fec_ND = new mfem::ND_FECollection(order, dim);
     mfem::FiniteElementCollection *fec_CG = new mfem::H1_FECollection(order, dim);
@@ -230,7 +230,7 @@ int main(int argc, char *argv[])
     int num_it = 0;
 
     // ---- MPI edge partitioning ----
-    const int n_edges = mesh_ptr->GetNEdges();
+    const int n_edges = fine_mesh_ptr->GetNEdges();
     int my_threads = 1;
 #ifdef _OPENMP
     my_threads = omp_get_max_threads();
@@ -263,7 +263,7 @@ int main(int argc, char *argv[])
     const mfem::Array<int> *lid_marker_ptr = nullptr;
     if (config.has_lid_attributes())
     {
-        lid_marker = config.get_lid_marker(mesh_ptr->bdr_attributes.Max());
+        lid_marker = config.get_lid_marker(fine_mesh_ptr->bdr_attributes.Max());
         lid_marker_ptr = &lid_marker;
     }
 
@@ -288,19 +288,19 @@ int main(int argc, char *argv[])
 
     // Velocity function: evaluate current velocity GridFunction at arbitrary
     // physical points via BFS element search.
-    auto velocity_func = [mesh_ptr, &u_gf = x.get_u(), dim](
+    auto velocity_func = [fine_mesh_ptr, &u_gf = x.get_u(), dim](
         const mfem::Vector &pt, double, int start_elem_hint, mfem::Vector &v) {
         v.SetSize(dim);
         mfem::IntegrationPoint ip;
-        int elem = FindElementBFS(*mesh_ptr, start_elem_hint, pt, ip);
+        int elem = FindElementBFS(*fine_mesh_ptr, start_elem_hint, pt, ip);
         if (elem < 0 && start_elem_hint != 0)
         {
-            elem = FindElementBFS(*mesh_ptr, 0, pt, ip);
+            elem = FindElementBFS(*fine_mesh_ptr, 0, pt, ip);
         }
         if (elem >= 0)
         {
             mfem::IsoparametricTransformation eltrans;
-            mesh_ptr->GetElementTransformation(elem, &eltrans);
+            fine_mesh_ptr->GetElementTransformation(elem, &eltrans);
             eltrans.SetIntPoint(&ip);
             u_gf.GetVectorValue(eltrans, ip, v);
         }
@@ -311,19 +311,19 @@ int main(int argc, char *argv[])
     };
 
     SemiLagrangianAdvection1Form<1>::VelocityFunc velocity_prev_func =
-        [mesh_ptr, &u_gf = u_prev, dim](
+        [fine_mesh_ptr, &u_gf = u_prev, dim](
         const mfem::Vector &pt, double, int start_elem_hint, mfem::Vector &v) {
         v.SetSize(dim);
         mfem::IntegrationPoint ip;
-        int elem = FindElementBFS(*mesh_ptr, start_elem_hint, pt, ip);
+        int elem = FindElementBFS(*fine_mesh_ptr, start_elem_hint, pt, ip);
         if (elem < 0 && start_elem_hint != 0)
         {
-            elem = FindElementBFS(*mesh_ptr, 0, pt, ip);
+            elem = FindElementBFS(*fine_mesh_ptr, 0, pt, ip);
         }
         if (elem >= 0)
         {
             mfem::IsoparametricTransformation eltrans;
-            mesh_ptr->GetElementTransformation(elem, &eltrans);
+            fine_mesh_ptr->GetElementTransformation(elem, &eltrans);
             eltrans.SetIntPoint(&ip);
             u_gf.GetVectorValue(eltrans, ip, v);
         }
@@ -366,7 +366,7 @@ int main(int argc, char *argv[])
     gmres.SetKDim(128);
 
     // ---- ParaView output (rank 0 only) ----
-    mfem::ParaViewDataCollection vtk_dc("./out/paraview/" + output_file, mesh_ptr.get());
+    mfem::ParaViewDataCollection vtk_dc("./out/paraview/" + output_file, fine_mesh_ptr.get());
     if (visualisation > 0 && myid == 0)
     {
         vtk_dc.RegisterField("u1", &x.get_u());
@@ -538,6 +538,7 @@ int main(int argc, char *argv[])
 
         // 3. Assemble RHS with omega_tilde (advected field, not u^n)
         rhs.Update(omega_tilde, t, 1./dt);
+        rhs.GetBlock(0) *= 1.0/viscosity;
 
         // 4. Solve linear system (replicated — identical on all ranks)
         auto solve_start = std::chrono::steady_clock::now();
