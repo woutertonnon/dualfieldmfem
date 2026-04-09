@@ -158,7 +158,8 @@ public:
               int settls_iterations = 2,
               int vertex_velocity_mode = kSingleElement,
               int edge_start = 0,
-              int edge_end = -1)
+              int edge_end = -1,
+              int edge_stride = 1)
    {
       if (step_stats) { step_stats->Reset(); }
       mfem::Vector dofs_pulled(fes_.GetNDofs());
@@ -166,7 +167,7 @@ public:
                           omega_old, dofs_pulled, trace_order, step_stats,
                           velocity_prev, settls_iterations,
                           vertex_velocity_mode,
-                          edge_start, edge_end);
+                          edge_start, edge_end, edge_stride);
 
       for (int i = 0; i < fes_.GetNDofs(); ++i)
       {
@@ -1436,10 +1437,12 @@ private:
                             int settls_iterations,
                             int vertex_velocity_mode,
                             int edge_start = 0,
-                            int edge_end = -1)
+                            int edge_end = -1,
+                            int edge_stride = 1)
    {
       const int n_edges = mesh_.GetNEdges();
       if (edge_end < 0) edge_end = n_edges;
+      if (edge_stride < 1) edge_stride = 1;
       double t_departure = t - dt;
       const bool collect_breakdown =
           (step_stats != nullptr && step_stats->enable_breakdown);
@@ -1502,9 +1505,11 @@ private:
          }
          long long local_edge_count = 0;
 
+         const int local_n = (edge_end - edge_start + edge_stride - 1) / edge_stride;
 #pragma omp for schedule(runtime)
-         for (int e = edge_start; e < edge_end; ++e)
+         for (int idx = 0; idx < local_n; ++idx)
          {
+            const int e = edge_start + idx * edge_stride;
             // Get edge vertices (v0 < v1 in MFEM convention)
             mesh_.GetEdgeVertices(e, verts);
             const int v0_id = verts[0];

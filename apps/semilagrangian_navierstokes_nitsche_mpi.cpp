@@ -46,46 +46,6 @@ std::string FormatDuration(double seconds)
     return os.str();
 }
 
-/// Compute core-weighted edge partition for MPI rank @a myid out of @a nprocs.
-/// Each rank gets a share of edges proportional to its OpenMP thread count.
-void ComputeEdgePartition(int n_edges, int myid, int nprocs,
-                          const std::vector<int> &all_threads,
-                          int &edge_start, int &edge_end,
-                          std::vector<int> &counts,
-                          std::vector<int> &displs)
-{
-    const int total_threads =
-        std::accumulate(all_threads.begin(), all_threads.end(), 0);
-
-    counts.resize(nprocs);
-    displs.resize(nprocs);
-
-    int prev_end = 0;
-    for (int r = 0; r < nprocs; ++r)
-    {
-        displs[r] = prev_end;
-        int next_end;
-        if (r == nprocs - 1)
-        {
-            next_end = n_edges;
-        }
-        else
-        {
-            double cumulative_weight = 0.0;
-            for (int q = 0; q <= r; ++q)
-                cumulative_weight += all_threads[q];
-            next_end = static_cast<int>(
-                std::round(static_cast<double>(n_edges) *
-                           cumulative_weight / total_threads));
-        }
-        counts[r] = next_end - prev_end;
-        prev_end = next_end;
-    }
-
-    edge_start = displs[myid];
-    edge_end = displs[myid] + counts[myid];
-}
-
 } // anonymous namespace
 
 int main(int argc, char *argv[])
@@ -239,22 +199,24 @@ int main(int argc, char *argv[])
     MPI_Allgather(&my_threads, 1, MPI_INT,
                   all_threads.data(), 1, MPI_INT, MPI_COMM_WORLD);
 
-    int edge_start, edge_end;
-    std::vector<int> edge_counts, edge_displs;
-    ComputeEdgePartition(n_edges, myid, nprocs, all_threads,
-                         edge_start, edge_end,
-                         edge_counts, edge_displs);
-
+    // Cyclic (round-robin) edge distribution: rank r processes edges
+    // r, r+nprocs, r+2*nprocs, ... This interleaves spatially clustered
+    // edges across ranks, balancing work between cheap far-field and
+    // expensive boundary-layer edges.
+    const int edge_start  = myid;      // first edge for this rank
+    const int edge_end    = n_edges;   // upper bound (stride skips others)
+    const int edge_stride = nprocs;    // step between consecutive edges
     if (myid == 0)
     {
         std::cout << "[MPI] nprocs=" << nprocs
-                  << ", n_edges=" << n_edges << std::endl;
+                  << ", n_edges=" << n_edges
+                  << " (cyclic distribution)" << std::endl;
         for (int r = 0; r < nprocs; ++r)
         {
+            int cnt = (n_edges - r + nprocs - 1) / nprocs;
             std::cout << "  rank " << r << ": threads=" << all_threads[r]
-                      << ", edges=[" << edge_displs[r] << ", "
-                      << edge_displs[r] + edge_counts[r] << ")"
-                      << " (" << edge_counts[r] << " edges)" << std::endl;
+                      << ", " << cnt << " edges (stride=" << nprocs << ")"
+                      << std::endl;
         }
     }
 
@@ -480,7 +442,8 @@ int main(int argc, char *argv[])
     {
         u_n_snapshot = x.get_u();
 
-        // 1. Semi-Lagrangian advection: each rank processes [edge_start, edge_end)
+        // 1. Semi-Lagrangian advection: cyclic edge distribution across ranks
+        omega_tilde = 0.0;
         auto advect_start = std::chrono::steady_clock::now();
         advection_stats.enable_breakdown = profile_advection_breakdown;
         advection_stats.enable_thread_balance = profile_advection_thread_balance;
@@ -494,15 +457,14 @@ int main(int argc, char *argv[])
                         velocity_prev_ptr,
                         settls_iterations,
                         vertex_velocity_mode,
-                        edge_start, edge_end);
+                        edge_start, edge_end, edge_stride);
         advect_time_s = std::chrono::duration<double>(
                             std::chrono::steady_clock::now() - advect_start)
                             .count();
 
-        // 2. Combine DOFs from all ranks
-        MPI_Allgatherv(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
-                       omega_tilde.GetData(), edge_counts.data(),
-                       edge_displs.data(), MPI_DOUBLE, MPI_COMM_WORLD);
+        // 2. Combine DOFs from all ranks (non-overlapping writes, sum = correct)
+        MPI_Allreduce(MPI_IN_PLACE, omega_tilde.GetData(), n_edges,
+                      MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
         // Report max advection time across ranks
         double advect_time_max = 0.0;
