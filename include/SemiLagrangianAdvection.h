@@ -163,6 +163,7 @@ public:
    {
       if (step_stats) { step_stats->Reset(); }
       mfem::Vector dofs_pulled(fes_.GetNDofs());
+      dofs_pulled = 0.0;
       ComputePullbackDOFs(velocity, boundary, t, dt,
                           omega_old, dofs_pulled, trace_order, step_stats,
                           velocity_prev, settls_iterations,
