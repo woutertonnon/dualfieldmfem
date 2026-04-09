@@ -5,16 +5,16 @@ halfL  = L/2.0;
 
 xmin   = -5.0*L;
 xmax   = 22.5*L;
-ymin   = -5.0*L;
-ymax   =  5.0*L;
-zmin   = -5.0*L;
-zmax   =  5.0*L;
+ymin   = -4.0*L;
+ymax   =  4.0*L;
+zmin   = -2.5*L;
+zmax   =  2.5*L;
 
 eps    = 1e-3*L;
 
-lc_far  = 4.00*L;
-lc_wake = 2.00*L;
-lc_near = 1.50*L;
+lc_far  = 1.50*L;
+lc_wake = 1.25*L;
+lc_near = 1.10*L;
 lc_cube = 1.00*L;
 
 // Square cylinder (cube) obstacle centered at the origin.
