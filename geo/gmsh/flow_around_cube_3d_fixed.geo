@@ -1,29 +1,38 @@
 SetFactory("OpenCASCADE");
 
-L      = 1.0;
+// Schaefer-Turek-like channel with an offset square cylinder (cube)
+// Domain: [0, 2.2] x [0, 0.41] x [0, 0.41]
+// Square cylinder center offset to (cx, cy) = (0.2, 0.2) in x-y plane,
+// centered in z. Cylinder is kept square (cube) and finite in z.
+
+L      = 0.08;       // cube side length (matches typical cylinder diameter)
 halfL  = L/2.0;
 
-xmin   = -5.0*L;
-xmax   = 22.5*L;
-ymin   = -4.0*L;
-ymax   =  4.0*L;
-zmin   = -2.5*L;
-zmax   =  2.5*L;
+xmin   = 0.0;
+xmax   = 2.2;
+ymin   = 0.0;
+ymax   = 0.41;
+zmin   = 0.0;
+zmax   = 0.41;
 
-eps    = 1e-3*L;
+// Offset cylinder center (as in the Schaefer-Turek 2D-2 benchmark):
+// 0.2 from left wall, 0.2 from bottom wall (=> 0.21 from top wall).
+cx     = 0.2;
+cy     = 0.2;
+cz     = 0.5*(zmin + zmax);
 
-lc_far  = 1.50*L;
-lc_wake = 1.25*L;
-lc_near = 1.10*L;
-lc_cube = 1.00*L;
+eps    = 1e-4*L;
 
-// Square cylinder (cube) obstacle centered at the origin.
-cube_h    = 0.70*(zmax-zmin);
-cube_zmin = -0.5*cube_h;
-cube_zmax =  0.5*cube_h;
+// Uniform characteristic mesh size throughout the domain.
+lc     = 0.1;
+
+// Square cylinder (cube) obstacle — finite in z.
+cube_h    = 0.70*(zmax - zmin);
+cube_zmin = cz - 0.5*cube_h;
+cube_zmax = cz + 0.5*cube_h;
 
 Box(1) = {xmin, ymin, zmin, xmax-xmin, ymax-ymin, zmax-zmin};
-Box(2) = {-halfL, -halfL, cube_zmin, L, L, cube_h};
+Box(2) = {cx - halfL, cy - halfL, cube_zmin, L, L, cube_h};
 
 fluidVol[] = BooleanDifference{ Volume{1}; Delete; }{ Volume{2}; Delete; };
 
@@ -36,8 +45,8 @@ ymaxS[]  = Surface In BoundingBox{ xmin-eps, ymax-eps, zmin-eps, xmax+eps, ymax+
 zminS[]  = Surface In BoundingBox{ xmin-eps, ymin-eps, zmin-eps, xmax+eps, ymax+eps, zmin+eps };
 zmaxS[]  = Surface In BoundingBox{ xmin-eps, ymin-eps, zmax-eps, xmax+eps, ymax+eps, zmax+eps };
 
-cube[] = Surface In BoundingBox{ -halfL-eps, -halfL-eps, cube_zmin-eps,
-                                  halfL+eps,  halfL+eps, cube_zmax+eps };
+cube[] = Surface In BoundingBox{ cx-halfL-eps, cy-halfL-eps, cube_zmin-eps,
+                                  cx+halfL+eps, cy+halfL+eps, cube_zmax+eps };
 
 sideWalls[] = {yminS[], ymaxS[], zminS[], zmaxS[]};
 
@@ -47,33 +56,12 @@ Physical Surface("outlet")     = {outlet[]};
 Physical Surface("side_walls") = {sideWalls[]};
 Physical Surface("cylinder")   = {cube[]};
 
-Field[1] = Box;
-Field[1].VIn  = lc_cube;
-Field[1].VOut = lc_far;
-Field[1].XMin = -1.5*L;
-Field[1].XMax =  1.5*L;
-Field[1].YMin = -1.5*L;
-Field[1].YMax =  1.5*L;
-Field[1].ZMin = cube_zmin - 0.5*L;
-Field[1].ZMax = cube_zmax + 0.5*L;
-
-Field[2] = Box;
-Field[2].VIn  = lc_wake;
-Field[2].VOut = lc_far;
-Field[2].XMin = -0.5*L;
-Field[2].XMax = 12.0*L;
-Field[2].YMin = -2.5*L;
-Field[2].YMax =  2.5*L;
-Field[2].ZMin = cube_zmin - 0.5*L;
-Field[2].ZMax = cube_zmax + 0.5*L;
-
-Field[3] = Min;
-Field[3].FieldsList = {1, 2};
-Background Field = 3;
-
+// Uniform mesh size: no size fields, constant characteristic length.
 Mesh.CharacteristicLengthExtendFromBoundary = 0;
 Mesh.CharacteristicLengthFromPoints = 0;
 Mesh.CharacteristicLengthFromCurvature = 0;
+Mesh.CharacteristicLengthMin = lc;
+Mesh.CharacteristicLengthMax = lc;
 Mesh.Algorithm3D = 1; // Delaunay; does not require Netgen
 Mesh.Optimize = 1;
 Mesh.OptimizeNetgen = 0;
