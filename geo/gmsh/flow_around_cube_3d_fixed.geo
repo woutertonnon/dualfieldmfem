@@ -1,9 +1,9 @@
 SetFactory("OpenCASCADE");
 
-// Schaefer-Turek-like channel with an offset square cylinder (cube)
+// Schaefer-Turek-like channel with an offset square cylinder.
 // Domain: [0, 2.2] x [0, 0.41] x [0, 0.41]
-// Square cylinder center offset to (cx, cy) = (0.2, 0.2) in x-y plane,
-// centered in z. Cylinder is kept square (cube) and finite in z.
+// Square cylinder center offset to (cx, cy) = (0.2, 0.2) in x-y plane;
+// cylinder spans the full z-extent of the domain (true square cylinder).
 
 L      = 0.08;       // cube side length (matches typical cylinder diameter)
 halfL  = L/2.0;
@@ -26,10 +26,13 @@ eps    = 1e-4*L;
 // Uniform characteristic mesh size throughout the domain.
 lc     = 0.1;
 
-// Square cylinder (cube) obstacle — finite in z.
-cube_h    = 0.70*(zmax - zmin);
-cube_zmin = cz - 0.5*cube_h;
-cube_zmax = cz + 0.5*cube_h;
+// Square cylinder obstacle — spans the full z-extent of the domain.
+// Extend slightly past z=zmin and z=zmax so the boolean cut produces clean
+// through-holes in the top/bottom faces (avoids co-planar face artefacts).
+cube_overshoot = 0.1*L;
+cube_zmin = zmin - cube_overshoot;
+cube_zmax = zmax + cube_overshoot;
+cube_h    = cube_zmax - cube_zmin;
 
 Box(1) = {xmin, ymin, zmin, xmax-xmin, ymax-ymin, zmax-zmin};
 Box(2) = {cx - halfL, cy - halfL, cube_zmin, L, L, cube_h};
