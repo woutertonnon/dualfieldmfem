@@ -1,23 +1,23 @@
 SetFactory("OpenCASCADE");
 
-// Schaefer-Turek-like channel with an offset square cylinder.
-// Domain: [0, 2.2] x [0, 0.41] x [0, 0.41]
-// Square cylinder center offset to (cx, cy) = (0.2, 0.2) in x-y plane;
-// cylinder spans the full z-extent of the domain (true square cylinder).
+// Schaefer-Turek 3D-2Q/3D-2Z benchmark geometry (Figure 2).
+// Domain: [0, 2.5] x [0, 0.41] x [0, 0.41]
+// Square cylinder cross-section D = 0.1, front face at x = 0.45,
+// bottom face at y = 0.15. Cylinder axis is z and spans the full z-extent.
 
-L      = 0.08;       // cube side length (matches typical cylinder diameter)
+L      = 0.1;        // cube side length D
 halfL  = L/2.0;
 
 xmin   = 0.0;
-xmax   = 2.2;
+xmax   = 2.5;
 ymin   = 0.0;
 ymax   = 0.41;
 zmin   = 0.0;
 zmax   = 0.41;
 
-// Offset cylinder center (as in the Schaefer-Turek 2D-2 benchmark):
-// 0.2 from left wall, 0.2 from bottom wall (=> 0.21 from top wall).
-cx     = 0.2;
+// Schaefer-Turek 3D-2Q/3D-2Z positioning: cube front at x=0.45 (center 0.5),
+// bottom at y=0.15 (center 0.2).
+cx     = 0.5;
 cy     = 0.2;
 cz     = 0.5*(zmin + zmax);
 
