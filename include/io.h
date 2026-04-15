@@ -636,7 +636,10 @@ public:
                          const double *advect_time_max_s = nullptr,
                          const double *solve_time_min_s = nullptr,
                          const double *solve_time_max_s = nullptr,
-                         const double *comm_time_s = nullptr)
+                         const double *comm_time_s = nullptr,
+                         const long long *gk_fallbacks = nullptr,
+                         const int *rebalance_fired = nullptr,
+                         const double *advect_imbalance = nullptr)
         : CSVLogger(config.get_outputfile()),
           cycle_(cycle), t_(t),
           ND_(ND),
@@ -650,6 +653,9 @@ public:
           solve_time_min_s_(solve_time_min_s),
           solve_time_max_s_(solve_time_max_s),
           comm_time_s_(comm_time_s),
+          gk_fallbacks_(gk_fallbacks),
+          rebalance_fired_(rebalance_fired),
+          advect_imbalance_(advect_imbalance),
           trace_time_s_(trace_time_s),
           split_time_s_(split_time_s),
           interior_integral_time_s_(interior_integral_time_s),
@@ -680,6 +686,12 @@ public:
             comm_time_s_)
             get_ofstream() << ",time_advect_dofs_min_s,time_advect_dofs_max_s,"
                               "time_solve_min_s,time_solve_max_s,time_comm_s";
+        if (gk_fallbacks_)
+            get_ofstream() << ",gk_fallbacks";
+        if (advect_imbalance_)
+            get_ofstream() << ",advect_imbalance";
+        if (rebalance_fired_)
+            get_ofstream() << ",rebalance_fired";
         if (trace_time_s_ && split_time_s_ && interior_integral_time_s_ && boundary_integral_time_s_ && split_calls_ && total_segments_)
             get_ofstream() << ",time_trace_departure_s,time_split_line_s,time_interior_integral_s,time_boundary_integral_s,split_calls,total_segments";
         if (edge_thread_min_s_ && edge_thread_avg_s_ && edge_thread_max_s_ && edge_thread_imbalance_ && edge_threads_active_ && edge_thread_edges_min_ && edge_thread_edges_max_)
@@ -715,6 +727,12 @@ public:
             get_ofstream() << "," << *advect_time_min_s_ << "," << *advect_time_max_s_
                            << "," << *solve_time_min_s_ << "," << *solve_time_max_s_
                            << "," << *comm_time_s_;
+        if (gk_fallbacks_)
+            get_ofstream() << "," << *gk_fallbacks_;
+        if (advect_imbalance_)
+            get_ofstream() << "," << *advect_imbalance_;
+        if (rebalance_fired_)
+            get_ofstream() << "," << *rebalance_fired_;
         if (trace_time_s_ && split_time_s_ && interior_integral_time_s_ && boundary_integral_time_s_ && split_calls_ && total_segments_)
             get_ofstream() << "," << *trace_time_s_ << "," << *split_time_s_ << ","
                            << *interior_integral_time_s_ << "," << *boundary_integral_time_s_ << ","
@@ -752,6 +770,9 @@ private:
     const double *solve_time_min_s_;
     const double *solve_time_max_s_;
     const double *comm_time_s_;
+    const long long *gk_fallbacks_;
+    const int *rebalance_fired_;
+    const double *advect_imbalance_;
     const double *trace_time_s_;
     const double *split_time_s_;
     const double *interior_integral_time_s_;

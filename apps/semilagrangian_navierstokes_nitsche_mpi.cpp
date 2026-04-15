@@ -199,26 +199,40 @@ int main(int argc, char *argv[])
     MPI_Allgather(&my_threads, 1, MPI_INT,
                   all_threads.data(), 1, MPI_INT, MPI_COMM_WORLD);
 
-    // Cyclic (round-robin) edge distribution: rank r processes edges
-    // r, r+nprocs, r+2*nprocs, ... This interleaves spatially clustered
-    // edges across ranks, balancing work between cheap far-field and
-    // expensive boundary-layer edges.
-    const int edge_start  = myid;      // first edge for this rank
-    const int edge_end    = n_edges;   // upper bound (stride skips others)
-    const int edge_stride = nprocs;    // step between consecutive edges
+    // Edge ownership: initially cyclic (round-robin). Every rank holds the
+    // full owner map so the assignment is known globally and stays in sync
+    // after dynamic rebalancing below. Each rank also maintains the list of
+    // edges it owns; this list is passed to advection.Apply.
+    std::vector<int> edge_owner(n_edges);
+    for (int e = 0; e < n_edges; ++e)
+    {
+        edge_owner[e] = e % nprocs;
+    }
+    mfem::Array<int> my_edges;
+    my_edges.Reserve((n_edges + nprocs - 1) / nprocs);
+    for (int e = 0; e < n_edges; ++e)
+    {
+        if (edge_owner[e] == myid) { my_edges.Append(e); }
+    }
+
     if (myid == 0)
     {
         std::cout << "[MPI] nprocs=" << nprocs
                   << ", n_edges=" << n_edges
-                  << " (cyclic distribution)" << std::endl;
+                  << " (cyclic distribution, rebalance on imbalance > 5%)"
+                  << std::endl;
         for (int r = 0; r < nprocs; ++r)
         {
             int cnt = (n_edges - r + nprocs - 1) / nprocs;
             std::cout << "  rank " << r << ": threads=" << all_threads[r]
-                      << ", " << cnt << " edges (stride=" << nprocs << ")"
-                      << std::endl;
+                      << ", " << cnt << " edges" << std::endl;
         }
     }
+
+    // Dynamic load balancing threshold. Rebalance only fires when the
+    // observed (max - min) / max advect time exceeds this; below it the
+    // current partition is already within the hysteresis band.
+    const double rebalance_threshold = 0.05;
 
     // ---- Boundary attribute marker (optional) ----
     mfem::Array<int> lid_marker;
@@ -354,6 +368,7 @@ int main(int argc, char *argv[])
     double boundary_integral_time_s = 0.0;
     long long split_calls = 0;
     long long total_segments = 0;
+    long long gk_fallbacks = 0;
     double edge_thread_min_s = 0.0;
     double edge_thread_avg_s = 0.0;
     double edge_thread_max_s = 0.0;
@@ -367,6 +382,8 @@ int main(int argc, char *argv[])
     double edge_thread_cpu_util_min = 0.0;
     double edge_thread_cpu_util_avg = 0.0;
     double edge_thread_cpu_util_max = 0.0;
+    int rebalance_fired = 0;
+    double advect_imbalance = 0.0;
     const bool profile_advection_breakdown =
         config.get_value<bool>("profile_advection_breakdown", false);
     const bool profile_advection_thread_balance =
@@ -404,7 +421,10 @@ int main(int argc, char *argv[])
             &advect_time_max_s,
             &solve_time_min_s,
             &solve_time_max_s,
-            &comm_time_s);
+            &comm_time_s,
+            &gk_fallbacks,
+            &rebalance_fired,
+            &advect_imbalance);
     }
 
     // ---- Progress bar (rank 0 only) ----
@@ -461,13 +481,12 @@ int main(int argc, char *argv[])
             (trace_order == 3 && has_prev_velocity) ? &velocity_prev_func : nullptr;
         advection.Apply(velocity_func, boundary_func, t, dt,
                         x.get_u(), omega_tilde, trace_order,
-                        (profile_advection_breakdown || profile_advection_thread_balance)
-                            ? &advection_stats
-                            : nullptr,
+                        &advection_stats,
                         velocity_prev_ptr,
                         settls_iterations,
                         vertex_velocity_mode,
-                        edge_start, edge_end, edge_stride);
+                        0, n_edges, 1,
+                        &my_edges);
         advect_time_s = std::chrono::duration<double>(
                             std::chrono::steady_clock::now() - advect_start)
                             .count();
@@ -490,6 +509,96 @@ int main(int argc, char *argv[])
         MPI_Allreduce(&advect_local, &advect_time_max_s, 1,
                       MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
         advect_time_s = advect_time_max_s;
+
+        // Total Gauss-Kronrod fallbacks summed across ranks for this step.
+        long long gk_local = advection_stats.gk_fallbacks;
+        MPI_Allreduce(&gk_local, &gk_fallbacks, 1,
+                      MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+
+        // ---- Dynamic load balancing ----
+        // Compute observed imbalance. If it exceeds the threshold, rebuild
+        // the edge→owner map so that each rank's expected next-step time is
+        // equal (proportional rebalance based on observed per-edge cost).
+        // All ranks run the same deterministic algorithm, so no broadcast
+        // of the new map is needed.
+        advect_imbalance = (advect_time_max_s > 0.0)
+                               ? (advect_time_max_s - advect_time_min_s) /
+                                     advect_time_max_s
+                               : 0.0;
+        rebalance_fired = 0;
+        if (advect_imbalance > rebalance_threshold && nprocs > 1)
+        {
+            std::vector<double> times(nprocs);
+            MPI_Allgather(&advect_local, 1, MPI_DOUBLE,
+                          times.data(), 1, MPI_DOUBLE, MPI_COMM_WORLD);
+
+            std::vector<int> counts(nprocs, 0);
+            for (int e = 0; e < n_edges; ++e) { ++counts[edge_owner[e]]; }
+
+            // Inverse per-edge cost weight: slower ranks (higher time per
+            // edge) get fewer edges next step. Guard against zero time.
+            double weight_sum = 0.0;
+            std::vector<double> weights(nprocs, 0.0);
+            for (int r = 0; r < nprocs; ++r)
+            {
+                const double t_r = std::max(times[r], 1e-12);
+                const double c_r = std::max(counts[r], 1);
+                weights[r] = static_cast<double>(c_r) / t_r;
+                weight_sum += weights[r];
+            }
+
+            // Target integer counts from largest-remainder apportionment.
+            std::vector<int> target(nprocs, 0);
+            std::vector<double> remainder(nprocs, 0.0);
+            int assigned = 0;
+            for (int r = 0; r < nprocs; ++r)
+            {
+                const double share = n_edges * weights[r] / weight_sum;
+                target[r] = static_cast<int>(std::floor(share));
+                remainder[r] = share - target[r];
+                assigned += target[r];
+            }
+            while (assigned < n_edges)
+            {
+                int r_best = 0;
+                for (int r = 1; r < nprocs; ++r)
+                {
+                    if (remainder[r] > remainder[r_best]) { r_best = r; }
+                }
+                ++target[r_best];
+                remainder[r_best] = -1.0;
+                ++assigned;
+            }
+
+            // Build new owner map deterministically (Huntington-Hill style:
+            // walk edges in order and give each to the rank with the
+            // smallest normalized assigned count). Identical on all ranks.
+            std::vector<int> assigned_count(nprocs, 0);
+            for (int e = 0; e < n_edges; ++e)
+            {
+                int r_best = -1;
+                double best_key = std::numeric_limits<double>::infinity();
+                for (int r = 0; r < nprocs; ++r)
+                {
+                    if (target[r] <= 0) { continue; }
+                    if (assigned_count[r] >= target[r]) { continue; }
+                    const double key = (assigned_count[r] + 0.5) /
+                                       static_cast<double>(target[r]);
+                    if (key < best_key) { best_key = key; r_best = r; }
+                }
+                if (r_best < 0) { r_best = e % nprocs; }
+                edge_owner[e] = r_best;
+                ++assigned_count[r_best];
+            }
+
+            my_edges.SetSize(0);
+            my_edges.Reserve(target[myid]);
+            for (int e = 0; e < n_edges; ++e)
+            {
+                if (edge_owner[e] == myid) { my_edges.Append(e); }
+            }
+            rebalance_fired = 1;
+        }
 
         if (profile_advection_breakdown)
         {

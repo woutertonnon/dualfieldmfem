@@ -27,6 +27,7 @@ struct SemiLagrangianStepStats
    double boundary_integral_s = 0.0;
    long long split_calls = 0;
    long long total_segments = 0;
+   long long gk_fallbacks = 0;
 
    double edge_thread_min_s = 0.0;
    double edge_thread_avg_s = 0.0;
@@ -50,6 +51,7 @@ struct SemiLagrangianStepStats
       boundary_integral_s = 0.0;
       split_calls = 0;
       total_segments = 0;
+      gk_fallbacks = 0;
 
       edge_thread_min_s = 0.0;
       edge_thread_avg_s = 0.0;
@@ -159,7 +161,8 @@ public:
               int vertex_velocity_mode = kSingleElement,
               int edge_start = 0,
               int edge_end = -1,
-              int edge_stride = 1)
+              int edge_stride = 1,
+              const mfem::Array<int> *edge_list = nullptr)
    {
       if (step_stats) { step_stats->Reset(); }
       mfem::Vector dofs_pulled(fes_.GetNDofs());
@@ -168,7 +171,8 @@ public:
                           omega_old, dofs_pulled, trace_order, step_stats,
                           velocity_prev, settls_iterations,
                           vertex_velocity_mode,
-                          edge_start, edge_end, edge_stride);
+                          edge_start, edge_end, edge_stride,
+                          edge_list);
 
       for (int i = 0; i < fes_.GetNDofs(); ++i)
       {
@@ -227,7 +231,8 @@ public:
          double *interior_integral_s = nullptr,
          double *boundary_integral_s = nullptr,
          long long *split_calls = nullptr,
-         long long *total_segments = nullptr) const
+         long long *total_segments = nullptr,
+         long long *gk_fallbacks = nullptr) const
    {
       const int dim = d0.Size();
 
@@ -269,6 +274,7 @@ public:
          std::cerr << "[ComputeTransportedDOF] Gauss-Kronrod result="
                    << result << ", estimated error=" << gk_error
                    << std::endl;
+         if (gk_fallbacks) { (*gk_fallbacks)++; }
          return result;
       }
 
@@ -309,6 +315,7 @@ public:
             std::cerr << "[ComputeTransportedDOF] Gauss-Kronrod result="
                       << result << ", estimated error=" << gk_error
                       << std::endl;
+            if (gk_fallbacks) { (*gk_fallbacks)++; }
             return result;
          }
 
@@ -1439,7 +1446,8 @@ private:
                             int vertex_velocity_mode,
                             int edge_start = 0,
                             int edge_end = -1,
-                            int edge_stride = 1)
+                            int edge_stride = 1,
+                            const mfem::Array<int> *edge_list = nullptr)
    {
       const int n_edges = mesh_.GetNEdges();
       if (edge_end < 0) edge_end = n_edges;
@@ -1456,6 +1464,7 @@ private:
       double boundary_integral_s = 0.0;
       long long split_calls = 0;
       long long total_segments = 0;
+      long long gk_fallbacks = 0;
 
 #ifdef _OPENMP
       const int max_threads = omp_get_max_threads();
@@ -1483,7 +1492,7 @@ private:
          PrecomputeVertexVelocities(gf_old, weighted_vertex_vel);
       }
 
-#pragma omp parallel reduction(+:trace_departure_s,split_line_s,interior_integral_s,boundary_integral_s,split_calls,total_segments)
+#pragma omp parallel reduction(+:trace_departure_s,split_line_s,interior_integral_s,boundary_integral_s,split_calls,total_segments,gk_fallbacks)
       {
          CellSplitWorkspace ws;
          mfem::Array<int> verts;
@@ -1506,11 +1515,15 @@ private:
          }
          long long local_edge_count = 0;
 
-         const int local_n = (edge_end - edge_start + edge_stride - 1) / edge_stride;
+         const int local_n = edge_list
+             ? edge_list->Size()
+             : (edge_end - edge_start + edge_stride - 1) / edge_stride;
 #pragma omp for schedule(runtime)
          for (int idx = 0; idx < local_n; ++idx)
          {
-            const int e = edge_start + idx * edge_stride;
+            const int e = edge_list
+                ? (*edge_list)[idx]
+                : (edge_start + idx * edge_stride);
             // Get edge vertices (v0 < v1 in MFEM convention)
             mesh_.GetEdgeVertices(e, verts);
             const int v0_id = verts[0];
@@ -1576,7 +1589,8 @@ private:
                 collect_breakdown ? &interior_integral_s : nullptr,
                 collect_breakdown ? &boundary_integral_s : nullptr,
                 collect_breakdown ? &split_calls : nullptr,
-                collect_breakdown ? &total_segments : nullptr);
+                collect_breakdown ? &total_segments : nullptr,
+                &gk_fallbacks);
 
             dof_values(dofs[0]) = new_dof;
             ++local_edge_count;
@@ -1600,6 +1614,10 @@ private:
          step_stats->boundary_integral_s = boundary_integral_s;
          step_stats->split_calls = split_calls;
          step_stats->total_segments = total_segments;
+      }
+      if (step_stats)
+      {
+         step_stats->gk_fallbacks = gk_fallbacks;
       }
 
       if (collect_thread_balance)
