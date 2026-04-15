@@ -234,6 +234,15 @@ int main(int argc, char *argv[])
     // current partition is already within the hysteresis band.
     const double rebalance_threshold = 0.05;
 
+    // EWMA of per-rank per-edge cost (= time_r / count_r). Smooths single-
+    // step spikes such as GK fallback outliers so the rebalance controller
+    // doesn't chase noise. Under-correction factor blends the ideal new
+    // allocation with the current allocation, damping oscillation.
+    const double ewma_alpha = 0.3;
+    const double correction_beta = 0.3;
+    std::vector<double> smooth_cost(nprocs, 0.0);
+    bool smooth_initialized = false;
+
     // ---- Boundary attribute marker (optional) ----
     mfem::Array<int> lid_marker;
     const mfem::Array<int> *lid_marker_ptr = nullptr;
@@ -535,27 +544,56 @@ int main(int argc, char *argv[])
             std::vector<int> counts(nprocs, 0);
             for (int e = 0; e < n_edges; ++e) { ++counts[edge_owner[e]]; }
 
-            // Inverse per-edge cost weight: slower ranks (higher time per
-            // edge) get fewer edges next step. Guard against zero time.
-            double weight_sum = 0.0;
-            std::vector<double> weights(nprocs, 0.0);
+            // Update EWMA of per-rank per-edge cost using this step's
+            // observation. The smoothed estimate is the controller signal.
             for (int r = 0; r < nprocs; ++r)
             {
                 const double t_r = std::max(times[r], 1e-12);
                 const double c_r = std::max(counts[r], 1);
-                weights[r] = static_cast<double>(c_r) / t_r;
+                const double cost_inst = t_r / static_cast<double>(c_r);
+                smooth_cost[r] = smooth_initialized
+                                     ? (1.0 - ewma_alpha) * smooth_cost[r] +
+                                           ewma_alpha * cost_inst
+                                     : cost_inst;
+            }
+            smooth_initialized = true;
+
+            // Inverse per-edge cost → slower ranks get fewer edges.
+            double weight_sum = 0.0;
+            std::vector<double> weights(nprocs, 0.0);
+            for (int r = 0; r < nprocs; ++r)
+            {
+                weights[r] = 1.0 / std::max(smooth_cost[r], 1e-12);
                 weight_sum += weights[r];
             }
 
-            // Target integer counts from largest-remainder apportionment.
+            // Ideal share, then blended under-correction toward it so
+            // each step moves only a fraction of the way to the optimum.
+            std::vector<double> share(nprocs, 0.0);
+            double share_sum = 0.0;
+            for (int r = 0; r < nprocs; ++r)
+            {
+                const double ideal = n_edges * weights[r] / weight_sum;
+                share[r] = (1.0 - correction_beta) *
+                               static_cast<double>(counts[r]) +
+                           correction_beta * ideal;
+                share_sum += share[r];
+            }
+            if (share_sum > 0.0)
+            {
+                const double norm = n_edges / share_sum;
+                for (int r = 0; r < nprocs; ++r) { share[r] *= norm; }
+            }
+
+            // Integer apportionment (largest remainder) from the blended
+            // shares.
             std::vector<int> target(nprocs, 0);
             std::vector<double> remainder(nprocs, 0.0);
             int assigned = 0;
             for (int r = 0; r < nprocs; ++r)
             {
-                const double share = n_edges * weights[r] / weight_sum;
-                target[r] = static_cast<int>(std::floor(share));
-                remainder[r] = share - target[r];
+                target[r] = static_cast<int>(std::floor(share[r]));
+                remainder[r] = share[r] - target[r];
                 assigned += target[r];
             }
             while (assigned < n_edges)
