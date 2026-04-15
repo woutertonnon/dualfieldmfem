@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
     std::string mesh_string = config.get_mesh();
     std::string output_file = config.get_outputfile();
     double theta = 1.;
-    double Cw = 40.;
+    double Cw = 40000.;
     double dt = config.get_dt();
     double T = config.get_T();
     int trace_order = config.get_value<int>("trace_order", 1);
@@ -334,7 +334,7 @@ int main(int argc, char *argv[])
     // ---- Solver (set up once — A is constant) ----
     mfem::FGMRESSolver gmres;
     gmres.SetAbsTol(1e-12);
-    gmres.SetRelTol(1e-6);
+    gmres.SetRelTol(1e-9);
     gmres.SetMaxIter(500);
     gmres.SetPrintLevel(1);
     gmres.SetOperator(op);
