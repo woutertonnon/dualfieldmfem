@@ -631,7 +631,12 @@ public:
                          const double *edge_thread_cpu_max_s = nullptr,
                          const double *edge_thread_cpu_util_min = nullptr,
                          const double *edge_thread_cpu_util_avg = nullptr,
-                         const double *edge_thread_cpu_util_max = nullptr)
+                         const double *edge_thread_cpu_util_max = nullptr,
+                         const double *advect_time_min_s = nullptr,
+                         const double *advect_time_max_s = nullptr,
+                         const double *solve_time_min_s = nullptr,
+                         const double *solve_time_max_s = nullptr,
+                         const double *comm_time_s = nullptr)
         : CSVLogger(config.get_outputfile()),
           cycle_(cycle), t_(t),
           ND_(ND),
@@ -640,6 +645,11 @@ public:
           num_it_(num_it),
           advect_time_s_(advect_time_s),
           solve_time_s_(solve_time_s),
+          advect_time_min_s_(advect_time_min_s),
+          advect_time_max_s_(advect_time_max_s),
+          solve_time_min_s_(solve_time_min_s),
+          solve_time_max_s_(solve_time_max_s),
+          comm_time_s_(comm_time_s),
           trace_time_s_(trace_time_s),
           split_time_s_(split_time_s),
           interior_integral_time_s_(interior_integral_time_s),
@@ -665,6 +675,11 @@ public:
         get_ofstream() << "runtime_it,cycle,time_full,num_it,||u1||";
         if (advect_time_s_ && solve_time_s_)
             get_ofstream() << ",time_advect_dofs_s,time_solve_s";
+        if (advect_time_min_s_ && advect_time_max_s_ &&
+            solve_time_min_s_ && solve_time_max_s_ &&
+            comm_time_s_)
+            get_ofstream() << ",time_advect_dofs_min_s,time_advect_dofs_max_s,"
+                              "time_solve_min_s,time_solve_max_s,time_comm_s";
         if (trace_time_s_ && split_time_s_ && interior_integral_time_s_ && boundary_integral_time_s_ && split_calls_ && total_segments_)
             get_ofstream() << ",time_trace_departure_s,time_split_line_s,time_interior_integral_s,time_boundary_integral_s,split_calls,total_segments";
         if (edge_thread_min_s_ && edge_thread_avg_s_ && edge_thread_max_s_ && edge_thread_imbalance_ && edge_threads_active_ && edge_thread_edges_min_ && edge_thread_edges_max_)
@@ -694,6 +709,12 @@ public:
                        << u1_norm;
         if (advect_time_s_ && solve_time_s_)
             get_ofstream() << "," << *advect_time_s_ << "," << *solve_time_s_;
+        if (advect_time_min_s_ && advect_time_max_s_ &&
+            solve_time_min_s_ && solve_time_max_s_ &&
+            comm_time_s_)
+            get_ofstream() << "," << *advect_time_min_s_ << "," << *advect_time_max_s_
+                           << "," << *solve_time_min_s_ << "," << *solve_time_max_s_
+                           << "," << *comm_time_s_;
         if (trace_time_s_ && split_time_s_ && interior_integral_time_s_ && boundary_integral_time_s_ && split_calls_ && total_segments_)
             get_ofstream() << "," << *trace_time_s_ << "," << *split_time_s_ << ","
                            << *interior_integral_time_s_ << "," << *boundary_integral_time_s_ << ","
@@ -726,6 +747,11 @@ private:
     int &num_it_;
     const double *advect_time_s_;
     const double *solve_time_s_;
+    const double *advect_time_min_s_;
+    const double *advect_time_max_s_;
+    const double *solve_time_min_s_;
+    const double *solve_time_max_s_;
+    const double *comm_time_s_;
     const double *trace_time_s_;
     const double *split_time_s_;
     const double *interior_integral_time_s_;

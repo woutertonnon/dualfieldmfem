@@ -343,6 +343,11 @@ int main(int argc, char *argv[])
     int cycle = 0;
     double advect_time_s = 0.0;
     double solve_time_s = 0.0;
+    double advect_time_min_s = 0.0;
+    double advect_time_max_s = 0.0;
+    double solve_time_min_s = 0.0;
+    double solve_time_max_s = 0.0;
+    double comm_time_s = 0.0;
     double trace_time_s = 0.0;
     double split_time_s = 0.0;
     double interior_integral_time_s = 0.0;
@@ -394,7 +399,12 @@ int main(int argc, char *argv[])
             profile_advection_thread_balance ? &edge_thread_cpu_max_s : nullptr,
             profile_advection_thread_balance ? &edge_thread_cpu_util_min : nullptr,
             profile_advection_thread_balance ? &edge_thread_cpu_util_avg : nullptr,
-            profile_advection_thread_balance ? &edge_thread_cpu_util_max : nullptr);
+            profile_advection_thread_balance ? &edge_thread_cpu_util_max : nullptr,
+            &advect_time_min_s,
+            &advect_time_max_s,
+            &solve_time_min_s,
+            &solve_time_max_s,
+            &comm_time_s);
     }
 
     // ---- Progress bar (rank 0 only) ----
@@ -462,15 +472,24 @@ int main(int argc, char *argv[])
                             std::chrono::steady_clock::now() - advect_start)
                             .count();
 
-        // 2. Combine DOFs from all ranks (non-overlapping writes, sum = correct)
+        // 2. Combine DOFs from all ranks (non-overlapping writes, sum = correct).
+        //    Barrier first so the Allreduce timing is pure collective cost;
+        //    wait-for-slowest is then charged to the advect min/max spread below.
+        MPI_Barrier(MPI_COMM_WORLD);
+        auto comm_start = std::chrono::steady_clock::now();
         MPI_Allreduce(MPI_IN_PLACE, omega_tilde.GetData(), n_edges,
                       MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        comm_time_s = std::chrono::duration<double>(
+                          std::chrono::steady_clock::now() - comm_start)
+                          .count();
 
-        // Report max advection time across ranks
-        double advect_time_max = 0.0;
-        MPI_Allreduce(&advect_time_s, &advect_time_max, 1,
+        // Report min/max advection time across ranks.
+        double advect_local = advect_time_s;
+        MPI_Allreduce(&advect_local, &advect_time_min_s, 1,
+                      MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+        MPI_Allreduce(&advect_local, &advect_time_max_s, 1,
                       MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-        advect_time_s = advect_time_max;
+        advect_time_s = advect_time_max_s;
 
         if (profile_advection_breakdown)
         {
@@ -510,6 +529,14 @@ int main(int argc, char *argv[])
                            std::chrono::steady_clock::now() - solve_start)
                            .count();
         num_it = gmres.GetNumIterations();
+
+        // Report min/max solve time across ranks (should be ~equal since the
+        // solve is replicated — a non-trivial spread would flag a bug).
+        double solve_local = solve_time_s;
+        MPI_Allreduce(&solve_local, &solve_time_min_s, 1,
+                      MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+        MPI_Allreduce(&solve_local, &solve_time_max_s, 1,
+                      MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
         // Update previous-step velocity history for SETTLS.
         u_prev = u_n_snapshot;
