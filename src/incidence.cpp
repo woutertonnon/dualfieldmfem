@@ -48,24 +48,46 @@ mfem::SparseMatrix assembleDiscreteCurl(
         hcurl->GetMesh() == hdiv->GetMesh(),
         "H(curl) and H(div) spaces must be defined on the same mesh!");
 
-    // 2. Verify De Rham complex components (Nedelec -> Raviart-Thomas)
+    // 2. Verify De Rham complex components.  The curl of a Nedelec field is
+    //    vector-valued in 3D (range: Raviart-Thomas) but scalar-valued in 2D
+    //    (range: L2 / discontinuous).  Accept whichever matches the mesh.
     auto nd_fec = dynamic_cast<const mfem::ND_FECollection*>(hcurl->FEColl());
-    auto rt_fec = dynamic_cast<const mfem::RT_FECollection*>(hdiv->FEColl());
-
     MFEM_VERIFY(
         nd_fec != nullptr,
         "Domain space must use an ND_FECollection (Nedelec).");
-    MFEM_VERIFY(
-        rt_fec != nullptr,
-        "Range space must use an RT_FECollection (Raviart-Thomas).");
 
-    // 3. Verify polynomial orders match the sequence (ND is p, RT is p-1)
+    const int dim = hcurl->GetMesh()->Dimension();
     const int p_nd = nd_fec->GetOrder();
-    const int p_rt = rt_fec->GetOrder();
-    MFEM_VERIFY(
-        p_nd == p_rt,
-        "Discrete De Rham complex requires H(div) order to be exactly one less "
-        "than H(curl) order!");
+
+    if (dim == 3)
+    {
+        auto rt_fec =
+            dynamic_cast<const mfem::RT_FECollection*>(hdiv->FEColl());
+        MFEM_VERIFY(
+            rt_fec != nullptr,
+            "In 3D the range space must use an RT_FECollection "
+            "(Raviart-Thomas).");
+        // ND is order p, RT is order p-1 (GetOrder() returns the
+        // ND-equivalent order, so they compare equal).
+        MFEM_VERIFY(
+            p_nd == rt_fec->GetOrder(),
+            "Discrete De Rham complex requires H(div) order to be exactly "
+            "one less than H(curl) order!");
+    }
+    else
+    {
+        auto l2_fec =
+            dynamic_cast<const mfem::L2_FECollection*>(hdiv->FEColl());
+        MFEM_VERIFY(
+            l2_fec != nullptr,
+            "In 2D the range space (scalar curl) must use an "
+            "L2_FECollection.");
+        // 2D scalar curl: ND order p -> L2 order p-1.
+        MFEM_VERIFY(
+            l2_fec->GetOrder() == p_nd - 1,
+            "Discrete De Rham complex requires L2 order to be exactly one "
+            "less than H(curl) order!");
+    }
 
     // 4. Assemble the exact discrete curl operator
     mfem::DiscreteLinearOperator curl(hcurl, hdiv);

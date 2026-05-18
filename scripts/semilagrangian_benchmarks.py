@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dualfield_benchmarks import generate_box_mesh, compile_latex_report, benchmark
 
 
-EXECUTABLE = "./build/semilagrangian_navierstokes_nitsche"
+EXECUTABLE = "./build/semilagrangian_navierstokes_nitsche_mpi"
 
 # Benchmark default: Euler tracing with edge-dihedral arrival velocity averaging.
 EULER_DIHEDRAL_OVERRIDES = {
@@ -157,7 +157,7 @@ class TaylorGreenSemiLag(benchmark):
             SimulationDataProcessor=data_processor,
             dts=lambda order, refinement: 0.5 / (8 * (2 ** refinement)),
             T=T,
-            refinements=lambda order: range(0, 5-order),
+            refinements=lambda order: range(0, 3+5-order),
             orders=[1],
             slice_normal="z",
         )
@@ -512,13 +512,13 @@ if __name__ == "__main__":
     benchmark_map = {
         #"ConstantFieldSemiLag": ConstantFieldSemiLag,
         #"RigidRotationSemiLag": RigidRotationSemiLag,
-        #"TaylorGreenSemiLag": TaylorGreenSemiLag,
+        "TaylorGreenSemiLag": TaylorGreenSemiLag,
         #"TravelingABCSemiLag": TravelingABCSemiLag,
         #"LidDrivenCavity3DExactSemiLag": LidDrivenCavity3DExactSemiLag,
         #"ConstantFieldSemiLagOrder2": ConstantFieldSemiLagOrder2,
         #"RigidRotationSemiLagOrder2": RigidRotationSemiLagOrder2,
         #"TaylorGreenSemiLagOrder2": TaylorGreenSemiLagOrder2,
-        "TravelingABCSemiLagOrder2": TravelingABCSemiLagOrder2,
+        #"TravelingABCSemiLagOrder2": TravelingABCSemiLagOrder2,
         #"LidDrivenCavity3DExactSemiLagOrder2": LidDrivenCavity3DExactSemiLagOrder2,
     }
 

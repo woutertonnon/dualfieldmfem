@@ -25,6 +25,11 @@ double computeCReg(mfem::Mesh& mesh)
         return area;
     };
 
+    // The "faces" of an element are its (dim-1)-dimensional boundary
+    // entities: actual faces in 3D, edges in 2D.  GetElementFaces requires
+    // the 3D element-to-face table and aborts on a 2D mesh, so dispatch on
+    // the topological dimension.
+    const int dim = mesh.Dimension();
     mfem::Array<int> faces, ori;
 
     for (int i = 0; i < ne; ++i)
@@ -33,12 +38,20 @@ double computeCReg(mfem::Mesh& mesh)
         double h_K          = mesh.GetElementSize(i);
         double surface_area = 0.0;
 
-        // Fetch the faces of the current 3D element
-        mesh.GetElementFaces(i, faces, ori);
+        // Fetch the (dim-1)-faces of the current element
+        if (dim == 3)
+        {
+            mesh.GetElementFaces(i, faces, ori);
+        }
+        else
+        {
+            mesh.GetElementEdges(i, faces, ori);
+        }
         for (int f = 0; f < faces.Size(); ++f)
         {
             mfem::ElementTransformation* Tf =
-                mesh.GetFaceTransformation(faces[f]);
+                (dim == 3) ? mesh.GetFaceTransformation(faces[f])
+                           : mesh.GetEdgeTransformation(faces[f]);
             surface_area += ComputeFaceArea(Tf);
         }
 

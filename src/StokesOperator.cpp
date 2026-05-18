@@ -20,8 +20,12 @@ void StokesNitscheOperator::initFESpaces()
 
     if (dim == 2)
     {
+        // 2D De Rham: the scalar curl maps ND(order_) -> L2(order_-1).
+        // For order_==1 this is L2 order 0 (the original lowest-order case);
+        // for order_>=2 it must track the ND order so assembleDiscreteCurl's
+        // order check (L2 order == ND order - 1) holds.
         hdiv_or_l2_fec_ = std::make_unique<mfem::L2_FECollection>(
-            0, dim, mfem::BasisType::GaussLegendre,
+            order_ - 1, dim, mfem::BasisType::GaussLegendre,
             mfem::FiniteElement::INTEGRAL);
     }
     else

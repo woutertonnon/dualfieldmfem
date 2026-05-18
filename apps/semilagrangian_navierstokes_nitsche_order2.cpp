@@ -13,6 +13,7 @@
 #include "BoundaryOperators.h"
 #include "io.h"
 #include "StokesOperators.h"
+#include "StokesMG.h"
 #include "FindElementBFS.h"
 #include "SemiLagrangianAdvectionOrder2.h"
 
@@ -113,12 +114,25 @@ int main(int argc, char *argv[])
                                velocity_mode == "cg_proj" ||
                                velocity_mode == "cg");
 
-    // ---- Mesh and FE spaces (order 2) ----
-    Mesh mesh(mesh_string.c_str(), 1, 1);
-    for (int l = 0; l < refinements; l++)
-    {
-        mesh.UniformRefinement();
-    }
+    // ---- Mesh, geometric+p multigrid hierarchy, FE spaces (order 2) ----
+    // Mirror the order-1 app: the actual solved operator is the MG finest
+    // StokesNitscheOperator, preconditioned by the MG cycle.  The hierarchy
+    // is: base mesh (order 1) -> h-refined `refinements` times (order 1)
+    // -> one p-refinement to order 2 (the fine level matching ND2).
+    auto base_mesh = std::make_shared<mfem::Mesh>(mesh_string.c_str(), 1, 1);
+    StokesNitsche::StokesMG mg_solver(base_mesh, 1.0 / (dt * viscosity),
+                                      theta, Cw);
+    mg_solver.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);
+    mg_solver.setIterativeMode(false);
+    mg_solver.setCycleType(StokesNitsche::MGCycleType::VCycle);
+    mg_solver.setSmoothIterations(1, 1);
+    for (int l = 0; l < refinements; l++) { mg_solver.addRefinement(); }
+    mg_solver.addRefinement(1);  // p-refine: order 1 -> order 2 (fine level)
+    StokesNitsche::StokesNitscheOperator& op =
+        *const_cast<StokesNitsche::StokesNitscheOperator*>(
+            &mg_solver.getFinestOperator());
+    op.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);
+    mfem::Mesh &mesh = op.getMesh();
     int dim = mesh.Dimension();
 
     const int order = 2;
@@ -192,11 +206,9 @@ int main(int argc, char *argv[])
     // BDF1 bootstrap: mass coefficient = 1/dt
     // BDF2 steps: mass coefficient = 3/(2*dt)
     // We start with BDF1 and reassemble for BDF2 after the first step.
-    hcurl::StokesSystem sys_bdf1(ND, CG, 1.0 / dt, viscosity, theta, Cw,
-                                  /*sigma=*/0.0, /*gamma=*/0.0);
-    hcurl::StokesSystem sys_bdf2(ND, CG, 1.5 / dt, viscosity, theta, Cw,
-                                  /*sigma=*/0.0, /*gamma=*/0.0);
-
+    // The solved operator is the MG finest StokesNitscheOperator `op`.
+    // BDF1 vs BDF2 differ only in the mass coefficient (1/dt vs 1.5/dt),
+    // applied to `op` via mg_solver.setTau() in the time loop.
     hcurl::StokesRHS rhs(ND, CG,
                          config.get_exact_data("force_data"),
                          config.get_exact_data("boundary_data_u"),
@@ -272,22 +284,22 @@ int main(int argc, char *argv[])
         }
     };
 
-    // ---- Solvers ----
-    mfem::MINRESSolver solv_bdf1;
-    solv_bdf1.iterative_mode = true;
-    solv_bdf1.SetOperator(sys_bdf1);
-    solv_bdf1.SetRelTol(tol);
-    solv_bdf1.SetAbsTol(1e-10);
-    solv_bdf1.SetMaxIter(100000);
-    solv_bdf1.SetPrintLevel(0);
-
-    mfem::MINRESSolver solv_bdf2;
-    solv_bdf2.iterative_mode = true;
-    solv_bdf2.SetOperator(sys_bdf2);
-    solv_bdf2.SetRelTol(tol);
-    solv_bdf2.SetAbsTol(1e-10);
-    solv_bdf2.SetMaxIter(100000);
-    solv_bdf2.SetPrintLevel(0);
+    // ---- Solver: FGMRES preconditioned by the geometric+p multigrid ----
+    // (mirrors the order-1 app; replaces unpreconditioned MINRES which
+    //  needed thousands of iterations at order 2).
+    mfem::FGMRESSolver gmres;
+    gmres.SetAbsTol(1e-12);
+    gmres.SetRelTol(1e-6);
+    gmres.SetMaxIter(500);
+    gmres.SetPrintLevel(0);
+    gmres.SetOperator(op);
+    gmres.SetPreconditioner(mg_solver);
+    gmres.SetKDim(128);
+    // Track the MG mass coefficient (tau) so we only re-tau on the BDF1->BDF2
+    // transition (setTau rebuilds smoothers + coarse factorization).
+    const double tau_bdf1 = 1.0 / (dt * viscosity);
+    const double tau_bdf2 = 1.5 / (dt * viscosity);
+    double mg_tau_current = -1.0;
 
     // ---- ParaView output ----
     mfem::ParaViewDataCollection vtk_dc("./out/paraview/" + output_file, &mesh);
@@ -375,13 +387,23 @@ int main(int argc, char *argv[])
                                 .count();
 
             rhs.Update(omega_tilde_1, t, 1.0 / dt);
+            // DEC scaling: StokesNitscheOperator solves the viscosity-scaled
+            // system (same convention as the order-1 app).
+            rhs.GetBlock(0) *= 1.0 / viscosity;
+
+            if (mg_tau_current != tau_bdf1)
+            {
+                mg_solver.setTau(tau_bdf1);
+                mg_tau_current = tau_bdf1;
+            }
 
             auto solve_start = std::chrono::steady_clock::now();
-            solv_bdf1.Mult(rhs, x);
+            gmres.Mult(rhs, x);
+            op.eliminateConstants(x);
             solve_time_s = std::chrono::duration<double>(
                                std::chrono::steady_clock::now() - solve_start)
                                .count();
-            num_it = solv_bdf1.GetNumIterations();
+            num_it = gmres.GetNumIterations();
 
             // Shift history: omega_nm1 was set to ω⁰ before the loop.
             // After solving, x contains ω¹.
@@ -407,13 +429,21 @@ int main(int argc, char *argv[])
                                 .count();
 
             rhs.UpdateBDF2(omega_tilde_1, omega_tilde_2, t, dt);
+            rhs.GetBlock(0) *= 1.0 / viscosity;
+
+            if (mg_tau_current != tau_bdf2)
+            {
+                mg_solver.setTau(tau_bdf2);
+                mg_tau_current = tau_bdf2;
+            }
 
             auto solve_start = std::chrono::steady_clock::now();
-            solv_bdf2.Mult(rhs, x);
+            gmres.Mult(rhs, x);
+            op.eliminateConstants(x);
             solve_time_s = std::chrono::duration<double>(
                                std::chrono::steady_clock::now() - solve_start)
                                .count();
-            num_it = solv_bdf2.GetNumIterations();
+            num_it = gmres.GetNumIterations();
 
             // Shift history: ω^{n-2} ← ω^{n-1}, ω^{n-1} ← ωⁿ
             omega_nm2 = omega_nm1;
