@@ -4,6 +4,8 @@
 #include "FindElementBFS.h"
 #include <boost/math/quadrature/gauss.hpp>
 #include <boost/math/quadrature/gauss_kronrod.hpp>
+#include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <limits>
 #include <random>
@@ -278,7 +280,28 @@ inline bool SplitLineIntoSegmentsRobust(
    // Using the element center of start_elem guarantees the perturbation
    // pushes boundary points inward rather than outside the domain.
    const int dim = mesh.SpaceDimension();
-   thread_local std::mt19937 rng(42);
+   // Deterministic, call-independent perturbation: seed a *local* RNG from a
+   // hash of the geometric inputs (endpoints + start element).  This makes
+   // SplitLineIntoSegmentsRobust a pure function of its arguments — identical
+   // inputs always yield the identical perturbation sequence, regardless of
+   // call history, thread, or element-iteration order.  Previously a
+   // persistent `thread_local std::mt19937 rng(42)` advanced by every
+   // degeneracy across the whole process, so successive pullbacks perturbed
+   // the same degenerate edge differently → ~1e-9 run-to-run nondeterminism
+   // (3D order-2, where many small edges hit degenerate geometry).
+   std::uint64_t seed = 1469598103934665603ull; // FNV-1a 64-bit offset basis
+   auto mix = [&seed](double x)
+   {
+      std::uint64_t u;
+      std::memcpy(&u, &x, sizeof(u));
+      seed ^= u;
+      seed *= 1099511628211ull; // FNV-1a 64-bit prime
+   };
+   for (int d = 0; d < dim; ++d) { mix(pos1[d]); mix(pos2[d]); }
+   mix(static_cast<double>(start_elem_id));
+   std::seed_seq seq{ static_cast<std::uint32_t>(seed & 0xffffffffu),
+                      static_cast<std::uint32_t>(seed >> 32) };
+   std::mt19937 rng(seq);
    std::uniform_real_distribution<double> unit_dist(0.0, 1.0);
 
    // Compute element center of the starting element

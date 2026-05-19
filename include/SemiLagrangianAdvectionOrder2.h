@@ -9,6 +9,7 @@
 #include <cassert>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <vector>
 
 #ifdef _OPENMP
@@ -102,11 +103,18 @@ public:
               mfem::GridFunction &omega_old,
               mfem::GridFunction &omega_new,
               int trace_order = 2,
-              mfem::GridFunction *velocity_gf = nullptr)
+              mfem::GridFunction *velocity_gf = nullptr,
+              int elem_start = 0,
+              int elem_end = -1,
+              int elem_stride = 1,
+              const mfem::Array<int> *elem_list = nullptr,
+              const std::vector<int> *dof_owner_elem = nullptr)
    {
       omega_new = 0.0;
       ComputePullbackND2DOFs(velocity, boundary, t, dt,
-                             omega_old, omega_new, trace_order, velocity_gf);
+                             omega_old, omega_new, trace_order, velocity_gf,
+                             elem_start, elem_end, elem_stride, elem_list,
+                             dof_owner_elem);
    }
 
    /// BDF2 semi-Lagrangian step (second-order in time and space).
@@ -132,21 +140,54 @@ public:
                   mfem::GridFunction &omega_tilde_1,
                   mfem::GridFunction &omega_tilde_2,
                   int trace_order = 2,
-                  mfem::GridFunction *velocity_gf = nullptr)
+                  mfem::GridFunction *velocity_gf = nullptr,
+                  int elem_start = 0,
+                  int elem_end = -1,
+                  int elem_stride = 1,
+                  const mfem::Array<int> *elem_list = nullptr,
+                  const std::vector<int> *dof_owner_elem = nullptr)
    {
       omega_tilde_1 = 0.0;
       omega_tilde_2 = 0.0;
 
       ComputePullbackND2DOFs(velocity, boundary, t, dt,
-                             omega_n1, omega_tilde_1, trace_order, velocity_gf);
+                             omega_n1, omega_tilde_1, trace_order, velocity_gf,
+                             elem_start, elem_end, elem_stride, elem_list,
+                             dof_owner_elem);
       ComputePullbackND2DOFs(velocity, boundary, t, 2.0 * dt,
-                             omega_n2, omega_tilde_2, trace_order, velocity_gf);
+                             omega_n2, omega_tilde_2, trace_order, velocity_gf,
+                             elem_start, elem_end, elem_stride, elem_list,
+                             dof_owner_elem);
    }
 
    /// Access the underlying first-order operator (for ComputeTransportedDOF).
    SemiLagrangianAdvection1Form<N_gauss> &GetFirstOrderOp()
    {
       return first_order_op_;
+   }
+
+   /// Build the global-DOF → owning-element map used by the MPI ownership
+   /// gate.  Owner = the minimum global element index incident to the DOF.
+   /// Pure function of (mesh_, fes_): identical on every MPI rank with no
+   /// communication.  DOFs not referenced by any element keep INT_MAX (never
+   /// written).  The orientation sign encoded as gi<0 is decoded so the map
+   /// is keyed by the unsigned global DOF index.
+   std::vector<int> BuildDofOwnerElemMap() const
+   {
+      const int ndofs = fes_.GetNDofs();
+      std::vector<int> owner(ndofs, std::numeric_limits<int>::max());
+      mfem::Array<int> edofs;
+      for (int el = 0; el < mesh_.GetNE(); ++el)
+      {
+         fes_.GetElementDofs(el, edofs);
+         for (int k = 0; k < edofs.Size(); ++k)
+         {
+            int gi = edofs[k];
+            if (gi < 0) { gi = -1 - gi; }
+            if (el < owner[gi]) { owner[gi] = el; }
+         }
+      }
+      return owner;
    }
 
 private:
@@ -171,15 +212,33 @@ private:
    ///                 points (typically ω^{n-1}, the velocity 1-form).
    ///                 If nullptr, the velocity callback is used directly
    ///                 (no dihedral averaging).
+   /// @a elem_start/elem_end/elem_stride/elem_list  optional element-subset
+   ///   selection (MPI: each rank processes only its assigned elements).
+   ///   Defaults (`elem_end<0`, `elem_list==nullptr`) iterate all elements.
+   /// @a dof_owner_elem  optional global-DOF → owning-element map (from
+   ///   BuildDofOwnerElemMap()). When non-null, a DOF is written only by its
+   ///   owning element, so per-rank partial vectors are disjoint and an
+   ///   MPI_Allreduce(SUM) reproduces the serial last-write-wins result
+   ///   bit-for-bit. When null, behavior is the original last-write-wins.
    void ComputePullbackND2DOFs(const VelocityFunc &velocity,
                                const BoundaryFunc &boundary,
                                double t, double dt,
                                mfem::GridFunction &gf_old,
                                mfem::GridFunction &omega_new,
                                int trace_order,
-                               mfem::GridFunction *velocity_gf)
+                               mfem::GridFunction *velocity_gf,
+                               int elem_start = 0,
+                               int elem_end = -1,
+                               int elem_stride = 1,
+                               const mfem::Array<int> *elem_list = nullptr,
+                               const std::vector<int> *dof_owner_elem = nullptr)
    {
       const int n_elem = mesh_.GetNE();
+      if (elem_end < 0) { elem_end = n_elem; }
+      const int local_n =
+          elem_list
+              ? elem_list->Size()
+              : (elem_end - elem_start + elem_stride - 1) / elem_stride;
       const double t_departure = t - dt;
 
       // Precompute dihedral-averaged velocities at all mesh edge
@@ -221,8 +280,12 @@ private:
          mfem::Vector vel_a(dim_), vel_b(dim_);
 
 #pragma omp for schedule(runtime)
-         for (int el = 0; el < n_elem; ++el)
+         for (int idx = 0; idx < local_n; ++idx)
          {
+            const int el = elem_list
+                               ? (*elem_list)[idx]
+                               : (elem_start + idx * elem_stride);
+
             // Step 1: Get physical endpoints of all small edges
             mesh_.GetElementVertices(el, elem_verts);
             for (int k = 0; k < n_small_; ++k)
@@ -300,9 +363,18 @@ private:
                   gi = -1 - gi;
                   sign = -1.0;
                }
-               // Last-write-wins: shared DOFs on element boundaries produce
-               // identical values from adjacent elements (the transported
-               // small edges on shared mesh edges are deterministic).
+               // Ownership gate (MPI): when a DOF→owning-element map is
+               // supplied, only the owning element writes this DOF, so the
+               // per-rank partials are disjoint and MPI_Allreduce(SUM)
+               // reproduces the serial last-write-wins value exactly.
+               if (dof_owner_elem && (*dof_owner_elem)[gi] != el)
+               {
+                  continue;
+               }
+               // Last-write-wins (serial / no owner map): shared DOFs on
+               // element boundaries produce identical values from adjacent
+               // elements (transported small edges on shared mesh edges are
+               // deterministic).
                omega_new(gi) = sign * nd2_vec(i);
             }
          }
