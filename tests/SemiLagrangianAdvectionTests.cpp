@@ -159,6 +159,66 @@ TEST(SemiLagrangianAdvection, ZeroVelocityIsIdentity)
     EXPECT_LT(max_abs_diff, 1e-12);
 }
 
+// --- Order-2 diagnostics: a constant 1-form must be represented exactly by
+// ND2 and must be reproduced verbatim by the zero-velocity advection
+// round-trip (transported small edges == original small edges). These isolate
+// the Rapetti reconstruction from the time integration and Stokes solve. ---
+namespace
+{
+VectorFunctionCoefficient ConstantOneForm2D()
+{
+    return VectorFunctionCoefficient(
+        2, [](const Vector &, double, Vector &v)
+        { v.SetSize(2); v[0] = 1.0; v[1] = 0.0; });
+}
+}  // namespace
+
+TEST(SemiLagrangianAdvectionOrder2, ND2ProjectsConstantExactly)
+{
+    Mesh mesh = MakeAttributedUnitSquareMesh(4, 4);
+    ND_FECollection fec(2, mesh.Dimension());
+    FiniteElementSpace nd(&mesh, &fec);
+
+    GridFunction omega(&nd);
+    VectorFunctionCoefficient c = ConstantOneForm2D();
+    omega.ProjectCoefficient(c);
+
+    EXPECT_LT(omega.ComputeL2Error(c), 1e-10)
+        << "ND2 ProjectCoefficient of a constant field is not exact";
+}
+
+TEST(SemiLagrangianAdvectionOrder2, ZeroVelocityIsIdentity)
+{
+    Mesh mesh = MakeAttributedUnitSquareMesh(4, 4);
+    ND_FECollection fec(2, mesh.Dimension());
+    FiniteElementSpace nd(&mesh, &fec);
+
+    GridFunction omega_old(&nd), omega_new(&nd);
+    VectorFunctionCoefficient c = ConstantOneForm2D();
+    omega_old.ProjectCoefficient(c);
+    omega_new = 0.0;
+
+    SemiLagrangianAdvection1FormOrder2<2> adv(nd);
+    SemiLagrangianAdvection1FormOrder2<2>::VelocityFunc zero =
+        [](const Vector &, double, int, Vector &v) { v.SetSize(2); v = 0.0; };
+    SemiLagrangianAdvection1FormOrder2<2>::BoundaryFunc boundary =
+        [](const Vector &, double, int, Vector &v) { v.SetSize(2); v = 0.0; };
+
+    adv.Apply(zero, boundary, 0.4, 0.2, omega_old, omega_new, 2);
+
+    double max_abs_diff = 0.0;
+    for (int i = 0; i < nd.GetNDofs(); ++i)
+    {
+        max_abs_diff = std::max(max_abs_diff,
+                                std::abs(omega_new(i) - omega_old(i)));
+    }
+    EXPECT_LT(max_abs_diff, 1e-10)
+        << "order-2 zero-velocity advection is not the identity (max dof diff "
+        << max_abs_diff << ")";
+    EXPECT_LT(omega_new.ComputeL2Error(c), 1e-10)
+        << "order-2 transported constant has non-zero L2 error";
+}
+
 TEST(SemiLagrangianAdvection, SettlsMatchesEulerForSteadyVelocity)
 {
     Mesh mesh = MakeAttributedUnitSquareMesh(4, 4);

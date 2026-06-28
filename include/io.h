@@ -748,7 +748,11 @@ public:
                            << *edge_thread_cpu_util_avg_ << "," << *edge_thread_cpu_util_max_;
         if (config_.has_exact_u())
         {
-            mfem::VectorFunctionCoefficient u_exact(3, config_.get_exact_data("exact_data_u"));
+            // The exact-velocity coefficient must match the spatial dimension of
+            // the velocity space (2 in 2D, 3 in 3D); a hardcoded 3 breaks the
+            // L2-error evaluation on 2D meshes.
+            const int sdim = ND_->GetMesh()->Dimension();
+            mfem::VectorFunctionCoefficient u_exact(sdim, config_.get_exact_data("exact_data_u"));
             u_exact.SetTime(t_);
             get_ofstream() << "," << u_.ComputeL2Error(u_exact);
         }

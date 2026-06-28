@@ -209,10 +209,18 @@ int main(int argc, char *argv[])
     // The solved operator is the MG finest StokesNitscheOperator `op`.
     // BDF1 vs BDF2 differ only in the mass coefficient (1/dt vs 1.5/dt),
     // applied to `op` via mg_solver.setTau() in the time loop.
+    // The Nitsche penalty is rescaled by StokesMG across the p-refinement
+    // (order 1 -> 2), so the operator `op` actually uses op.getPenalty(), not
+    // the base `Cw` handed to StokesMG. The right-hand-side Nitsche load must
+    // use the SAME penalty (and theta) as the operator, otherwise the boundary
+    // imposition is inconsistent and the exact tangential trace is not
+    // reproduced (manifests as an O(1) error that does not converge under
+    // h-refinement).
     hcurl::StokesRHS rhs(ND, CG,
                          config.get_exact_data("force_data"),
                          config.get_exact_data("boundary_data_u"),
-                         theta, Cw, viscosity, 0.0, lid_marker_ptr);
+                         op.getTheta(), op.getPenalty(), viscosity, 0.0,
+                         lid_marker_ptr);
     hcurl::StokesSolution x(ND, CG);
 
     // ---- Initial condition ----

@@ -1,0 +1,12 @@
+# Python deps for the physical-BC convergence studies on Euler.
+# Used only for config/mesh generation and post-processing (NOT by the solver).
+#   python -m venv ~/physbc-venv
+#   source ~/physbc-venv/bin/activate
+#   pip install -r scripts/requirements_euler.txt
+gmsh           # mesh generation (generate_rectangle_mesh / generate_box_mesh)
+sympy          # symbolic exact solutions + manufactured forcing
+numpy
+pandas         # CSV post-processing (simbench import chain)
+matplotlib     # convergence + field plots
+paramiko       # only for the legacy SSH-submit path; harmless otherwise
+pyvista        # only for solution-field plots (plot_physbc_solution_field.py)

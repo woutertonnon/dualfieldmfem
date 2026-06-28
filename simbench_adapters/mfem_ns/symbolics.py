@@ -13,15 +13,33 @@ class _ExactManipulationsSpace:
     """Basic vector-calculus operations on symbolic fields."""
 
     def __init__(self, coords):
-        """Create operator space from coordinate symbols `[x0, x1, x2]`."""
+        """Create operator space from coordinate symbols, e.g. `[x0, x1]` (2D)
+        or `[x0, x1, x2]` (3D). The spatial dimension is inferred from the
+        number of coordinate symbols, so the same helpers serve both cases."""
         self.coords = coords
+
+    @property
+    def dim(self):
+        """Spatial dimension inferred from the number of coordinate symbols."""
+        return len(self.coords)
 
     def grad(self, scalar_field):
         """Return symbolic gradient of a scalar field."""
         return sp.Matrix([sp.diff(scalar_field, c) for c in self.coords])
 
     def curl(self, u):
-        """Return symbolic 3D curl of a vector field."""
+        """Return the symbolic curl of a vector field.
+
+        In 3D this is the usual 3-component vector. In 2D the curl of a planar
+        field ``(u1, u2)`` is the scalar ``d(u2)/dx - d(u1)/dy``; we return it
+        as a 1-component matrix so it can be emitted as a (scalar) vorticity
+        snippet. The single-field semi-Lagrangian solver does not consume the
+        vorticity, but the config schema still expects the field to be present.
+        """
+        if self.dim == 2:
+            x, y = self.coords
+            u1, u2 = u[0], u[1]
+            return sp.Matrix([sp.diff(u2, x) - sp.diff(u1, y)])
         x, y, z = self.coords
         u1, u2, u3 = u
         w1 = sp.Add(sp.diff(u3, y), sp.Mul(-1, sp.diff(u2, z)))
@@ -39,12 +57,21 @@ class _ExactManipulationsSpace:
         return lap
 
     def convective_term(self, u):
-        """Return rotational-form convection ``-u x curl(u)``.
+        """Return rotational-form convection ``omega x u`` (``= -u x curl(u)``).
 
         The C++ Navier--Stokes operators discretize convection in rotational
         form via ``(curl(u_prev) x u, v)``. Manufactured forcing must use the
         same identity to remain consistent with that operator.
+
+        In 2D the vorticity is the scalar ``omega = d(u2)/dx - d(u1)/dy`` and
+        ``omega x u = (-omega*u2, omega*u1)``; in 3D we use the vector cross
+        product directly.
         """
+        if self.dim == 2:
+            x, y = self.coords
+            u1, u2 = u[0], u[1]
+            omega = sp.diff(u2, x) - sp.diff(u1, y)
+            return sp.Matrix([-omega * u2, omega * u1])
         return -u.cross(self.curl(u))
 
     def time_derivative(self, u, t):

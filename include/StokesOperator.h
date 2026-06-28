@@ -48,6 +48,14 @@ public:
 
     double getTau() const { return tau_; }
     void setTau(const double tau) { tau_ = tau; }
+
+    // Nitsche parameters actually used to assemble this operator's boundary
+    // form. The penalty is rescaled across p-refinement (see StokesMG), so a
+    // matching right-hand side (StokesRHS) MUST use these values rather than a
+    // hardcoded constant, otherwise the Nitsche imposition is inconsistent and
+    // the discrete solution does not reproduce the exact boundary trace.
+    double getPenalty() const { return penalty_; }
+    double getTheta() const { return theta_; }
     
     const mfem::SparseMatrix& getD0() const { return d0_; }
     const mfem::SparseMatrix& getD1() const { return d1_; }
@@ -121,6 +129,8 @@ private:
     std::shared_ptr<mfem::Mesh> mesh_;
     const unsigned              order_;
     double                      tau_ = 0.0;
+    double                      theta_ = 1.0;
+    double                      penalty_ = 0.0;
     const MassLumping           ml_;
     mfem::Array<int>            offsets_;
     mutable OperatorMode        opmode_ = OperatorMode::Galerkin;

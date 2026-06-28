@@ -159,7 +159,8 @@ StokesNitscheOperator::StokesNitscheOperator(
     const double                penalty,
     const double                factor,
     const MassLumping           ml)
-    : mfem::Operator(), tau_(tau), order_(order), mesh_(mesh_ptr), ml_(ml)
+    : mfem::Operator(), tau_(tau), order_(order), theta_(theta),
+      penalty_(penalty), mesh_(mesh_ptr), ml_(ml)
 {
     initFESpaces();
     initIncidence();

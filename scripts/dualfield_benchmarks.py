@@ -26,7 +26,8 @@ except ModuleNotFoundError:
     from simbench_core import SimulationDataProcessor
 
 
-def generate_box_mesh(Lx=1.0, Ly=1.0, Lz=1.0, lc=None, out="./geo/mesh/box.msh"):
+def generate_box_mesh(Lx=1.0, Ly=1.0, Lz=1.0, lc=None, out="./geo/mesh/box.msh",
+                      x0=0.0, y0=0.0, z0=0.0, graded=True):
     """
     Generate a 3D tetrahedral mesh of a rectangular box using Gmsh.
 
@@ -35,29 +36,32 @@ def generate_box_mesh(Lx=1.0, Ly=1.0, Lz=1.0, lc=None, out="./geo/mesh/box.msh")
     - A single volume representing the domain.
     - Physical groups for all boundary faces (xmin, xmax, ymin, ymax, zmin, zmax)
       with tags 11–16.
-    - Graded refinement near the top face (``z = Lz``) and the face at ``x = Lx``.
+    - Optional graded refinement near the top face (``z = z0 + Lz``) and the
+      face at ``x = x0 + Lx`` (``graded=True``); a uniform background size
+      otherwise (``graded=False``), which is what convergence studies want
+      since the solver applies its own uniform refinement.
     - Background mesh size field based on a distance-threshold strategy.
     - MFEM-compatible MSH 2.2 ASCII output.
 
     :param Lx: Length of the domain in the x-direction.
-    :type Lx: float
     :param Ly: Length of the domain in the y-direction.
-    :type Ly: float
     :param Lz: Length of the domain in the z-direction.
-    :type Lz: float
     :param lc: Base mesh size. Defaults to ``min(Lx, Ly, Lz) / 10`` if ``None``.
-    :type lc: float or None
     :param out: Output path for the generated ``.msh`` file.
-    :type out: str
+    :param x0,y0,z0: Lower corner of the box (default at the origin). Use e.g.
+        ``x0=y0=z0=-1`` with ``Lx=Ly=Lz=2`` for the cube ``(-1,1)^3``.
+    :param graded: When ``True`` apply graded near-wall refinement; when
+        ``False`` produce a near-uniform mesh.
 
     :raises RuntimeError: If the volume or required boundary faces cannot be identified.
     :returns: None
     """
+    xmax_v, ymax_v, zmax_v = x0 + Lx, y0 + Ly, z0 + Lz
     gmsh.initialize()
     gmsh.model.add("box")
     gmsh.option.setNumber("General.Terminal", 0)
 
-    gmsh.model.occ.addBox(0, 0, 0, Lx, Ly, Lz)
+    gmsh.model.occ.addBox(x0, y0, z0, Lx, Ly, Lz)
     gmsh.model.occ.synchronize()
 
     vols = gmsh.model.getEntities(3)
@@ -77,46 +81,50 @@ def generate_box_mesh(Lx=1.0, Ly=1.0, Lz=1.0, lc=None, out="./geo/mesh/box.msh")
 
     eps = 1e-5
     for (dim, s) in surfs:
-        x0, y0, z0, x1, y1, z1 = gmsh.model.getBoundingBox(dim, s)
-        if abs(x0 - 0.0) < eps and abs(x1 - 0.0) < eps:
+        bx0, by0, bz0, bx1, by1, bz1 = gmsh.model.getBoundingBox(dim, s)
+        if abs(bx0 - x0) < eps and abs(bx1 - x0) < eps:
             xmin_faces.append(s)
-        elif abs(x0 - Lx) < eps and abs(x1 - Lx) < eps:
+        elif abs(bx0 - xmax_v) < eps and abs(bx1 - xmax_v) < eps:
             xmax_faces.append(s)
-        elif abs(y0 - 0.0) < eps and abs(y1 - 0.0) < eps:
+        elif abs(by0 - y0) < eps and abs(by1 - y0) < eps:
             ymin_faces.append(s)
-        elif abs(y0 - Ly) < eps and abs(y1 - Ly) < eps:
+        elif abs(by0 - ymax_v) < eps and abs(by1 - ymax_v) < eps:
             ymax_faces.append(s)
-        elif abs(z0 - 0.0) < eps and abs(z1 - 0.0) < eps:
+        elif abs(bz0 - z0) < eps and abs(bz1 - z0) < eps:
             zmin_faces.append(s)
-        elif abs(z0 - Lz) < eps and abs(z1 - Lz) < eps:
+        elif abs(bz0 - zmax_v) < eps and abs(bz1 - zmax_v) < eps:
             zmax_faces.append(s)
 
-    if not zmax_faces or not ymax_faces:
-        gmsh.finalize()
-        raise RuntimeError("Could not identify z=Lz or y=Ly faces for top refinement.")
+    if graded:
+        if not zmax_faces or not ymax_faces:
+            gmsh.finalize()
+            raise RuntimeError("Could not identify z=zmax or y=ymax faces for top refinement.")
 
-    # Graded refinement near z=Lz and x=Lx
-    refined_faces = zmax_faces + xmax_faces
-    lc_far = lc
-    lc_top = lc / 3.0
-    d_inner, d_outer = 0.05 * Lz, 0.25 * Lz
+        # Graded refinement near z=zmax and x=xmax
+        refined_faces = zmax_faces + xmax_faces
+        lc_far = lc
+        lc_top = lc / 3.0
+        d_inner, d_outer = 0.05 * Lz, 0.25 * Lz
 
-    gmsh.option.setNumber("Mesh.CharacteristicLengthMin", min(lc_top, lc_far))
-    gmsh.option.setNumber("Mesh.CharacteristicLengthMax", max(lc_top, lc_far))
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMin", min(lc_top, lc_far))
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMax", max(lc_top, lc_far))
 
-    f_dist = gmsh.model.mesh.field.add("Distance")
-    gmsh.model.mesh.field.setNumbers(f_dist, "SurfacesList", refined_faces)
+        f_dist = gmsh.model.mesh.field.add("Distance")
+        gmsh.model.mesh.field.setNumbers(f_dist, "SurfacesList", refined_faces)
 
-    f_thr = gmsh.model.mesh.field.add("Threshold")
-    gmsh.model.mesh.field.setNumber(f_thr, "InField", f_dist)
-    gmsh.model.mesh.field.setNumber(f_thr, "SizeMin", lc_top)
-    gmsh.model.mesh.field.setNumber(f_thr, "SizeMax", lc_far)
-    gmsh.model.mesh.field.setNumber(f_thr, "DistMin", d_inner)
-    gmsh.model.mesh.field.setNumber(f_thr, "DistMax", d_outer)
+        f_thr = gmsh.model.mesh.field.add("Threshold")
+        gmsh.model.mesh.field.setNumber(f_thr, "InField", f_dist)
+        gmsh.model.mesh.field.setNumber(f_thr, "SizeMin", lc_top)
+        gmsh.model.mesh.field.setNumber(f_thr, "SizeMax", lc_far)
+        gmsh.model.mesh.field.setNumber(f_thr, "DistMin", d_inner)
+        gmsh.model.mesh.field.setNumber(f_thr, "DistMax", d_outer)
 
-    f_min = gmsh.model.mesh.field.add("Min")
-    gmsh.model.mesh.field.setNumbers(f_min, "FieldsList", [f_thr])
-    gmsh.model.mesh.field.setAsBackgroundMesh(f_min)
+        f_min = gmsh.model.mesh.field.add("Min")
+        gmsh.model.mesh.field.setNumbers(f_min, "FieldsList", [f_thr])
+        gmsh.model.mesh.field.setAsBackgroundMesh(f_min)
+    else:
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMin", lc)
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMax", lc)
 
     phys_vol = gmsh.model.addPhysicalGroup(3, [vol])
     gmsh.model.setPhysicalName(3, phys_vol, "domain")
@@ -146,7 +154,86 @@ def generate_box_mesh(Lx=1.0, Ly=1.0, Lz=1.0, lc=None, out="./geo/mesh/box.msh")
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     gmsh.write(out)
     gmsh.finalize()
-    print(f"Wrote {out} (Lx={Lx}, Ly={Ly}, Lz={Lz}, lc={lc})")
+    print(f"Wrote {out} (origin=({x0},{y0},{z0}), Lx={Lx}, Ly={Ly}, Lz={Lz}, lc={lc})")
+
+
+def generate_rectangle_mesh(Lx=1.0, Ly=1.0, lc=None, out="./geo/mesh/rect.msh",
+                            x0=0.0, y0=0.0):
+    """
+    Generate a 2D triangular mesh of a rectangle ``[x0, x0+Lx] x [y0, y0+Ly]``.
+
+    Near-uniform sizing is used (convergence studies rely on the solver's own
+    uniform refinement). Boundary edges get physical groups with tags 11–14
+    (xmin, xmax, ymin, ymax) and the surface gets a "domain" physical group,
+    so MFEM reads non-zero element and boundary attributes. Output is MSH 2.2
+    ASCII, the format the MFEM reader expects.
+
+    :param Lx, Ly: Side lengths in x and y.
+    :param lc: Mesh size. Defaults to ``min(Lx, Ly) / 10`` if ``None``.
+    :param out: Output ``.msh`` path.
+    :param x0, y0: Lower-left corner (default origin). Use ``x0=y0=-1``,
+        ``Lx=Ly=2`` for ``(-1,1)^2`` if ever needed.
+    """
+    xmax_v, ymax_v = x0 + Lx, y0 + Ly
+    if lc is None:
+        lc = min(Lx, Ly) / 10.0
+
+    gmsh.initialize()
+    gmsh.model.add("rect")
+    gmsh.option.setNumber("General.Terminal", 0)
+
+    gmsh.model.occ.addRectangle(x0, y0, 0.0, Lx, Ly)
+    gmsh.model.occ.synchronize()
+
+    surfs = gmsh.model.getEntities(2)
+    if len(surfs) != 1:
+        gmsh.finalize()
+        raise RuntimeError(f"Expected exactly 1 surface, found {len(surfs)}: {surfs}")
+    surf = surfs[0][1]
+
+    xmin_edges, xmax_edges, ymin_edges, ymax_edges = [], [], [], []
+    eps = 1e-5
+    for (dim, c) in gmsh.model.getBoundary([(2, surf)], oriented=False, recursive=False):
+        bx0, by0, _, bx1, by1, _ = gmsh.model.getBoundingBox(dim, c)
+        if abs(bx0 - x0) < eps and abs(bx1 - x0) < eps:
+            xmin_edges.append(c)
+        elif abs(bx0 - xmax_v) < eps and abs(bx1 - xmax_v) < eps:
+            xmax_edges.append(c)
+        elif abs(by0 - y0) < eps and abs(by1 - y0) < eps:
+            ymin_edges.append(c)
+        elif abs(by0 - ymax_v) < eps and abs(by1 - ymax_v) < eps:
+            ymax_edges.append(c)
+
+    gmsh.option.setNumber("Mesh.CharacteristicLengthMin", lc)
+    gmsh.option.setNumber("Mesh.CharacteristicLengthMax", lc)
+
+    phys_surf = gmsh.model.addPhysicalGroup(2, [surf])
+    gmsh.model.setPhysicalName(2, phys_surf, "domain")
+
+    def add_curve_group(tag, name, edges):
+        if edges:
+            pg = gmsh.model.addPhysicalGroup(1, edges, tag=tag)
+            gmsh.model.setPhysicalName(1, pg, name)
+
+    add_curve_group(11, "xmin", xmin_edges)
+    add_curve_group(12, "xmax", xmax_edges)
+    add_curve_group(13, "ymin", ymin_edges)
+    add_curve_group(14, "ymax", ymax_edges)
+
+    gmsh.model.mesh.generate(2)
+
+    gmsh.option.setNumber("Mesh.MshFileVersion", 2.2)
+    gmsh.option.setNumber("Mesh.Binary", 0)
+    gmsh.option.setNumber("Mesh.SaveAll", 0)
+
+    if not gmsh.model.getEntitiesForPhysicalGroup(2, phys_surf):
+        gmsh.finalize()
+        raise RuntimeError("Physical Surface 'domain' is empty; MFEM would see element attributes = 0.")
+
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    gmsh.write(out)
+    gmsh.finalize()
+    print(f"Wrote {out} (origin=({x0},{y0}), Lx={Lx}, Ly={Ly}, lc={lc})")
 
 
 def compile_latex_report(tex_path="tex_reports/dualfield_benchmark_report.tex", runs=1):

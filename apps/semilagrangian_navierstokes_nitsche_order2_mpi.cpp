@@ -217,10 +217,16 @@ int main(int argc, char *argv[])
     // The solved operator is the MG finest StokesNitscheOperator `op`.
     // BDF1 vs BDF2 differ only in the mass coefficient (1/dt vs 1.5/dt),
     // applied to `op` via mg_solver.setTau() in the time loop.
+    // Match the RHS Nitsche penalty/theta to the values the operator actually
+    // uses: StokesMG rescales the penalty across the p-refinement (order 1->2),
+    // so a hardcoded Cw makes the boundary imposition inconsistent and destroys
+    // the order-2 convergence (see the non-MPI order-2 app for the detailed
+    // rationale).
     hcurl::StokesRHS rhs(ND, CG,
                          config.get_exact_data("force_data"),
                          config.get_exact_data("boundary_data_u"),
-                         theta, Cw, viscosity, 0.0, lid_marker_ptr);
+                         op.getTheta(), op.getPenalty(), viscosity, 0.0,
+                         lid_marker_ptr);
     hcurl::StokesSolution x(ND, CG);
 
     // ---- Initial condition ----

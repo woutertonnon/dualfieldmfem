@@ -23,6 +23,10 @@ target_link_libraries(semilagrangian_navierstokes_nitsche PRIVATE stokesmg bound
 add_executable(semilagrangian_navierstokes_nitsche_order2 semilagrangian_navierstokes_nitsche_order2.cpp)
 target_link_libraries(semilagrangian_navierstokes_nitsche_order2 PRIVATE stokesmg boundaryoperatorslib mfem OpenMP::OpenMP_CXX Boost::program_options dualfield_project_options)
 
+# Standalone diagnostic for the order-2 Rapetti reconstruction (no GTest needed).
+add_executable(diag_order2_advection diag_order2_advection.cpp)
+target_link_libraries(diag_order2_advection PRIVATE stokesmg boundaryoperatorslib mfem MPI::MPI_CXX OpenMP::OpenMP_CXX Boost::program_options dualfield_project_options)
+
 add_executable(semilagrangian_navierstokes_nitsche_mpi semilagrangian_navierstokes_nitsche_mpi.cpp)
 target_link_libraries(semilagrangian_navierstokes_nitsche_mpi PRIVATE stokesmg boundaryoperatorslib mfem MPI::MPI_CXX OpenMP::OpenMP_CXX Boost::program_options dualfield_project_options)
 
