@@ -8,4 +8,18 @@ set(MFEM_THREAD_SAFE ON CACHE BOOL "Thread-safe mode (required for OpenMP)" FORC
 message(STATUS "Forcing MFEM configuration: MFEM_USE_MPI=${MFEM_USE_MPI}, MFEM_USESUITESPARSE=${MFEM_USE_SUITESPARSE}, MFEM_USE_METIS_5=${MFEM_USE_METIS_5}")
 
 add_subdirectory(mfem)
-add_subdirectory(boundaryintegrallib)
+
+# The boundary-integral library is normally the lowercase git submodule
+# (extern/boundaryintegrallib). Some checkouts instead have it as a manual
+# clone under the GitHub-cased name (extern/BoundaryIntegralLib, e.g. on Euler).
+# Use whichever is populated so this file never needs a per-machine edit.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/boundaryintegrallib/CMakeLists.txt")
+    add_subdirectory(boundaryintegrallib)
+elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/BoundaryIntegralLib/CMakeLists.txt")
+    add_subdirectory(BoundaryIntegralLib)
+else()
+    message(FATAL_ERROR
+        "boundary-integral library not found under extern/. Run "
+        "'git submodule update --init extern/boundaryintegrallib', or place a "
+        "clone at extern/BoundaryIntegralLib.")
+endif()
