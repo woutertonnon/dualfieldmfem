@@ -11,11 +11,15 @@
 //   F_D = oint_S ( eps * omega * n_y  -  p * n_x ) ds
 //   F_L = oint_S ( -eps * omega * n_x -  p * n_y ) ds
 //
-// where n is the unit normal of the FLUID domain on the cylinder boundary S
-// (CalcOrtho's outward normal).  The dimensionless coefficients are
+// where n is the unit normal of the FLUID domain on the cylinder boundary S.
+// IMPORTANT: this scheme solves the viscosity-divided momentum, so the stored
+// pressure is p_solved = p_phys / eps; the PHYSICAL traction therefore carries
+// a single factor eps on BOTH terms:
+//   F_D = eps * oint_S ( omega * n_y - p_solved * n_x ) ds, etc.
+// CalcOrtho's normal points OUT of the fluid (i.e. INTO the cylinder), the
+// opposite of the body-outward convention, so the force on the body flips sign
+// -> pass sign = -1.  The dimensionless coefficients are
 //   c_{D,L} = 2 F_{D,L} / (Ubar^2 D).
-// The overall sign is fixed empirically against the steady Re=20 reference
-// (c_D > 0); flip `sign` if the convention comes out negated.
 //
 // Delta p = p(x_front) - p(x_back) uses a BFS element search for point eval.
 
@@ -74,8 +78,13 @@ inline CylinderForces ComputeCylinderForces(
                 p_gf.GetValue(*Tr->Elem1, Tr->GetElement1IntPoint());
 
             const double w = ip.weight * ds;  // arc-length measure
-            FD += w * (eps * omega * ny - pval * nx);
-            FL += w * (-eps * omega * nx - pval * ny);
+            // Force on the body F = oint(-p n + nu*omega (zhat x n)) with the
+            // body-outward normal; with CalcOrtho's fluid-outward normal n and
+            // p_phys = eps*pval this is eps*(omega*n_y + p*n_x) for drag,
+            // eps*(p*n_y - omega*n_x) for lift (sign=-1 below absorbs the
+            // body/fluid normal flip).
+            FD += w * eps * (-omega * ny - pval * nx);
+            FL += w * eps * (omega * nx - pval * ny);
         }
     }
 

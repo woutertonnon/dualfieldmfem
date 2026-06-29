@@ -46,10 +46,10 @@ public:
     const boost::property_tree::ptree &get_tree_const() const { return tree_; };
 
     template <typename T>
-    T get_value(std::string variable, const T default_value) { return tree_.get<T>(variable.data(), default_value); };
+    T get_value(std::string variable, const T default_value) const { return get_tree_const().get<T>(variable.data(), default_value); };
 
     template <typename T>
-    T get_value(std::string variable) { return tree_.get<T>(variable.data()); };
+    T get_value(std::string variable) const { return get_tree_const().get<T>(variable.data()); };
 
     std::function<void(const mfem::Vector &, double, mfem::Vector &)>& get_exact_data(std::string function_name) { 
         try{ 

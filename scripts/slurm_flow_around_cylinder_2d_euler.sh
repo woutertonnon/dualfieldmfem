@@ -28,7 +28,13 @@ set -euo pipefail
 #   EXE, BUILD_BINARY=1.
 # ---------------------------------------------------------------------------
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Under sbatch, BASH_SOURCE points at SLURM's spool copy; use the submission
+# directory (the repo root, where sbatch was invoked) instead.
+if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+    ROOT_DIR="$SLURM_SUBMIT_DIR"
+else
+    ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
 cd "$ROOT_DIR"
 if [[ -n "${MODULES:-}" ]]; then eval "$MODULES"; fi
 

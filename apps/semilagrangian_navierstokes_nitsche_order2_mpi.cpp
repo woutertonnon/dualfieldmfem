@@ -667,8 +667,9 @@ int main(int argc, char *argv[])
             {
                 CylinderForces f = ComputeCylinderForces(
                     x.get_u(), x.get_p(), qoi_cyl_attr, viscosity,
-                    qoi_Ubar, qoi_D);
-                double dp = CylinderPressureDrop(x.get_p());
+                    qoi_Ubar, qoi_D, -1.0);
+                // Stored pressure is p_phys/eps, so scale the drop by eps too.
+                double dp = viscosity * CylinderPressureDrop(x.get_p());
                 (*qoi_csv) << cycle << ',' << t << ',' << f.cD << ',' << f.cL
                            << ',' << dp << ',' << f.FD << ',' << f.FL << '\n';
                 qoi_csv->flush();
