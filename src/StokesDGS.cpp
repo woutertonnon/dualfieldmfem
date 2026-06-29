@@ -52,6 +52,24 @@ void StokesNitscheDGS::initTransformedSystem()
     Lp_ = std::unique_ptr<mfem::SparseMatrix>(
         mfem::Mult(*grad_adj_, op_->getD0()));
 
+    // Consistent-Nitsche outflow: the distributive transformation T has a
+    // -tau*I pressure block, so the transformed pressure operator is
+    //   (K T)_{11} = grad_adj*d0 + tau * C,   C = M_h1^{-1}(gamma <p,q>)_Gout.
+    // The tau factor (= 1/(dt*nu), O(1e4)) is essential -- without it the
+    // penalty is invisible to the smoother and the preconditioner fails for the
+    // (well-posed) large-gamma regime on multi-level MG.
+    if (op_->hasOutflow() && op_->getOutflowPenaltyMass())
+    {
+        auto pen = std::make_unique<mfem::SparseMatrix>(
+            *op_->getOutflowPenaltyMass());
+        mfem::Vector inv_mass_h1(op_->getMassH1Lumped());
+        inv_mass_h1.Reciprocal();
+        pen->ScaleRows(inv_mass_h1);  // M_h1^{-1} (gamma <p,q>)
+        const double tau = op_->getTau();
+        Lp_ = std::unique_ptr<mfem::SparseMatrix>(
+            mfem::Add(1.0, *Lp_, (tau != 0.0 ? tau : 1.0), *pen));
+    }
+
     mfem::Vector inv_mass_hcurl_lumped = op_->getMassHCurlLumped();
     inv_mass_hcurl_lumped.Reciprocal();
 
