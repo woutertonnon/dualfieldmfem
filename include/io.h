@@ -226,6 +226,44 @@ public:
         return marker;
     }
 
+    /// True when the config specifies outflow_attributes (consistent-Nitsche
+    /// "do-nothing" pressure outflow; e.g. the channel outlet).
+    bool has_outflow_attributes() const {
+        auto child = get_tree_const().get_child_optional("outflow_attributes");
+        return child.has_value();
+    }
+
+    /// Boundary-attribute marker for the outflow faces (same convention as
+    /// get_lid_marker).
+    mfem::Array<int> get_outflow_marker(int max_bdr_attr) const {
+        mfem::Array<int> marker(max_bdr_attr);
+        marker = 0;
+        if (!has_outflow_attributes())
+            return marker;
+        for (auto &item : get_tree_const().get_child("outflow_attributes"))
+        {
+            int attr = item.second.get_value<int>();
+            if (attr >= 1 && attr <= max_bdr_attr)
+                marker[attr - 1] = 1;
+        }
+        return marker;
+    }
+
+    /// Pressure penalty gamma for the consistent-Nitsche outflow (tunable;
+    /// larger => p closer to 0 and u.n freer at the outlet).
+    double get_outflow_penalty() const {
+        return get_value("outflow_penalty", 1.0);
+    }
+
+    /// Flow-around-cylinder QoI: boundary attribute of the cylinder (0 disables
+    /// the drag/lift/pressure-drop output), mean inflow speed Ubar and diameter
+    /// D used to non-dimensionalise the force coefficients.
+    int    get_qoi_cylinder_attribute() const {
+        return get_value("qoi_cylinder_attribute", 0);
+    }
+    double get_qoi_Ubar() const { return get_value("qoi_Ubar", 1.0); }
+    double get_qoi_diameter() const { return get_value("qoi_diameter", 0.1); }
+
 private:
     // Configuration parameters loaded from the JSON file
     std::string mesh;

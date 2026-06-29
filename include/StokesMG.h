@@ -48,7 +48,11 @@ public:
         const double                penalty = -1,
         const double                factor  = 1,
         const MassLumping           ml      = MassLumping::Diagonal,
-        const SmootherType          st      = SmootherType::GaussSeidelForw);
+        const SmootherType          st      = SmootherType::GaussSeidelForw,
+        // Consistent-Nitsche outflow marker + pressure penalty, forwarded to
+        // every level's StokesNitscheOperator (empty => zero-mean as before).
+        const mfem::Array<int>*     outflow_marker  = nullptr,
+        const double                outflow_penalty = 0.0);
 
     ~StokesMG() override = default;
 
@@ -162,6 +166,14 @@ private:
     const MassLumping  ml_;
     const SmootherType st_;
     unsigned           order_ = 1;
+
+    // Outflow marker forwarded to each level's operator (empty => unused).
+    mfem::Array<int>   outflow_marker_;
+    const double       outflow_penalty_ = 0.0;
+    const mfem::Array<int>* outflowPtr() const
+    {
+        return outflow_marker_.Size() > 0 ? &outflow_marker_ : nullptr;
+    }
 
     int                  pre_smooth_  = 1;
     int                  post_smooth_ = 1;

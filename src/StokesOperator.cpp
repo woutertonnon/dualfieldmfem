@@ -158,20 +158,56 @@ StokesNitscheOperator::StokesNitscheOperator(
     const double                theta,
     const double                penalty,
     const double                factor,
-    const MassLumping           ml)
+    const MassLumping           ml,
+    const mfem::Array<int>*     outflow_marker,
+    const double                outflow_penalty)
     : mfem::Operator(), tau_(tau), order_(order), theta_(theta),
-      penalty_(penalty), mesh_(mesh_ptr), ml_(ml)
+      penalty_(penalty), mesh_(mesh_ptr), ml_(ml),
+      outflow_penalty_(outflow_penalty)
 {
+    if (outflow_marker && outflow_marker->Size() > 0)
+        outflow_marker_ = *outflow_marker;
+
     initFESpaces();
     initIncidence();
     initMass();
     initLumpedMass();
     initNitsche(theta, penalty, factor);
+    initOutflow();
 
     offsets_.SetSize(3);
     offsets_[0] = 0;
     offsets_[1] = hcurl_space_->GetNDofs();
     offsets_[2] = hcurl_space_->GetNDofs() + h1_space_->GetNDofs();
+}
+
+void StokesNitscheOperator::initOutflow()
+{
+    if (outflow_marker_.Size() == 0)
+        return;
+
+    // b_out_ = <u.n, q> over the outflow faces, assembled as a MixedBilinearForm
+    // with trial = ND (velocity) and test = H1 (pressure) -> (nv x ne) matrix.
+    {
+        auto B = std::make_unique<mfem::MixedBilinearForm>(
+            hcurl_space_.get(), h1_space_.get());
+        B->AddBdrFaceIntegrator(new ND_NormalScalarBdrIntegrator(),
+                                outflow_marker_);
+        B->Assemble();
+        B->Finalize();
+        b_out_ = std::unique_ptr<mfem::SparseMatrix>(B->LoseMat());
+    }
+
+    // m_out_ = gamma * <p, q> boundary mass over the outflow faces (nv x nv).
+    {
+        auto M = std::make_unique<mfem::BilinearForm>(h1_space_.get());
+        mfem::ConstantCoefficient gamma(outflow_penalty_);
+        M->AddBoundaryIntegrator(new mfem::BoundaryMassIntegrator(gamma),
+                                 outflow_marker_);
+        M->Assemble();
+        M->Finalize();
+        m_out_ = std::unique_ptr<mfem::SparseMatrix>(M->LoseMat());
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -223,6 +259,27 @@ StokesNitscheOperator::getFullGalerkinSystem() const
         {
             curlcurl = std::move(cc_nitsche);
         }
+    }
+
+    // Consistent-Nitsche outflow (consistent weak form, no mass scaling):
+    //   (0,1) = grad - b^T,  (1,0) = gradT - b,  (1,1) = -m_out.
+    if (outflow_marker_.Size() > 0)
+    {
+        auto bt = std::unique_ptr<mfem::SparseMatrix>(mfem::Transpose(*b_out_));
+        auto grad_o =
+            std::unique_ptr<mfem::SparseMatrix>(mfem::Add(1.0, *grad, -1.0, *bt));
+        auto gradT_o = std::unique_ptr<mfem::SparseMatrix>(
+            mfem::Add(1.0, *gradT, -1.0, *b_out_));
+        auto pblk = std::make_unique<mfem::SparseMatrix>(*m_out_);
+        *pblk *= -1.0;
+
+        const mfem::Array<int> offs2({0, ne, ne + nv});
+        mfem::BlockMatrix       block2(offs2);
+        block2.SetBlock(0, 0, curlcurl.get());
+        block2.SetBlock(0, 1, grad_o.get());
+        block2.SetBlock(1, 0, gradT_o.get());
+        block2.SetBlock(1, 1, pblk.get());
+        return std::unique_ptr<mfem::SparseMatrix>(block2.CreateMonolithic());
     }
 
     // Mean Constraint Block
@@ -304,6 +361,38 @@ std::unique_ptr<mfem::SparseMatrix> StokesNitscheOperator::getFullDECSystem()
             curlcurl =
                 std::unique_ptr<mfem::SparseMatrix>(mfem::Add(*curlcurl, id));
         }
+    }
+
+    // Consistent-Nitsche outflow: replace the zero-mean Lagrange constraint by
+    // the boundary terms (the penalty fixes the pressure datum). DEC scaling:
+    //   (0,1) = d0 - M_hcurl^{-1} b^T,  (1,0) = gradT - M_h1^{-1} b,
+    //   (1,1) = -M_h1^{-1} m_out.
+    if (outflow_marker_.Size() > 0)
+    {
+        mfem::Vector inv_mass_hcurl(mass_hcurl_lumped_);
+        inv_mass_hcurl.Reciprocal();
+
+        auto bt = std::unique_ptr<mfem::SparseMatrix>(mfem::Transpose(*b_out_));
+        bt->ScaleRows(inv_mass_hcurl);
+        auto grad_o =
+            std::unique_ptr<mfem::SparseMatrix>(mfem::Add(1.0, *grad, -1.0, *bt));
+
+        auto b_sc = std::make_unique<mfem::SparseMatrix>(*b_out_);
+        b_sc->ScaleRows(inv_mass_h1);
+        auto gradT_o = std::unique_ptr<mfem::SparseMatrix>(
+            mfem::Add(1.0, *gradT, -1.0, *b_sc));
+
+        auto pblk = std::make_unique<mfem::SparseMatrix>(*m_out_);
+        pblk->ScaleRows(inv_mass_h1);
+        *pblk *= -1.0;
+
+        const mfem::Array<int> offs2({0, ne, ne + nv});
+        mfem::BlockMatrix       block2(offs2);
+        block2.SetBlock(0, 0, curlcurl.get());
+        block2.SetBlock(0, 1, grad_o.get());
+        block2.SetBlock(1, 0, gradT_o.get());
+        block2.SetBlock(1, 1, pblk.get());
+        return std::unique_ptr<mfem::SparseMatrix>(block2.CreateMonolithic());
     }
 
     // Mean Constraint
@@ -414,6 +503,10 @@ void StokesNitscheOperator::MultDEC(const mfem::Vector& x, mfem::Vector& y)
 
     nitsche_->AddMult(x_u, y_u);
 
+    // Outflow symmetric term -<p, v.n> (weak; gets the 1/M_hcurl scaling below).
+    if (outflow_marker_.Size() > 0)
+        b_out_->AddMultTranspose(x_p, y_u, -1.0);
+
     y_u /= mass_hcurl_lumped_;
 
     // Gradient part
@@ -423,6 +516,13 @@ void StokesNitscheOperator::MultDEC(const mfem::Vector& x, mfem::Vector& y)
     tmp_u = x_u;
     tmp_u *= mass_hcurl_lumped_;
     d0_.MultTranspose(tmp_u, y_p);
+
+    // Outflow consistency -<u.n,q> + penalty -gamma<p,q> (1/M_h1-scaled below).
+    if (outflow_marker_.Size() > 0)
+    {
+        b_out_->AddMult(x_u, y_p, -1.0);
+        m_out_->AddMult(x_p, y_p, -1.0);
+    }
 
     y_p /= mass_h1_lumped_;
 
@@ -465,6 +565,15 @@ void StokesNitscheOperator::MultGalerkin(const mfem::Vector& x, mfem::Vector& y)
 
     // Nitsche Boundary Term
     nitsche_->AddMult(x_u, y_u);
+
+    // Outflow consistent-Nitsche terms (consistent weak form, no mass scaling):
+    //   y_u -= <p, v.n>,  y_p -= <u.n, q> + gamma<p,q>
+    if (outflow_marker_.Size() > 0)
+    {
+        b_out_->AddMultTranspose(x_p, y_u, -1.0);
+        b_out_->AddMult(x_u, y_p, -1.0);
+        m_out_->AddMult(x_p, y_p, -1.0);
+    }
 
     // Time (L2 Mass)
     if (tau_ != 0.0)

@@ -18,6 +18,7 @@
 #include "StokesOperators.h"
 #include "StokesMG.h"
 #include "FindElementBFS.h"
+#include "CylinderQoI.h"
 #include "SemiLagrangianAdvectionOrder2.h"
 
 using namespace mfem;
@@ -128,8 +129,29 @@ int main(int argc, char *argv[])
     // is: base mesh (order 1) -> h-refined `refinements` times (order 1)
     // -> one p-refinement to order 2 (the fine level matching ND2).
     auto base_mesh = std::make_shared<mfem::Mesh>(mesh_string.c_str(), 1, 1);
+
+    // Consistent-Nitsche "do-nothing" pressure outflow (e.g. channel outlet).
+    // When outflow_attributes is set, the marked boundary gets the outflow
+    // terms (free u.n, pressure datum via the gamma penalty) instead of the
+    // zero-mean pressure constraint.
+    mfem::Array<int>        outflow_marker;
+    const mfem::Array<int>* outflow_ptr     = nullptr;
+    double                  outflow_penalty = 0.0;
+    if (config.has_outflow_attributes())
+    {
+        outflow_marker =
+            config.get_outflow_marker(base_mesh->bdr_attributes.Max());
+        outflow_ptr     = &outflow_marker;
+        outflow_penalty = config.get_outflow_penalty();
+        std::cout << "  consistent-Nitsche outflow: gamma=" << outflow_penalty
+                  << std::endl;
+    }
+
     StokesNitsche::StokesMG mg_solver(base_mesh, 1.0 / (dt * viscosity),
-                                      theta, Cw);
+                                      theta, Cw, 1.0,
+                                      StokesNitsche::MassLumping::Diagonal,
+                                      StokesNitsche::SmootherType::GaussSeidelForw,
+                                      outflow_ptr, outflow_penalty);
     mg_solver.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);
     mg_solver.setIterativeMode(false);
     mg_solver.setCycleType(StokesNitsche::MGCycleType::VCycle);
@@ -366,6 +388,23 @@ int main(int argc, char *argv[])
         csv = std::make_unique<SingleFieldCSVLogger>(
             config, cycle, t, &ND, x.get_u(), num_it,
             &advect_time_s, &solve_time_s);
+    }
+
+    // ---- Flow-around-cylinder QoI (drag/lift/pressure-drop) ----
+    // Enabled when the config sets qoi_cylinder_attribute > 0.  Written to a
+    // dedicated CSV alongside the main logger; Strouhal is post-processed from
+    // the c_L(t) time series.
+    const int    qoi_cyl_attr = config.get_qoi_cylinder_attribute();
+    const double qoi_Ubar     = config.get_qoi_Ubar();
+    const double qoi_D        = config.get_qoi_diameter();
+    const bool   do_qoi       = qoi_cyl_attr > 0;
+    std::unique_ptr<std::ofstream> qoi_csv;
+    if (do_qoi && myid == 0)
+    {
+        qoi_csv = std::make_unique<std::ofstream>(
+            "./out/data/" + output_file + "_qoi.csv");
+        (*qoi_csv) << "cycle,t,cD,cL,dp,FD,FL\n";
+        qoi_csv->precision(10);
     }
 
     // ---- Progress bar ----
@@ -623,6 +662,18 @@ int main(int argc, char *argv[])
         if (myid == 0)
         {
             csv->WriteRow();
+
+            if (do_qoi)
+            {
+                CylinderForces f = ComputeCylinderForces(
+                    x.get_u(), x.get_p(), qoi_cyl_attr, viscosity,
+                    qoi_Ubar, qoi_D);
+                double dp = CylinderPressureDrop(x.get_p());
+                (*qoi_csv) << cycle << ',' << t << ',' << f.cD << ',' << f.cL
+                           << ',' << dp << ',' << f.FD << ',' << f.FL << '\n';
+                qoi_csv->flush();
+            }
+
             print_progress(cycle, t);
         }
 

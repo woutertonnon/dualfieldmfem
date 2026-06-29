@@ -80,7 +80,9 @@ StokesMG::StokesMG(
     const double                penalty,
     const double                factor,
     const MassLumping           ml,
-    const SmootherType          st)
+    const SmootherType          st,
+    const mfem::Array<int>*     outflow_marker,
+    const double                outflow_penalty)
     : mfem::Solver(0, 0),
       tau_(tau),
       theta_(theta),
@@ -88,12 +90,17 @@ StokesMG::StokesMG(
       penalty_bound_coarse_(computeCWBound(*coarse_mesh)),
       penalty_(penalty < 0 ? computeCWBound(*coarse_mesh) : penalty),
       ml_(ml),
-      st_(st)
+      st_(st),
+      outflow_penalty_(outflow_penalty)
 {
     iterative_mode = false;
 
+    if (outflow_marker && outflow_marker->Size() > 0)
+        outflow_marker_ = *outflow_marker;
+
     auto op = std::make_shared<StokesNitscheOperator>(
-        coarse_mesh, tau_, order_, theta_, penalty_, factor_, ml_);
+        coarse_mesh, tau_, order_, theta_, penalty_, factor_, ml_,
+        outflowPtr(), outflow_penalty_);
     auto smoother = std::make_shared<StokesNitscheDGS>(op, st_);
 
     height = op->NumRows();
@@ -164,7 +171,7 @@ void StokesMG::addRefinement(const unsigned order_ref, double penalty)
         // Add lowest order
         fine_op = std::make_shared<StokesNitscheOperator>(
             fine_mesh, tau_, order_, theta_, penalty < 0 ? penalty_ : penalty,
-            factor_, ml_);
+            factor_, ml_, outflowPtr(), outflow_penalty_);
     }
     else  // reftype == RefinementType::PRef
     {
@@ -177,7 +184,8 @@ void StokesMG::addRefinement(const unsigned order_ref, double penalty)
                       computeCWBound(*fine_mesh, order_);
 
         fine_op = std::make_shared<StokesNitscheOperator>(
-            fine_mesh, tau_, order_, theta_, penalty, factor_, ml_);
+            fine_mesh, tau_, order_, theta_, penalty, factor_, ml_,
+            outflowPtr(), outflow_penalty_);
     }
     auto fine_smoother = std::make_shared<StokesNitscheDGS>(fine_op, st_);
 

@@ -36,7 +36,16 @@ public:
         const double                theta,
         const double                penalty,
         const double                factor,
-        const MassLumping           ml = MassLumping::Diagonal);
+        const MassLumping           ml = MassLumping::Diagonal,
+        // Optional consistent-Nitsche outflow ("do-nothing" pressure outflow).
+        // outflow_marker marks the boundary attribute(s) left open (e.g. the
+        // channel outlet); on those faces the continuity flux <u.n,q> is
+        // cancelled (freeing u.n), the symmetric <p,v.n> term is added, and a
+        // boundary-mass penalty gamma*<p,q> pins the pressure datum. When the
+        // marker is null/empty the operator keeps the zero-mean Lagrange
+        // constraint (unchanged behaviour for all-Dirichlet problems).
+        const mfem::Array<int>*     outflow_marker  = nullptr,
+        const double                outflow_penalty = 0.0);
 
     StokesNitscheOperator(const StokesNitscheOperator&)            = delete;
     StokesNitscheOperator& operator=(const StokesNitscheOperator&) = delete;
@@ -56,6 +65,15 @@ public:
     // the discrete solution does not reproduce the exact boundary trace.
     double getPenalty() const { return penalty_; }
     double getTheta() const { return theta_; }
+
+    // True when this operator uses the consistent-Nitsche outflow (a non-empty
+    // outflow marker was supplied) rather than the zero-mean pressure constraint.
+    bool hasOutflow() const { return outflow_marker_.Size() > 0; }
+    double getOutflowPenalty() const { return outflow_penalty_; }
+    // <u.n, q> over the outflow faces, as an (nv x ne) matrix (H1 rows, ND cols).
+    const mfem::SparseMatrix* getOutflowFlux() const { return b_out_.get(); }
+    // gamma * <p, q> boundary mass over the outflow faces (nv x nv).
+    const mfem::SparseMatrix* getOutflowPenaltyMass() const { return m_out_.get(); }
     
     const mfem::SparseMatrix& getD0() const { return d0_; }
     const mfem::SparseMatrix& getD1() const { return d1_; }
@@ -125,6 +143,9 @@ private:
     void initLumpedMass();
     void
     initNitsche(const double theta, const double penalty, const double factor);
+    // Assemble the outflow boundary operators b_out_ (<u.n,q>) and m_out_
+    // (gamma*<p,q>) from outflow_marker_ (no-op when the marker is empty).
+    void initOutflow();
 
     std::shared_ptr<mfem::Mesh> mesh_;
     const unsigned              order_;
@@ -149,6 +170,12 @@ private:
     std::unique_ptr<mfem::BilinearForm> mass_hcurl_;
     std::unique_ptr<mfem::BilinearForm> mass_hdiv_or_l2_;
     std::unique_ptr<mfem::BilinearForm> nitsche_;
+
+    // Consistent-Nitsche outflow (empty marker => unused, zero-mean instead).
+    mfem::Array<int>                    outflow_marker_;
+    double                              outflow_penalty_ = 0.0;
+    std::unique_ptr<mfem::SparseMatrix> b_out_;  // <u.n, q>_Gout  (nv x ne)
+    std::unique_ptr<mfem::SparseMatrix> m_out_;  // gamma*<p,q>_Gout (nv x nv)
 
     mfem::Vector mass_h1_lumped_;
     mfem::Vector mass_hcurl_lumped_;
