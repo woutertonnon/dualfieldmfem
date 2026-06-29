@@ -33,18 +33,32 @@ The C++ compiler is a **runtime** dependency: `io.h` JIT-compiles the
 force/boundary/initial-data snippets into `./tmp/*.so` during the run, so the
 same toolchain module must be loaded in the batch job, not only at build time.
 
+**gmsh needs libGLU.** The gmsh Python wheel dlopen's `libGLU.so.1`, which the
+default Euler stack does not provide — without it `import gmsh` (hence all
+config/mesh generation) fails with `OSError: libGLU.so.1: cannot open shared
+object file`. Put the `mesa-glu` lib on `LD_LIBRARY_PATH` (no GUI/X needed):
+
+```bash
+export GLU_LIB=/cluster/software/stacks/2024-04/spack/opt/spack/linux-ubuntu22.04-x86_64_v3/gcc-8.5.0/mesa-glu-9.0.2-pcs22pbrelfi5ztwuf3aqxgiiooauat2/lib
+export LD_LIBRARY_PATH="$GLU_LIB:$LD_LIBRARY_PATH"
+# (path may change with the stack; find it via:  find /cluster/software -name 'libGLU.so.1' )
+```
+
 ## 2. Submit everything
 
 ```bash
 export MODULES="module load stack/2024-06 gcc/12.2.0 cmake suitesparse boost openmpi python"
 export VENV=~/physbc-venv
+# libGLU for gmsh (see section 1); also propagated to every job via --export=ALL:
+export GLU_LIB=/cluster/software/stacks/2024-04/spack/opt/spack/linux-ubuntu22.04-x86_64_v3/gcc-8.5.0/mesa-glu-9.0.2-pcs22pbrelfi5ztwuf3aqxgiiooauat2/lib
+export LD_LIBRARY_PATH="$GLU_LIB:$LD_LIBRARY_PATH"
 source "$VENV/bin/activate"
 bash scripts/submit_physbc_euler.sh                       # all 30 cases
 # or filter by prefix:
 bash scripts/submit_physbc_euler.sh StokesSecond Womersley
 ```
 
-`MODULES`/`VENV` propagate to every job via `--export=ALL`. Override sbatch
+`MODULES`/`VENV`/`LD_LIBRARY_PATH` propagate to every job via `--export=ALL`. Override sbatch
 resources with `SBATCH_ARGS`, e.g. `SBATCH_ARGS="--time=12:00:00 --ntasks=4"`.
 
 ### Single case (debug)
