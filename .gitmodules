@@ -3,4 +3,4 @@
 	url = https://github.com/mfem/mfem.git
 [submodule "extern/boundaryintegrallib"]
 	path = extern/boundaryintegrallib
-	url = https://github.com/woutertonnon/BoundaryIntegralLib.git
+	url = git@github.com:woutertonnon/BoundaryIntegralLib.git
