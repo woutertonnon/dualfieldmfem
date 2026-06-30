@@ -249,10 +249,11 @@ public:
         return marker;
     }
 
-    /// Pressure penalty gamma for the consistent-Nitsche outflow (tunable;
-    /// larger => p closer to 0 and u.n freer at the outlet).
+    /// Pressure penalty coefficient gamma for the consistent-Nitsche outflow.
+    /// Applied as (gamma/h_F)<p,q> (Nitsche-style 1/h scaling), so gamma is
+    /// mesh-independent across refinements; ~10 (like a Nitsche Cw) is enough.
     double get_outflow_penalty() const {
-        return get_value("outflow_penalty", 1.0);
+        return get_value("outflow_penalty", 10.0);
     }
 
     /// Flow-around-cylinder QoI: boundary attribute of the cylinder (0 disables

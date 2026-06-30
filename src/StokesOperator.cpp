@@ -9,6 +9,55 @@
 namespace StokesNitsche
 {
 
+namespace
+{
+// Pressure penalty (gamma/h_F) <p,q>, evaluated per boundary element. It is
+// added to the BilinearForm with the outflow attribute marker, so it acts ONLY
+// on the outflow faces (not the whole boundary). The 1/h_F scaling mirrors the
+// Nitsche Cw/h convention, so a FIXED gamma is mesh-independent (well-posed)
+// across refinements.
+class OutflowPressurePenaltyIntegrator : public mfem::BilinearFormIntegrator
+{
+    double gamma_;
+
+public:
+    explicit OutflowPressurePenaltyIntegrator(double gamma) : gamma_(gamma) {}
+
+    void AssembleElementMatrix(const mfem::FiniteElement&  el,
+                               mfem::ElementTransformation& Trans,
+                               mfem::DenseMatrix&           elmat) override
+    {
+        const int dof = el.GetDof();
+        elmat.SetSize(dof);
+        elmat = 0.0;
+
+        const mfem::IntegrationRule& ir =
+            mfem::IntRules.Get(el.GetGeomType(), 2 * el.GetOrder());
+
+        // local size h_F = measure of the boundary element (edge length in 2D)
+        double h = 0.0;
+        for (int q = 0; q < ir.GetNPoints(); ++q)
+        {
+            const mfem::IntegrationPoint& ip = ir.IntPoint(q);
+            Trans.SetIntPoint(&ip);
+            h += ip.weight * Trans.Weight();
+        }
+        if (h <= 0.0)
+            return;
+
+        mfem::Vector shape(dof);
+        for (int q = 0; q < ir.GetNPoints(); ++q)
+        {
+            const mfem::IntegrationPoint& ip = ir.IntPoint(q);
+            Trans.SetIntPoint(&ip);
+            el.CalcShape(ip, shape);
+            const double w = ip.weight * Trans.Weight() * gamma_ / h;
+            mfem::AddMult_a_VVt(w, shape, elmat);
+        }
+    }
+};
+}  // namespace
+
 void StokesNitscheOperator::initFESpaces()
 {
     MFEM_VERIFY(order_ > 0, "StokesNitscheOperator: order == 0, use order > 0");
@@ -198,12 +247,13 @@ void StokesNitscheOperator::initOutflow()
         b_out_ = std::unique_ptr<mfem::SparseMatrix>(B->LoseMat());
     }
 
-    // m_out_ = gamma * <p, q> boundary mass over the outflow faces (nv x nv).
+    // m_out_ = (gamma/h_F) <p, q> boundary mass over the outflow faces (nv x nv),
+    // h-scaled like the Nitsche penalty so a fixed gamma is mesh-independent.
     {
         auto M = std::make_unique<mfem::BilinearForm>(h1_space_.get());
-        mfem::ConstantCoefficient gamma(outflow_penalty_);
-        M->AddBoundaryIntegrator(new mfem::BoundaryMassIntegrator(gamma),
-                                 outflow_marker_);
+        M->AddBoundaryIntegrator(
+            new OutflowPressurePenaltyIntegrator(outflow_penalty_),
+            outflow_marker_);
         M->Assemble();
         M->Finalize();
         m_out_ = std::unique_ptr<mfem::SparseMatrix>(M->LoseMat());
