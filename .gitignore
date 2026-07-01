@@ -26,10 +26,14 @@ config_library_*.so
 tmp/
 matplotlib-*/
 
-# Generated meshes (benchmarks regenerate via generate_box_mesh)
+# Generated meshes (physbc benchmarks regenerate their own); the thesis-benchmark
+# meshes below are committed for reproducibility.
 geo/mesh/*.msh
-!geo/mesh/box.msh
 !geo/mesh/LidDrivenCavity3D.msh
+!geo/mesh/flow_around_cylinder_2d.msh
+!geo/mesh/flow_around_cylinder_2d_fine.msh
+!geo/mesh/LidDrivenCavity2D_lc0p02.msh
+!geo/mesh/LidDrivenCavity2D_lc0p0125.msh
 
 # Tool/shell configs
 .bash_profile
