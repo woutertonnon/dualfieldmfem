@@ -49,16 +49,23 @@ NU="${NU:-0.001}"
 T="${T:-$T_DEFAULT}"
 DT="${DT:-$DT_DEFAULT}"
 GAMMA="${GAMMA:-10.0}"   # outflow penalty coefficient; applied as gamma/h_F
+VMODE="${VMODE:-dihedral}"  # velocity_mode for transport: dihedral | cg_projection
 REFINEMENTS="${REFINEMENTS:-0}"
 VIS="${VIS:-0}"
-EXE="${EXE:-./build/semilagrangian_navierstokes_nitsche_order2_mpi}"
+ORDER="${ORDER:-2}"      # solver order: 1 or 2 (selects binary + config order)
+if [[ "$ORDER" == "1" ]]; then
+    EXE="${EXE:-./build/semilagrangian_navierstokes_nitsche_mpi}"
+else
+    EXE="${EXE:-./build/semilagrangian_navierstokes_nitsche_order2_mpi}"
+fi
 
 RANKS="${SLURM_NTASKS:-1}"
 THREADS="${SLURM_CPUS_PER_TASK:-16}"
 
-if [[ ! -f "geo/mesh/flow_around_cylinder_2d.msh" ]]; then
-    echo "[error] mesh geo/mesh/flow_around_cylinder_2d.msh missing"
-    echo "        regenerate: python geo/gmsh/flow_around_cylinder_2d.py"
+MESHFILE="${MESHFILE:-geo/mesh/flow_around_cylinder_2d.msh}"  # override for finer base mesh
+if [[ ! -f "$MESHFILE" ]]; then
+    echo "[error] mesh $MESHFILE missing"
+    echo "        regenerate: python geo/gmsh/flow_around_cylinder_2d.py [--lc-min ...]"
     exit 1
 fi
 
@@ -82,18 +89,19 @@ INFLOW="out[0] = 4.0*${UM}*x[1]*(0.41-x[1])/(0.41*0.41); out[1] = 0;"
 
 cat > "$CFG" <<JSON
 {
-    "mesh": "./geo/mesh/flow_around_cylinder_2d.msh",
+    "mesh": "./${MESHFILE}",
     "solver": "MINRES",
     "visualisation": ${VIS},
     "printlevel": 1,
     "outputfile": "${OUTPUT_REL}",
-    "order": 2,
+    "order": ${ORDER},
     "refinements": ${REFINEMENTS},
     "tol": 1e-08,
     "dt": ${DT},
     "trace_order": 2,
     "settls_iterations": 1,
     "vertex_velocity_mode": "edge_dihedral",
+    "velocity_mode": "${VMODE}",
     "T": ${T},
     "viscosity": ${NU},
     "lid_attributes": [2],

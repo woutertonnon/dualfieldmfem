@@ -22,6 +22,8 @@ def main():
     ap.add_argument("--Ubar", type=float, default=1.0)
     ap.add_argument("--tail", type=float, default=0.5,
                     help="fraction of the series (from the end) to analyse")
+    ap.add_argument("--tmin", type=float, default=None,
+                    help="explicit window start time (overrides --tail), e.g. 11")
     args = ap.parse_args()
 
     t, cD, cL, dp = [], [], [], []
@@ -33,11 +35,14 @@ def main():
     if len(t) < 4:
         print("too few samples"); sys.exit(1)
 
-    n0 = int((1.0 - args.tail) * len(t))
+    if args.tmin is not None:
+        n0 = int(np.searchsorted(t, args.tmin))
+    else:
+        n0 = int((1.0 - args.tail) * len(t))
     tw, cDw, cLw, dpw = t[n0:], cD[n0:], cL[n0:], dp[n0:]
 
     amp = cLw.max() - cLw.min()
-    print(f"samples={len(t)}  t in [{t[0]:.3f},{t[-1]:.3f}]")
+    print(f"samples={len(t)}  t in [{t[0]:.3f},{t[-1]:.3f}]  window t>=[{tw[0]:.2f}]")
     print(f"final:   cD={cD[-1]:.4f}  cL={cL[-1]:.5f}  dp={dp[-1]:.4f}")
     print(f"window:  cD_max={cDw.max():.4f}  cL_max={cLw.max():.4f}  "
           f"cL_amp={amp:.4f}  dp_mean={dpw.mean():.4f}")

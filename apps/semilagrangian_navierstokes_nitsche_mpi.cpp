@@ -17,6 +17,7 @@
 #include "StokesOperators.h"
 #include "SemiLagrangianAdvection.h"
 #include "StokesMG.h"
+#include "CylinderQoI.h"
 
 using namespace mfem;
 using namespace std;
@@ -166,8 +167,20 @@ int main(int argc, char *argv[])
 
     // ---- Mesh and FE spaces (replicated on every rank) ----
     auto mesh_ptr = std::make_shared<mfem::Mesh>(mesh_string.c_str(), 1, 1);
+    mfem::Array<int>        outflow_marker;
+    const mfem::Array<int>* outflow_ptr     = nullptr;
+    double                  outflow_penalty = 0.0;
+    if (config.has_outflow_attributes())
+    {
+        outflow_marker =
+            config.get_outflow_marker(mesh_ptr->bdr_attributes.Max());
+        outflow_ptr     = &outflow_marker;
+        outflow_penalty = config.get_outflow_penalty();
+    }
     StokesNitsche::StokesMG mg_solver(mesh_ptr, 1./(dt*viscosity),
-        theta, Cw);
+        theta, Cw, 1.0, StokesNitsche::MassLumping::Diagonal,
+        StokesNitsche::SmootherType::GaussSeidelForw,
+        outflow_ptr, outflow_penalty);
     mg_solver.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);
     mg_solver.setIterativeMode(false);
     mg_solver.setCycleType(StokesNitsche::MGCycleType::VCycle);
@@ -436,6 +449,20 @@ int main(int argc, char *argv[])
             &advect_imbalance);
     }
 
+    // ---- Flow-around-cylinder QoI (drag/lift/pressure-drop), rank 0 ----
+    const int    qoi_cyl_attr = config.get_qoi_cylinder_attribute();
+    const double qoi_Ubar     = config.get_qoi_Ubar();
+    const double qoi_D        = config.get_qoi_diameter();
+    const bool   do_qoi       = qoi_cyl_attr > 0;
+    std::unique_ptr<std::ofstream> qoi_csv;
+    if (do_qoi && myid == 0)
+    {
+        qoi_csv = std::make_unique<std::ofstream>(
+            "./out/data/" + output_file + "_qoi.csv");
+        (*qoi_csv) << "cycle,t,cD,cL,dp,FD,FL\n";
+        qoi_csv->precision(10);
+    }
+
     // ---- Progress bar (rank 0 only) ----
     int total_cycles = 0;
     for (double tt = dt; tt < T + tol; tt += dt) { total_cycles++; }
@@ -693,6 +720,16 @@ int main(int argc, char *argv[])
         if (myid == 0)
         {
             csv->WriteRow();
+            if (do_qoi)
+            {
+                CylinderForces f = ComputeCylinderForces(
+                    x.get_u(), x.get_p(), qoi_cyl_attr, viscosity,
+                    qoi_Ubar, qoi_D, -1.0);
+                double dp = viscosity * CylinderPressureDrop(x.get_p());
+                (*qoi_csv) << cycle << ',' << t << ',' << f.cD << ',' << f.cL
+                           << ',' << dp << ',' << f.FD << ',' << f.FL << '\n';
+                qoi_csv->flush();
+            }
             print_progress(cycle, t);
         }
 
