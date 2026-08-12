@@ -17,6 +17,17 @@ target_link_libraries(hdiv_dualfieldnavierstokes_nitsche PRIVATE boundaryoperato
 add_executable(stokes_nitsche Stokes.cpp)
 target_link_libraries(stokes_nitsche PRIVATE boundaryoperatorslib mfem Boost::program_options dualfield_project_options)
 
+add_executable(mgconvergence MGConvergence.cpp)
+target_link_libraries(mgconvergence
+    stokesoperator
+    stokesdgs
+    stokesmg
+    Eigen3::Eigen
+    mfem
+    Boost::program_options
+    spectra_mfem
+)
+
 add_executable(semilagrangian_navierstokes_nitsche semilagrangian_navierstokes_nitsche.cpp)
 target_link_libraries(semilagrangian_navierstokes_nitsche PRIVATE stokesmg boundaryoperatorslib mfem OpenMP::OpenMP_CXX Boost::program_options dualfield_project_options)
 

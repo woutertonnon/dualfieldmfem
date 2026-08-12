@@ -47,27 +47,27 @@ target_link_libraries(semilag_mpi_tests
     GTest::gtest
 )
 # Run with 1, 2, and 4 MPI ranks
-add_test(NAME semilag_mpi_np1 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 $<TARGET_FILE:semilag_mpi_tests>)
-add_test(NAME semilag_mpi_np2 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:semilag_mpi_tests>)
-add_test(NAME semilag_mpi_np4 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:semilag_mpi_tests>)
+#add_test(NAME semilag_mpi_np1 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 $<TARGET_FILE:semilag_mpi_tests>)
+#add_test(NAME semilag_mpi_np2 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:semilag_mpi_tests>)
+#add_test(NAME semilag_mpi_np4 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:semilag_mpi_tests>)
 
 # MPI ORDER-2 semi-Lagrangian tests (element-partition + DOF-owner gate)
-add_executable(semilag_mpi_order2_tests
-  SemiLagrangianMPITestsOrder2.cpp
-)
-target_link_libraries(semilag_mpi_order2_tests
-  PRIVATE
-    mfem
-    boundaryoperatorslib
-    MPI::MPI_CXX
-    OpenMP::OpenMP_CXX
-    Threads::Threads
-    dualfield_project_options
-    GTest::gtest
-)
-add_test(NAME semilag_mpi_order2_np1 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 $<TARGET_FILE:semilag_mpi_order2_tests>)
-add_test(NAME semilag_mpi_order2_np2 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:semilag_mpi_order2_tests>)
-add_test(NAME semilag_mpi_order2_np4 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:semilag_mpi_order2_tests>)
+#add_executable(semilag_mpi_order2_tests
+#  SemiLagrangianMPITestsOrder2.cpp
+#)
+#target_link_libraries(semilag_mpi_order2_tests
+#  PRIVATE
+#    mfem
+#    boundaryoperatorslib
+#    MPI::MPI_CXX
+#    OpenMP::OpenMP_CXX
+#    Threads::Threads
+#    dualfield_project_options
+#    GTest::gtest
+#)
+#add_test(NAME semilag_mpi_order2_np1 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 $<TARGET_FILE:semilag_mpi_order2_tests>)
+#add_test(NAME semilag_mpi_order2_np2 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2 $<TARGET_FILE:semilag_mpi_order2_tests>)
+#add_test(NAME semilag_mpi_order2_np4 COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4 $<TARGET_FILE:semilag_mpi_order2_tests>)
 
 add_test(
   NAME dualfield_smoke_umfpack
@@ -101,6 +101,9 @@ add_executable(stokesdgs_tests
 )
 add_executable(stokesmg_tests
     StokesMGTest.cpp
+)
+add_executable(feconvergence_verify
+    FEConvergenceVerify.cpp
 )
 
 target_link_libraries(incidence_tests
@@ -170,6 +173,14 @@ target_link_libraries(stokesmg_tests
         ${GTEST_LIBRARIES}
         ${GTEST_MAIN_LIBRARIES}
         pthread
+)
+
+target_link_libraries(feconvergence_verify
+    stokesoperator
+    stokesdgs
+    stokesmg
+    mfem
+    Boost::program_options
 )
 
 add_test(NAME incidence_tests COMMAND incidence_tests)

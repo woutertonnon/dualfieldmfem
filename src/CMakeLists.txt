@@ -14,3 +14,6 @@ add_library(stokesmg
     StokesMG.cpp StokesDGS.cpp StokesOperator.cpp
     incidence.cpp)
 target_link_libraries(stokesmg PUBLIC boundaryoperatorslib mfem)
+
+add_library(spectra_mfem SpectraErrorOp.cpp)
+target_link_libraries(spectra_mfem PUBLIC mfem Eigen3::Eigen)

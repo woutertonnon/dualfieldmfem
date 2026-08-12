@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.20)
+cmake_minimum_required (VERSION 4.3)
 
 project(dualfieldmfem VERSION 0.1.0 LANGUAGES C CXX)
 
@@ -12,6 +12,7 @@ include(CTest)  # defines BUILD_TESTING option and calls enable_testing() when B
 find_package(Boost 1.65 REQUIRED COMPONENTS program_options filesystem)
 find_package(OpenMP REQUIRED)
 find_package(MPI REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 add_library(dualfield_project_options INTERFACE)
 
@@ -20,6 +21,14 @@ target_include_directories(dualfield_project_options
   INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "/usr/include/suitesparse"   # consider making this a find_package later
+    "${CMAKE_SOURCE_DIR}/extern/spectra/include"
+    ${EIGEN3_INCLUDE_DIR}
+)
+
+include_directories(
+    "${PROJECT_SOURCE_DIR}/include"
+    "${PROJECT_SOURCE_DIR}/extern/spectra/include"
+    ${EIGEN3_INCLUDE_DIR}
 )
 
 target_compile_features(dualfield_project_options INTERFACE cxx_std_23) # Same as MFEM
