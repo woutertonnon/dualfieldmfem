@@ -12,9 +12,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # Configuration
 # ==============================================================================
 EXECUTABLE = "../release/mgconvergence"
-MESH_FOLDER = "../meshes"
-OUTPUT_FOLDER = "out"
-PLOT_FOLDER = "plots"
+MESH_FOLDER = "../geo/mg_meshes"
+OUTPUT_FOLDER = "data/multigrid_results"
+PLOT_FOLDER = "data/multigrid_plots"
 
 NUM_JOBS = 16  # Number of parallel jobs
 
@@ -22,10 +22,13 @@ NUM_JOBS = 16  # Number of parallel jobs
 DEFAULT_REFINEMENTS = 4
 
 # Penalty Configuration
-PENALTY_VALUES = [10.0, 20.0, 40.0, 80.0]
+PENALTY_VALUES = [10.0, 50., 100.]
 
 # Time-stepping (Tau) Configuration
-TAU_VALUES = [0.0, 10.0, 100.0, 1000.0]
+TAU_VALUES = [0., 32., 1000.]
+
+# Multigrid smoothing configuration: (pre_smooth, post_smooth)
+SMOOTHING_ITERATIONS = [(1, 1), (0, 1), (0, 2)]
 
 MESH_CONFIG = {
     "ball.msh": DEFAULT_REFINEMENTS,
@@ -41,7 +44,7 @@ MESH_CONFIG = {
 
 GMRES_RUNS = 8
 NEV = 2
-EW_TOL = 1e-3
+EW_TOL = 1e-2
 GMRES_TOL = 1e-6
 
 # ==============================================================================
@@ -140,29 +143,36 @@ def main():
     # 1. Setup Jobs
     for tau in TAU_VALUES:
         for p in PENALTY_VALUES:
-            for cycle in ['V']:
-                for mesh_file, refs in MESH_CONFIG.items():
-                    mesh_path = os.path.join(MESH_FOLDER, mesh_file)
-                    mesh_name = os.path.basename(mesh_file)
-                    
-                    if not os.path.exists(mesh_path): continue
-                    
-                    p_val = round(p, 2)
-                    out_file = os.path.join(OUTPUT_FOLDER, f"out_{mesh_name}_tau_{tau}_p_{p_val}_{cycle}.csv")
-                    cmd = [
-                        EXECUTABLE,
-                        "--mesh", mesh_path,
-                        "--refinements", str(refs),
-                        "--output", out_file,
-                        "--tau", str(tau),
-                        "--penalty", str(p_val),
-                        "--cycle", cycle,
-                        "--nev", str(NEV),
-                        "--gmres", str(GMRES_RUNS),
-                        "--gmres_tol", str(GMRES_TOL),
-                        "--eval_tol", str(EW_TOL)
-                    ]
-                    jobs.append((cmd, out_file))
+            for smooth_pair in SMOOTHING_ITERATIONS:
+                pre_smooth, post_smooth = smooth_pair
+                for cycle in ['V']:
+                    for mesh_file, refs in MESH_CONFIG.items():
+                        mesh_path = os.path.join(MESH_FOLDER, mesh_file)
+                        mesh_name = os.path.basename(mesh_file)
+                        
+                        if not os.path.exists(mesh_path): continue
+                        
+                        p_val = round(p, 2)
+                        out_file = os.path.join(
+                            OUTPUT_FOLDER,
+                            f"out_{mesh_name}_tau_{tau}_p_{p_val}_pre_{pre_smooth}_post_{post_smooth}_{cycle}.csv"
+                        )
+                        cmd = [
+                            EXECUTABLE,
+                            "--mesh", mesh_path,
+                            "--refinements", str(refs),
+                            "--output", out_file,
+                            "--tau", str(tau),
+                            "--penalty", str(p_val),
+                            "--pre_smooth", str(pre_smooth),
+                            "--post_smooth", str(post_smooth),
+                            "--cycle", cycle,
+                            "--nev", str(NEV),
+                            "--gmres", str(GMRES_RUNS),
+                            "--gmres_tol", str(GMRES_TOL),
+                            "--eval_tol", str(EW_TOL)
+                        ]
+                        jobs.append((cmd, out_file))
 
     # 2. Execute Jobs
     if not args.plot_only:
