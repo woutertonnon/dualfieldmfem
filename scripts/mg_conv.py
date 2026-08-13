@@ -19,7 +19,7 @@ PLOT_FOLDER = "data/multigrid_plots"
 NUM_JOBS = 16  # Number of parallel jobs
 
 # Default number of refinements for all meshes
-DEFAULT_REFINEMENTS = 4
+DEFAULT_REFINEMENTS = 1 # TESTING
 
 # Penalty Configuration
 PENALTY_VALUES = [10.0, 50., 100.]

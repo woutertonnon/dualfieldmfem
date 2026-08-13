@@ -18,6 +18,7 @@ module load eigen
 module load metis # Completely useless here, but needs to be loaded for suite-sparse
 module load suite-sparse
 module load spectra
+module load doxygen
 
 # 2. Build the C++ executable (Purge old build first)
 echo "Purging old release directory and starting compilation..."

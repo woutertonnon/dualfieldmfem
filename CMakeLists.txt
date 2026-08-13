@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 4.3)
+cmake_minimum_required (VERSION 3.2)
 
 project(dualfieldmfem VERSION 0.1.0 LANGUAGES C CXX)
 
@@ -21,12 +21,11 @@ target_include_directories(dualfield_project_options
   INTERFACE
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "/usr/include/suitesparse"   # consider making this a find_package later
-    "${CMAKE_SOURCE_DIR}/extern/spectra/include"
-    ${EIGEN3_INCLUDE_DIR}
+    # "${CMAKE_SOURCE_DIR}/extern/spectra/include"
+    # ${EIGEN3_INCLUDE_DIR}
 )
 
 include_directories(
-    "${PROJECT_SOURCE_DIR}/include"
     "${PROJECT_SOURCE_DIR}/extern/spectra/include"
     ${EIGEN3_INCLUDE_DIR}
 )

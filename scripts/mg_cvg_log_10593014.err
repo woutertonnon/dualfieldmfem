@@ -1,0 +1,2150 @@
+Many modules are hidden in this stack. Use "module --show_hidden spider SOFTWARE" if you are not able to find the required software
+CMake Deprecation Warning at CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value or use a ...<max> suffix to tell
+  CMake that the project does not need compatibility with older versions.
+
+
+CMake Deprecation Warning at extern/boundaryintegrallib/CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.5 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value or use a ...<max> suffix to tell
+  CMake that the project does not need compatibility with older versions.
+
+
+CMake Warning (dev) at extern/boundaryintegrallib/CMakeLists.txt:2 (project):
+  Policy CMP0048 is not set: project() command manages VERSION variables.
+  Run "cmake --help-policy CMP0048" for policy details.  Use the cmake_policy
+  command to set the policy and suppress this warning.
+
+  The following variable(s) would be set to empty:
+
+    PROJECT_VERSION
+    PROJECT_VERSION_MAJOR
+    PROJECT_VERSION_MINOR
+    PROJECT_VERSION_PATCH
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Error at /cluster/software/stacks/2024-06/spack/opt/spack/linux-ubuntu22.04-x86_64_v3/gcc-12.2.0/cmake-3.27.7-qk5wrxppdzawtjy2ndtushoxqv3kmao4/share/cmake-3.27/Modules/ExternalProject.cmake:4129 (add_custom_target):
+  add_custom_target cannot create target "hypre" because another target with
+  the same name already exists.  The existing target is a custom target
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem".  See documentation for
+  policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/FindHYPRE.cmake:90 (ExternalProject_Add)
+  extern/boundaryintegrallib/extern/mfem/CMakeLists.txt:330 (find_package)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:57 (add_library):
+  add_library cannot create target "mfem" because another target with the
+  same name already exists.  The existing target is a static library created
+  in source directory "/cluster/home/rdabetic/dualfieldmfem/extern/mfem".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/CMakeLists.txt:725 (mfem_add_library)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/CMakeLists.txt:840 (add_custom_target):
+  add_custom_target cannot create target "exec_prerequisites" because another
+  target with the same name already exists.  The existing target is a custom
+  target created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem".  See documentation for
+  policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:68 (add_custom_target):
+  add_custom_target cannot create target "examples" because another target
+  with the same name already exists.  The existing target is a custom target
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem".  See documentation for
+  policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/CMakeLists.txt:844 (add_mfem_target)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex0" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex1" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex2" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex3" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex4" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex5" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex6" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex7" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex8" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex9" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex10" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex14" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex15" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex16" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex17" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex18" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex19" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex20" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex21" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex22" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex23" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex24" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex25" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex26" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex27" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex28" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex29" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex30" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex31" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex33" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex34" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex36" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex37" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex38" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex39" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex40" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex41" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex0p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex1p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex2p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex3p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex4p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex5p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex6p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex7p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex8p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex9p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex10p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex11p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex12p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex13p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex14p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex15p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex16p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex17p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex18p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex19p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex20p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex21p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex22p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex24p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex25p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex26p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex27p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex28p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex29p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex30p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex31p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex32p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex33p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex34p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex35p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex36p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex37p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex39p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex40p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ex41p" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/examples".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:95 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/examples/CMakeLists.txt:113 (add_mfem_examples)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:68 (add_custom_target):
+  add_custom_target cannot create target "miniapps" because another target
+  with the same name already exists.  The existing target is a custom target
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem".  See documentation for
+  policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/CMakeLists.txt:853 (add_mfem_target)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "seqadiff" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/autodiff".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/autodiff/CMakeLists.txt:26 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "seqtest" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/autodiff".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/autodiff/CMakeLists.txt:31 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "paradiff" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/autodiff".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/autodiff/CMakeLists.txt:51 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:57 (add_library):
+  add_library cannot create target "mfem-common" because another target with
+  the same name already exists.  The existing target is a static library
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/common".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/miniapps/common/CMakeLists.txt:46 (mfem_add_library)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "dfem-minimal-surface" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/dfem".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/dfem/CMakeLists.txt:13 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/miniapps/diag-smoothers/CMakeLists.txt:13 (add_custom_target):
+  add_custom_target cannot create target "clean_common" because another
+  target with the same name already exists.  The existing target is a custom
+  target created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/diag-smoothers".
+  See documentation for policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "abs-l1-jacobi" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/diag-smoothers".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/diag-smoothers/CMakeLists.txt:27 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "mg-abs-l1-jacobi" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/diag-smoothers".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/diag-smoothers/CMakeLists.txt:27 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/miniapps/diag-smoothers/CMakeLists.txt:54 (add_custom_target):
+  add_custom_target cannot create target "clean_all" because another target
+  with the same name already exists.  The existing target is a custom target
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/diag-smoothers".
+  See documentation for policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "diffusion-dpg" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/dpg".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/dpg/CMakeLists.txt:42 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "convection-diffusion-dpg" because
+  another target with the same name already exists.  The existing target is
+  an executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/dpg".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/dpg/CMakeLists.txt:47 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "acoustics-dpg" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/dpg".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/dpg/CMakeLists.txt:52 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "maxwell-dpg" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/dpg".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/dpg/CMakeLists.txt:57 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "pdiffusion-dpg" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/dpg".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/dpg/CMakeLists.txt:63 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "pconvection-diffusion-dpg" because
+  another target with the same name already exists.  The existing target is
+  an executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/dpg".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/dpg/CMakeLists.txt:68 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "pacoustics-dpg" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/dpg".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/dpg/CMakeLists.txt:73 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "pmaxwell-dpg" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/dpg".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/dpg/CMakeLists.txt:78 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "tesla" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/electromagnetics".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/electromagnetics/CMakeLists.txt:13 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "volta" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/electromagnetics".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/electromagnetics/CMakeLists.txt:19 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "joule" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/electromagnetics".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/electromagnetics/CMakeLists.txt:25 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "maxwell" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/electromagnetics".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/electromagnetics/CMakeLists.txt:31 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "navier_mms" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/fluids/navier".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/fluids/navier/CMakeLists.txt:32 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "navier_kovasznay" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/fluids/navier".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/fluids/navier/CMakeLists.txt:37 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "navier_kovasznay_vs" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/fluids/navier".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/fluids/navier/CMakeLists.txt:42 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "navier_tgv" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/fluids/navier".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/fluids/navier/CMakeLists.txt:47 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "navier_shear" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/fluids/navier".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/fluids/navier/CMakeLists.txt:52 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "navier_3dfoc" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/fluids/navier".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/fluids/navier/CMakeLists.txt:57 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "navier_turbchan" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/fluids/navier".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/fluids/navier/CMakeLists.txt:62 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/miniapps/fluids/navier/CMakeLists.txt:72 (add_custom_target):
+  add_custom_target cannot create target "copy_miniapps_navier_data" because
+  another target with the same name already exists.  The existing target is a
+  custom target created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/fluids/navier".
+  See documentation for policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "navier_bifurcation" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/fluids/navier".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/fluids/navier/CMakeLists.txt:74 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "pschrodinger_flow" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/fluids/schrodinger-flow".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/fluids/schrodinger-flow/CMakeLists.txt:13 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "schrodinger_flow" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/fluids/schrodinger-flow".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/fluids/schrodinger-flow/CMakeLists.txt:28 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/miniapps/gslib/CMakeLists.txt:23 (add_custom_target):
+  add_custom_target cannot create target "copy_miniapps_gslib_data" because
+  another target with the same name already exists.  The existing target is a
+  custom target created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/gslib".  See
+  documentation for policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "darcy" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/hdiv-linear-solver".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/hdiv-linear-solver/CMakeLists.txt:13 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "grad_div" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/hdiv-linear-solver".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/hdiv-linear-solver/CMakeLists.txt:19 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "hooke" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/hooke".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/hooke/CMakeLists.txt:37 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:30 (add_custom_target):
+  add_custom_target cannot create target "copy_miniapps_meshing_data" because
+  another target with the same name already exists.  The existing target is a
+  custom target created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "klein-bottle" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:34 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "mesh-explorer" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:38 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "mobius-strip" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:43 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "shaper" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:47 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "extruder" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:51 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "mesh-optimizer" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:55 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "mesh-quality" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:61 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "minimal-surface" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:66 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "reflector" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:70 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "ref321" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:74 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "toroid" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:78 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "trimmer" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:82 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "twist" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:86 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "polar-nc" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:90 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "hpref" because another target with the
+  same name already exists.  The existing target is an executable created in
+  source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:94 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "mesh-bounding-boxes" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:122 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "pmesh-optimizer" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:127 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "pmesh-fitting" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:133 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "fit-node-position" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:139 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "pminimal-surface" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:145 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "phpref" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/meshing".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/meshing/CMakeLists.txt:149 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "mtop_test_iso_elasticity" because
+  another target with the same name already exists.  The existing target is
+  an executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/mtop".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/mtop/CMakeLists.txt:25 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/miniapps/multidomain/CMakeLists.txt:22 (add_custom_target):
+  add_custom_target cannot create target "copy_miniapps_multidomain_data"
+  because another target with the same name already exists.  The existing
+  target is a custom target created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/multidomain".
+  See documentation for policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "multidomain" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/multidomain".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/multidomain/CMakeLists.txt:28 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "multidomain_nd" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/multidomain".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/multidomain/CMakeLists.txt:34 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "multidomain_rt" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/multidomain".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/multidomain/CMakeLists.txt:40 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:14 (add_custom_target):
+  add_custom_target cannot create target "copy_miniapps_nurbs_data" because
+  another target with the same name already exists.  The existing target is a
+  custom target created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_ex1" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:19 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_ex3" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:24 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_ex5" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:29 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_ex10" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:34 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_ex24" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:39 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_curveint" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:44 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_naca_cmesh" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:49 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_printfunc" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:54 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_mesh_info" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:59 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_patch_ex1" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:63 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_solenoidal" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:68 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_surface" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:73 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_ex1p" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:255 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_ex10p" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:260 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nurbs_ex11p" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/nurbs".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/nurbs/CMakeLists.txt:265 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "performance_ex1" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/performance".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/performance/CMakeLists.txt:45 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "performance_ex1p" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/performance".
+  See documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/performance/CMakeLists.txt:56 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "lsf_integral" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/shifted".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/shifted/CMakeLists.txt:13 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "distance" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/shifted".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/shifted/CMakeLists.txt:46 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "diffusion" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/shifted".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/shifted/CMakeLists.txt:51 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "extrapolate" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/shifted".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/shifted/CMakeLists.txt:56 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "block-solvers" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/solvers".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/solvers/CMakeLists.txt:13 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "plor_solvers" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/solvers".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/solvers/CMakeLists.txt:19 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "lor_elast" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/solvers".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/solvers/CMakeLists.txt:24 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "lor_solvers" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/solvers".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/solvers/CMakeLists.txt:73 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "generate_random_field" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/spde".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/spde/CMakeLists.txt:13 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/miniapps/tools/CMakeLists.txt:23 (add_custom_target):
+  add_custom_target cannot create target "copy_miniapps_tools_data" because
+  another target with the same name already exists.  The existing target is a
+  custom target created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/tools".  See
+  documentation for policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "display-basis" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/tools".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/tools/CMakeLists.txt:27 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "get-values" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/tools".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/tools/CMakeLists.txt:32 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "load-dc" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/tools".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/tools/CMakeLists.txt:37 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "convert-dc" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/tools".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/tools/CMakeLists.txt:40 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "lor-transfer" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/tools".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/tools/CMakeLists.txt:43 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "tmop-check-metric" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/tools".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/tools/CMakeLists.txt:46 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "tmop-metric-magnitude" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/tools".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/tools/CMakeLists.txt:49 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "gridfunction-bounds" because another
+  target with the same name already exists.  The existing target is an
+  executable created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/tools".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/tools/CMakeLists.txt:55 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "plor-transfer" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/tools".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/tools/CMakeLists.txt:61 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "nodal-transfer" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/tools".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/tools/CMakeLists.txt:64 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "toy_automata" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/toys".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/toys/CMakeLists.txt:12 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "toy_life" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/toys".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/toys/CMakeLists.txt:15 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "toy_mandel" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/toys".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/toys/CMakeLists.txt:18 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "toy_rubik" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/toys".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/toys/CMakeLists.txt:21 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "toy_snake" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/toys".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/toys/CMakeLists.txt:26 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "toy_lissajous" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/toys".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/toys/CMakeLists.txt:31 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "toy_mondrian" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/toys".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/toys/CMakeLists.txt:34 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:48 (add_executable):
+  add_executable cannot create target "toy_spiral" because another target
+  with the same name already exists.  The existing target is an executable
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/miniapps/toys".  See
+  documentation for policy CMP0002 for more details.
+Call Stack (most recent call first):
+  extern/boundaryintegrallib/extern/mfem/config/cmake/modules/MfemCmakeUtilities.cmake:134 (mfem_add_executable)
+  extern/boundaryintegrallib/extern/mfem/miniapps/toys/CMakeLists.txt:37 (add_mfem_miniapp)
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/CMakeLists.txt:861 (add_custom_target):
+  add_custom_target cannot create target "exec" because another target with
+  the same name already exists.  The existing target is a custom target
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem".  See documentation for
+  policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/CMakeLists.txt:875 (add_custom_target):
+  add_custom_target cannot create target "copy_data" because another target
+  with the same name already exists.  The existing target is a custom target
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem".  See documentation for
+  policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/CMakeLists.txt:893 (add_custom_target):
+  add_custom_target cannot create target "check" because another target with
+  the same name already exists.  The existing target is a custom target
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem".  See documentation for
+  policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/doc/CMakeLists.txt:19 (add_custom_target):
+  add_custom_target cannot create target "doc" because another target with
+  the same name already exists.  The existing target is a custom target
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/doc".  See documentation
+  for policy CMP0002 for more details.
+
+
+CMake Error at extern/boundaryintegrallib/extern/mfem/doc/CMakeLists.txt:27 (add_custom_target):
+  add_custom_target cannot create target "clean-doc" because another target
+  with the same name already exists.  The existing target is a custom target
+  created in source directory
+  "/cluster/home/rdabetic/dualfieldmfem/extern/mfem/doc".  See documentation
+  for policy CMP0002 for more details.
+
+
+CMake Warning at extern/boundaryintegrallib/tests/CMakeLists.txt:3 (message):
+  GoogleTest not found.  Install libgtest-dev (and build the libs) to enable
+  the test target.
+
+
+CMake Warning at tests/CMakeLists.txt:10 (message):
+  GoogleTest not found.  Tests will be skipped.  Install GTest (e.g.
+  libgtest-dev) to enable tests.
+
+
+make: *** No targets specified and no makefile found.  Stop.
