@@ -61,7 +61,7 @@ int main(int argc, char* argv[])
 #endif
 
     std::string mesh_file, output_file, cycle_str;
-    int max_refinements, nev, n_gmres;
+    int max_refinements, nev, n_gmres, pre_smooth, post_smooth;
     double gmres_tol, eval_tol, penalty, tau;
     bool verbose;
 
@@ -76,6 +76,8 @@ int main(int argc, char* argv[])
         ("penalty,p", po::value<double>(&penalty)->default_value(10.0), "Nitsche penalty parameter")
         ("nev,n", po::value<int>(&nev)->default_value(1), "number of eigenvalues (0 to skip)")
         ("gmres,g", po::value<int>(&n_gmres)->default_value(1), "number of GMRES runs")
+        ("pre_smooth", po::value<int>(&pre_smooth)->default_value(1), "number of pre-smoothing steps")
+        ("post_smooth", po::value<int>(&post_smooth)->default_value(1), "number of post-smoothing steps")
         ("verbose,v", po::bool_switch(&verbose)->default_value(false), "enable verbose output")
         ("gmres_tol", po::value<double>(&gmres_tol)->default_value(1e-6), "GMRES tolerance")
         ("eval_tol", po::value<double>(&eval_tol)->default_value(1e-4), "Eigenvalue solver tolerance")
@@ -116,7 +118,7 @@ int main(int argc, char* argv[])
     else
         mg.setCycleType(StokesNitsche::MGCycleType::VCycle);
 
-    mg.setSmoothIterations(1, 1);
+    mg.setSmoothIterations(pre_smooth, post_smooth);
 
     // Prepare Output
     std::ofstream out(output_file);
@@ -137,6 +139,8 @@ int main(int argc, char* argv[])
         std::cout << "Mesh: " << mesh_file << "\n";
         std::cout << "Tau: " << tau << "\n";
         std::cout << "Penalty: " << penalty << "\n";
+        std::cout << "Pre-smoothing steps: " << pre_smooth << "\n";
+        std::cout << "Post-smoothing steps: " << post_smooth << "\n";
         std::cout << "Refinements: " << max_refinements << "\n";
         std::cout << std::string(75, '=') << "\n";
     }
