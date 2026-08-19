@@ -26,6 +26,7 @@ target_link_libraries(mgconvergence
     mfem
     Boost::program_options
     spectra_mfem
+    dualfield_project_options
 )
 
 add_executable(semilagrangian_navierstokes_nitsche semilagrangian_navierstokes_nitsche.cpp)
