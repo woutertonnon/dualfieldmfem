@@ -7,7 +7,7 @@ set(MFEM_USE_LEGACY_OPENMP OFF CACHE BOOL "Enable legacy OpenMP in SparseMatrix:
 set(MFEM_THREAD_SAFE ON CACHE BOOL "Thread-safe mode (required for OpenMP)" FORCE)
 message(STATUS "Forcing MFEM configuration: MFEM_USE_MPI=${MFEM_USE_MPI}, MFEM_USESUITESPARSE=${MFEM_USE_SUITESPARSE}, MFEM_USE_METIS_5=${MFEM_USE_METIS_5}")
 
-add_subdirectory(mfem)
+# add_subdirectory(mfem)
 
 # The boundary-integral library is normally the lowercase git submodule
 # (extern/boundaryintegrallib). Some checkouts instead have it as a manual

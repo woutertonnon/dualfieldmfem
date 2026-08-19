@@ -21,11 +21,14 @@ module load spectra
 module load doxygen
 
 # 2. Build the C++ executable (Purge old build first)
-echo "Purging old release directory and starting compilation..."
-rm -rf ../release
-mkdir -p ../release
-cd ../release
-cmake -DCMAKE_BUILD_TYPE=Release ..
+# echo "Purging old release directory and starting compilation..."
+# rm -rf ../release
+# mkdir -p ../release
+# cd ../release
+# cmake -DCMAKE_BUILD_TYPE=Release ..
+
+cd ../build
+
 make -j32                         # Compile in parallel using all 32 cores
 echo "Compilation finished."
 

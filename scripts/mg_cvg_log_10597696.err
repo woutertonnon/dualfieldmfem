@@ -1,0 +1,22 @@
+Many modules are hidden in this stack. Use "module --show_hidden spider SOFTWARE" if you are not able to find the required software
+Cloning into 'hypre'...
+In file included from /cluster/home/rdabetic/dualfieldmfem/extern/boundaryintegrallib/src/BoundaryOperators.cpp:1:
+/cluster/home/rdabetic/dualfieldmfem/extern/boundaryintegrallib/include/BoundaryOperators.h:4:10: fatal error: mfem.hpp: No such file or directory
+    4 | #include <mfem.hpp>
+      |          ^~~~~~~~~~
+compilation terminated.
+make[2]: *** [extern/boundaryintegrallib/src/CMakeFiles/boundaryoperatorslib.dir/build.make:76: extern/boundaryintegrallib/src/CMakeFiles/boundaryoperatorslib.dir/BoundaryOperators.cpp.o] Error 1
+make[1]: *** [CMakeFiles/Makefile2:8088: extern/boundaryintegrallib/src/CMakeFiles/boundaryoperatorslib.dir/all] Error 2
+make[1]: *** Waiting for unfinished jobs....
+fatal: unable to access 'https://github.com/hypre-space/hypre.git/': Failed to connect to github.com port 443 after 6 ms: Couldn't connect to server
+Cloning into 'hypre'...
+fatal: unable to access 'https://github.com/hypre-space/hypre.git/': Failed to connect to github.com port 443 after 3 ms: Couldn't connect to server
+Cloning into 'hypre'...
+fatal: unable to access 'https://github.com/hypre-space/hypre.git/': Failed to connect to github.com port 443 after 5 ms: Couldn't connect to server
+CMake Error at /cluster/home/rdabetic/dualfieldmfem/build/fetch/hypre/tmp/hypre-gitclone.cmake:39 (message):
+  Failed to clone repository: 'https://github.com/hypre-space/hypre.git'
+
+
+make[2]: *** [extern/boundaryintegrallib/extern/mfem/CMakeFiles/hypre.dir/build.make:99: fetch/hypre/src/hypre-stamp/hypre-download] Error 1
+make[1]: *** [CMakeFiles/Makefile2:1975: extern/boundaryintegrallib/extern/mfem/CMakeFiles/hypre.dir/all] Error 2
+make: *** [Makefile:146: all] Error 2

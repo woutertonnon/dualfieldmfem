@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # ==============================================================================
 # Configuration
 # ==============================================================================
-EXECUTABLE = "../release/mgconvergence"
+EXECUTABLE = "../build/mgconvergence"
 MESH_FOLDER = "../geo/mg_meshes"
 OUTPUT_FOLDER = "data/multigrid_results"
 PLOT_FOLDER = "data/multigrid_plots"
