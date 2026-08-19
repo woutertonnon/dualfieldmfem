@@ -11,15 +11,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # ==============================================================================
 # Configuration
 # ==============================================================================
-EXECUTABLE = "../build/mgconvergence"
-MESH_FOLDER = "../geo/mg_meshes"
+SCRIPT_FOLDER = os.path.dirname(os.path.abspath(__file__))
+EXECUTABLE = os.path.join(SCRIPT_FOLDER, "../build/mgconvergence")
+MESH_FOLDER = os.path.join(SCRIPT_FOLDER, "../geo/mg_meshes")
 OUTPUT_FOLDER = "data/multigrid_results"
 PLOT_FOLDER = "data/multigrid_plots"
 
 NUM_JOBS = 16  # Number of parallel jobs
+PURGE_OUTPUTS = True
 
 # Default number of refinements for all meshes
-DEFAULT_REFINEMENTS = 1 # TESTING
+DEFAULT_REFINEMENTS = 4
 
 # Penalty Configuration
 PENALTY_VALUES = [10.0, 50., 100.]
@@ -31,15 +33,21 @@ TAU_VALUES = [0., 32., 1000.]
 SMOOTHING_ITERATIONS = [(1, 1), (0, 1), (0, 2)]
 
 MESH_CONFIG = {
-    "ball.msh": DEFAULT_REFINEMENTS,
+    # "ball.msh": DEFAULT_REFINEMENTS,
     "corner.msh": DEFAULT_REFINEMENTS,
-    "corner_structured.msh": DEFAULT_REFINEMENTS,
+    # "corner_structured.msh": DEFAULT_REFINEMENTS,
     "cube.msh": DEFAULT_REFINEMENTS,
-    "cube_hole.msh": DEFAULT_REFINEMENTS,
-    "cube_two_voids.msh": DEFAULT_REFINEMENTS,
+    # "cube_hole.msh": DEFAULT_REFINEMENTS,
+    # "cube_two_voids.msh": DEFAULT_REFINEMENTS,
     "cube_void.msh": DEFAULT_REFINEMENTS,
-    "cylinder.msh": DEFAULT_REFINEMENTS,
+    # "cylinder.msh": DEFAULT_REFINEMENTS,
     "tetra.msh": DEFAULT_REFINEMENTS
+}
+
+MESH_CONFIG = {
+    mesh_path: MESH_CONFIG[os.path.basename(mesh_path)]
+    for mesh_path in sorted(glob.glob(os.path.join(MESH_FOLDER, "**", "*.msh"), recursive=True))
+    if os.path.basename(mesh_path) in MESH_CONFIG
 }
 
 GMRES_RUNS = 8
@@ -129,13 +137,13 @@ def plot_capped_line(ax, x_data, y_data, max_val, base_label, **kwargs):
         # Draw the triangle (^) marker
         ax.plot(x_over, y_over, marker='^', color=color, linestyle='None', markersize=8)
 
-def main():
+def run_smoothing_pair(smoothing_pair):
     args = parse_arguments()
 
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
     os.makedirs(PLOT_FOLDER, exist_ok=True)
 
-    if not args.plot_only:
+    if not args.plot_only and PURGE_OUTPUTS:
         purge_old_files()
 
     jobs = []
@@ -143,14 +151,12 @@ def main():
     # 1. Setup Jobs
     for tau in TAU_VALUES:
         for p in PENALTY_VALUES:
-            for smooth_pair in SMOOTHING_ITERATIONS:
+            for smooth_pair in (smoothing_pair,):
                 pre_smooth, post_smooth = smooth_pair
                 for cycle in ['V']:
-                    for mesh_file, refs in MESH_CONFIG.items():
-                        mesh_path = os.path.join(MESH_FOLDER, mesh_file)
-                        mesh_name = os.path.basename(mesh_file)
-                        
-                        if not os.path.exists(mesh_path): continue
+                    for mesh_path, refs in MESH_CONFIG.items():
+                        print("HELLO?")
+                        mesh_name = os.path.basename(mesh_path)
                         
                         p_val = round(p, 2)
                         out_file = os.path.join(
@@ -181,15 +187,19 @@ def main():
             for future in as_completed(futures): future.result()
 
     # 3. Read Results
+    pre_smooth, post_smooth = smoothing_pair
     all_results = {t: {round(p, 2): {'V': {}, 'W': {}} for p in PENALTY_VALUES} for t in TAU_VALUES}
     
     for tau in TAU_VALUES:
         for p in PENALTY_VALUES:
             p_val = round(p, 2)
             for cycle in ['V', 'W']:
-                for mesh_file in MESH_CONFIG.keys():
-                    mesh_name = os.path.basename(mesh_file)
-                    out_file = os.path.join(OUTPUT_FOLDER, f"out_{mesh_name}_tau_{tau}_p_{p_val}_{cycle}.csv")
+                for mesh_path in MESH_CONFIG.keys():
+                    mesh_name = os.path.basename(mesh_path)
+                    out_file = os.path.join(
+                        OUTPUT_FOLDER,
+                        f"out_{mesh_name}_tau_{tau}_p_{p_val}_pre_{pre_smooth}_post_{post_smooth}_{cycle}.csv"
+                    )
                     if os.path.exists(out_file):
                         all_results[tau][p_val][cycle][mesh_name] = read_csv(out_file)
 
@@ -199,9 +209,9 @@ def main():
     extremes_combos = list(itertools.product(tau_ext, pen_ext))
 
     # 4. Plot Results
-    for mesh_file in MESH_CONFIG.keys():
-        mesh_name = os.path.basename(mesh_file)
-        max_ref = MESH_CONFIG[mesh_file]
+    for mesh_path in MESH_CONFIG.keys():
+        mesh_name = os.path.basename(mesh_path)
+        max_ref = MESH_CONFIG[mesh_path]
         
         for cycle in ['V', 'W']:
             has_data = any(mesh_name in all_results[t][round(p, 2)][cycle] for t in TAU_VALUES for p in PENALTY_VALUES)
@@ -211,7 +221,11 @@ def main():
             # PLOT A: 2x2 Summary Plot
             # ==================================================================
             fig, axes = plt.subplots(2, 2, figsize=(15, 11))
-            fig.suptitle(rf"Mesh: {mesh_name} | Cycle: {cycle}", fontsize=18)
+            fig.suptitle(
+                rf"Mesh: {mesh_name} | Cycle: {cycle} | "
+                rf"Pre-smooth: {pre_smooth}, Post-smooth: {post_smooth}",
+                fontsize=18
+            )
 
             ax_ref_cvg = axes[0, 0]
             ax_ref_gmres = axes[0, 1]
@@ -341,7 +355,10 @@ def main():
 
             plt.tight_layout()
             plt.subplots_adjust(top=0.92)
-            summary_plot_file = os.path.join(PLOT_FOLDER, f"{mesh_name}_{cycle}_summary.pdf")
+            summary_plot_file = os.path.join(
+                PLOT_FOLDER,
+                f"{mesh_name}_{cycle}_pre_{pre_smooth}_post_{post_smooth}_summary.pdf"
+            )
             plt.savefig(summary_plot_file, bbox_inches='tight')
             plt.close(fig)
 
@@ -349,7 +366,12 @@ def main():
             # PLOT B: Heatmaps showing dependence on BOTH Tau and Penalty
             # ==================================================================
             fig_hm, axes_hm = plt.subplots(1, 2, figsize=(16, 7))
-            fig_hm.suptitle(rf"Convergence Heatmaps (Mesh: {mesh_name} | {cycle}-Cycle)" + "\n" + f"At Maximum Refinement ({max_ref})", fontsize=16)
+            fig_hm.suptitle(
+                rf"Convergence Heatmaps (Mesh: {mesh_name} | {cycle}-Cycle)" + "\n"
+                + f"At Maximum Refinement ({max_ref}) | "
+                + f"Pre-smooth: {pre_smooth}, Post-smooth: {post_smooth}",
+                fontsize=16
+            )
 
             Z_eig = np.full((len(PENALTY_VALUES), len(TAU_VALUES)), np.nan)
             Z_gmres = np.full((len(PENALTY_VALUES), len(TAU_VALUES)), np.nan)
@@ -412,11 +434,28 @@ def main():
 
             plt.tight_layout()
             plt.subplots_adjust(top=0.88)
-            heatmap_plot_file = os.path.join(PLOT_FOLDER, f"{mesh_name}_{cycle}_heatmap.pdf")
+            heatmap_plot_file = os.path.join(
+                PLOT_FOLDER,
+                f"{mesh_name}_{cycle}_pre_{pre_smooth}_post_{post_smooth}_heatmap.pdf"
+            )
             plt.savefig(heatmap_plot_file, bbox_inches='tight')
             plt.close(fig_hm)
 
-    print(f"All done! PDF plots are saved in the '{PLOT_FOLDER}' directory.")
+    print(
+        f"Saved plots for pre={pre_smooth}, post={post_smooth} "
+        f"in '{PLOT_FOLDER}'."
+    )
+
+def main():
+    for smoothing_pair_index, smoothing_pair in enumerate(SMOOTHING_ITERATIONS):
+        global PURGE_OUTPUTS
+        PURGE_OUTPUTS = smoothing_pair_index == 0
+        print(
+            f"Running smoothing configuration {smoothing_pair_index + 1}/"
+            f"{len(SMOOTHING_ITERATIONS)}: pre={smoothing_pair[0]}, "
+            f"post={smoothing_pair[1]}"
+        )
+        run_smoothing_pair(smoothing_pair)
 
 if __name__ == "__main__":
     main()
