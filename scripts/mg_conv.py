@@ -458,7 +458,7 @@ def run_smoothing_pair(smoothing_pair, args):
     )
 
 def plot_post_smoothing_vs_convergence():
-    """Plot post-smoothing steps vs convergence for the pre=0 configurations."""
+    """Plot post-smoothing steps vs convergence and GMRES for pre=0 configurations."""
     post_smoothing_values = sorted({post for pre, post in SMOOTHING_ITERATIONS if pre == 0})
     if not post_smoothing_values:
         print("No pre=0 smoothing pairs configured; skipping post-smoothing sweep plots.")
@@ -473,16 +473,18 @@ def plot_post_smoothing_vs_convergence():
         max_ref = MESH_CONFIG[mesh_path]
 
         for cycle in ['V', 'W']:
-            fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+            fig, (ax_eig, ax_gmres) = plt.subplots(1, 2, figsize=(16, 6), sharex=True)
             has_data = False
             colors = plt.cm.tab10(np.linspace(0, 1, max(1, len(extremes_combos))))
 
-            ax.axhline(MAX_EIG_PLOT, color='gray', linestyle=':', alpha=0.5)
+            ax_eig.axhline(MAX_EIG_PLOT, color='gray', linestyle=':', alpha=0.5)
+            ax_gmres.axhline(MAX_GMRES_PLOT, color='gray', linestyle=':', alpha=0.5)
 
             for idx, (tau, penalty) in enumerate(extremes_combos):
                 penalty_val = round(penalty, 2)
                 post_plot = []
                 conv_plot = []
+                gmres_plot = []
 
                 for post_smooth in post_smoothing_values:
                     out_file = os.path.join(
@@ -498,39 +500,70 @@ def plot_post_smoothing_vs_convergence():
                         post_plot.append(post_smooth)
                         target_col = 'AbsEval1' if 'AbsEval1' in df else 'AbsEval0'
                         conv_plot.append(df[target_col][mask][0])
+                        gmres_plot.append(df['AvgGMRES'][mask][0])
 
                 if post_plot:
                     has_data = True
-                    post_plot, conv_plot = zip(*sorted(zip(post_plot, conv_plot)))
+                    sorted_triplets = sorted(zip(post_plot, conv_plot, gmres_plot))
+                    post_plot = [item[0] for item in sorted_triplets]
+                    conv_plot = [item[1] for item in sorted_triplets]
+                    gmres_plot = [item[2] for item in sorted_triplets]
                     label = rf"$\tau$={tau}, $C_w$={penalty_val}"
                     plot_capped_line(
-                        ax,
-                        list(post_plot),
-                        list(conv_plot),
+                        ax_eig,
+                        post_plot,
+                        conv_plot,
                         MAX_EIG_PLOT,
-                        label,
+                        f"{label} (Eig)",
                         marker='o',
                         color=colors[idx],
                         linestyle='-'
+                    )
+                    plot_capped_line(
+                        ax_gmres,
+                        post_plot,
+                        gmres_plot,
+                        MAX_GMRES_PLOT,
+                        f"{label} (GMRES)",
+                        marker='x',
+                        color=colors[idx],
+                        linestyle='--'
                     )
 
             if not has_data:
                 plt.close(fig)
                 continue
 
-            ax.set_title(
-                rf"Post-smoothing vs Convergence (Mesh: {mesh_name} | {cycle}-Cycle)"
+            fig.suptitle(
+                rf"Post-smoothing Sweep (Mesh: {mesh_name} | {cycle}-Cycle)"
                 + "\n"
                 + rf"(Pre-smoothing fixed at 0, ref = {max_ref})"
             )
-            ax.set_xlabel("Post-smoothing steps")
-            ax.set_ylabel(f"Max Eigenvalue (capped at {MAX_EIG_PLOT})")
-            ax.set_xticks(post_smoothing_values)
-            ax.set_ylim(bottom=0, top=MAX_EIG_PLOT * 1.05)
-            ax.grid(True, alpha=0.4)
-            ax.legend(loc='best', fontsize=8)
+
+            ax_eig.set_title("Convergence Rate")
+            ax_eig.set_xlabel("Post-smoothing steps")
+            ax_eig.set_ylabel(f"Max Eigenvalue (capped at {MAX_EIG_PLOT})")
+            ax_gmres.set_ylabel(f"Avg GMRES Iterations (capped at {MAX_GMRES_PLOT})")
+            ax_gmres.set_title("GMRES Iterations")
+            ax_gmres.set_xlabel("Post-smoothing steps")
+
+            ax_eig.set_xticks(post_smoothing_values)
+            ax_gmres.set_xticks(post_smoothing_values)
+            ax_eig.set_ylim(bottom=0, top=MAX_EIG_PLOT * 1.05)
+            ax_gmres.set_ylim(bottom=0, top=MAX_GMRES_PLOT * 1.05)
+            ax_eig.grid(True, alpha=0.4)
+            ax_gmres.grid(True, alpha=0.4)
+
+            lines_1, labels_1 = ax_eig.get_legend_handles_labels()
+            if lines_1:
+                ax_eig.legend(lines_1, labels_1, loc='best', fontsize=8)
+
+            lines_2, labels_2 = ax_gmres.get_legend_handles_labels()
+            if lines_2:
+                ax_gmres.legend(lines_2, labels_2, loc='best', fontsize=8)
 
             plt.tight_layout()
+            plt.subplots_adjust(top=0.82)
             post_smooth_plot_file = os.path.join(
                 PLOT_FOLDER,
                 f"{mesh_name}_{cycle}_pre_0_post_smoothing_vs_convergence.pdf"
