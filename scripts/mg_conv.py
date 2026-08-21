@@ -65,6 +65,17 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Run StokesMG penalty and tau sensitivity study.")
     parser.add_argument('--rerun', action='store_true', help="Force re-run of all simulations.")
     parser.add_argument('--plot-only', action='store_true', help="Only plot existing data without running.")
+    parser.add_argument(
+        '--reuse-data',
+        action='store_true',
+        help="Reuse existing CSV data and skip running new simulations."
+    )
+    parser.add_argument(
+        '--plot-set',
+        choices=['all', 'post-smoothing'],
+        default='all',
+        help="Choose which plots to generate: all plots or only post-smoothing sweep plots."
+    )
     return parser.parse_args()
 
 def purge_old_files():
@@ -137,9 +148,7 @@ def plot_capped_line(ax, x_data, y_data, max_val, base_label, **kwargs):
         # Draw the triangle (^) marker
         ax.plot(x_over, y_over, marker='^', color=color, linestyle='None', markersize=8)
 
-def run_smoothing_pair(smoothing_pair):
-    args = parse_arguments()
-
+def run_smoothing_pair(smoothing_pair, args):
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
     os.makedirs(PLOT_FOLDER, exist_ok=True)
 
@@ -155,7 +164,6 @@ def run_smoothing_pair(smoothing_pair):
                 pre_smooth, post_smooth = smooth_pair
                 for cycle in ['V']:
                     for mesh_path, refs in MESH_CONFIG.items():
-                        print("HELLO?")
                         mesh_name = os.path.basename(mesh_path)
                         
                         p_val = round(p, 2)
@@ -183,7 +191,7 @@ def run_smoothing_pair(smoothing_pair):
     # 2. Execute Jobs
     if not args.plot_only:
         with ThreadPoolExecutor(max_workers=NUM_JOBS) as executor:
-            futures = [executor.submit(run_job, cmd, out_file, True) for cmd, out_file in jobs]
+            futures = [executor.submit(run_job, cmd, out_file, args.rerun) for cmd, out_file in jobs]
             for future in as_completed(futures): future.result()
 
     # 3. Read Results
@@ -207,6 +215,9 @@ def run_smoothing_pair(smoothing_pair):
     tau_ext = list(dict.fromkeys([TAU_VALUES[0], TAU_VALUES[-1]]))
     pen_ext = list(dict.fromkeys([PENALTY_VALUES[0], PENALTY_VALUES[-1]]))
     extremes_combos = list(itertools.product(tau_ext, pen_ext))
+
+    if args.plot_set != 'all':
+        return
 
     # 4. Plot Results
     for mesh_path in MESH_CONFIG.keys():
@@ -446,7 +457,94 @@ def run_smoothing_pair(smoothing_pair):
         f"in '{PLOT_FOLDER}'."
     )
 
+def plot_post_smoothing_vs_convergence():
+    """Plot post-smoothing steps vs convergence for the pre=0 configurations."""
+    post_smoothing_values = sorted({post for pre, post in SMOOTHING_ITERATIONS if pre == 0})
+    if not post_smoothing_values:
+        print("No pre=0 smoothing pairs configured; skipping post-smoothing sweep plots.")
+        return
+
+    tau_ext = list(dict.fromkeys([TAU_VALUES[0], TAU_VALUES[-1]]))
+    pen_ext = list(dict.fromkeys([PENALTY_VALUES[0], PENALTY_VALUES[-1]]))
+    extremes_combos = list(itertools.product(tau_ext, pen_ext))
+
+    for mesh_path in MESH_CONFIG.keys():
+        mesh_name = os.path.basename(mesh_path)
+        max_ref = MESH_CONFIG[mesh_path]
+
+        for cycle in ['V', 'W']:
+            fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+            has_data = False
+            colors = plt.cm.tab10(np.linspace(0, 1, max(1, len(extremes_combos))))
+
+            ax.axhline(MAX_EIG_PLOT, color='gray', linestyle=':', alpha=0.5)
+
+            for idx, (tau, penalty) in enumerate(extremes_combos):
+                penalty_val = round(penalty, 2)
+                post_plot = []
+                conv_plot = []
+
+                for post_smooth in post_smoothing_values:
+                    out_file = os.path.join(
+                        OUTPUT_FOLDER,
+                        f"out_{mesh_name}_tau_{tau}_p_{penalty_val}_pre_0_post_{post_smooth}_{cycle}.csv"
+                    )
+                    if not os.path.exists(out_file):
+                        continue
+
+                    df = read_csv(out_file)
+                    mask = df['Refinements'] == max_ref
+                    if np.any(mask):
+                        post_plot.append(post_smooth)
+                        target_col = 'AbsEval1' if 'AbsEval1' in df else 'AbsEval0'
+                        conv_plot.append(df[target_col][mask][0])
+
+                if post_plot:
+                    has_data = True
+                    post_plot, conv_plot = zip(*sorted(zip(post_plot, conv_plot)))
+                    label = rf"$\tau$={tau}, $C_w$={penalty_val}"
+                    plot_capped_line(
+                        ax,
+                        list(post_plot),
+                        list(conv_plot),
+                        MAX_EIG_PLOT,
+                        label,
+                        marker='o',
+                        color=colors[idx],
+                        linestyle='-'
+                    )
+
+            if not has_data:
+                plt.close(fig)
+                continue
+
+            ax.set_title(
+                rf"Post-smoothing vs Convergence (Mesh: {mesh_name} | {cycle}-Cycle)"
+                + "\n"
+                + rf"(Pre-smoothing fixed at 0, ref = {max_ref})"
+            )
+            ax.set_xlabel("Post-smoothing steps")
+            ax.set_ylabel(f"Max Eigenvalue (capped at {MAX_EIG_PLOT})")
+            ax.set_xticks(post_smoothing_values)
+            ax.set_ylim(bottom=0, top=MAX_EIG_PLOT * 1.05)
+            ax.grid(True, alpha=0.4)
+            ax.legend(loc='best', fontsize=8)
+
+            plt.tight_layout()
+            post_smooth_plot_file = os.path.join(
+                PLOT_FOLDER,
+                f"{mesh_name}_{cycle}_pre_0_post_smoothing_vs_convergence.pdf"
+            )
+            plt.savefig(post_smooth_plot_file, bbox_inches='tight')
+            plt.close(fig)
+
+    print("Saved post-smoothing sweep plots for pre=0 configurations.")
+
 def main():
+    args = parse_arguments()
+    if args.reuse_data:
+        args.plot_only = True
+
     for smoothing_pair_index, smoothing_pair in enumerate(SMOOTHING_ITERATIONS):
         global PURGE_OUTPUTS
         PURGE_OUTPUTS = smoothing_pair_index == 0
@@ -455,7 +553,10 @@ def main():
             f"{len(SMOOTHING_ITERATIONS)}: pre={smoothing_pair[0]}, "
             f"post={smoothing_pair[1]}"
         )
-        run_smoothing_pair(smoothing_pair)
+        run_smoothing_pair(smoothing_pair, args)
+
+    if args.plot_set in ('all', 'post-smoothing'):
+        plot_post_smoothing_vs_convergence()
 
 if __name__ == "__main__":
     main()
