@@ -17,20 +17,20 @@ MESH_FOLDER = os.path.join(SCRIPT_FOLDER, "../geo/mg_meshes")
 OUTPUT_FOLDER = "data/multigrid_results"
 PLOT_FOLDER = "data/multigrid_plots"
 
-NUM_JOBS = 16  # Number of parallel jobs
+NUM_JOBS = 12  # Number of parallel jobs
 PURGE_OUTPUTS = True
 
 # Default number of refinements for all meshes
 DEFAULT_REFINEMENTS = 4
 
 # Penalty Configuration
-PENALTY_VALUES = [10.0, 50., 100.]
+PENALTY_VALUES = [20., 50., 100.]
 
 # Time-stepping (Tau) Configuration
 TAU_VALUES = [0., 32., 1000.]
 
 # Multigrid smoothing configuration: (pre_smooth, post_smooth)
-SMOOTHING_ITERATIONS = [(1, 1), (0, 1), (0, 2)]
+SMOOTHING_ITERATIONS = [(1, 1), (0, 1), (0, 2), (0, 4)]
 
 MESH_CONFIG = {
     # "ball.msh": DEFAULT_REFINEMENTS,
