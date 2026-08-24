@@ -18,7 +18,6 @@ OUTPUT_FOLDER = "data/multigrid_results"
 PLOT_FOLDER = "data/multigrid_plots"
 
 NUM_JOBS = 12  # Number of parallel jobs
-PURGE_OUTPUTS = True
 
 # Default number of refinements for all meshes
 DEFAULT_REFINEMENTS = 4
@@ -78,22 +77,6 @@ def parse_arguments():
     )
     return parser.parse_args()
 
-def purge_old_files():
-    """Deletes existing CSVs in the output folder and PDFs in the plots folder."""
-    print("Automatically purging old files...")
-    
-    csv_files = glob.glob(os.path.join(OUTPUT_FOLDER, "*.csv"))
-    for f in csv_files:
-        try: os.remove(f)
-        except OSError as e: print(f"Error deleting {f}: {e}")
-            
-    pdf_files = glob.glob(os.path.join(PLOT_FOLDER, "*.pdf"))
-    for f in pdf_files:
-        try: os.remove(f)
-        except OSError as e: print(f"Error deleting {f}: {e}")
-            
-    print(f"Purged {len(csv_files)} CSV files and {len(pdf_files)} PDF plots.\n")
-
 def run_job(cmd, out_file, rerun):
     if not rerun and os.path.exists(out_file):
         print(f"Skipping {os.path.basename(out_file)}, already exists.")
@@ -152,9 +135,6 @@ def run_smoothing_pair(smoothing_pair, args):
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
     os.makedirs(PLOT_FOLDER, exist_ok=True)
 
-    if not args.plot_only and PURGE_OUTPUTS:
-        purge_old_files()
-
     jobs = []
 
     # 1. Setup Jobs
@@ -210,6 +190,8 @@ def run_smoothing_pair(smoothing_pair, args):
                     )
                     if os.path.exists(out_file):
                         all_results[tau][p_val][cycle][mesh_name] = read_csv(out_file)
+
+    return
 
     # Calculate extremes
     tau_ext = list(dict.fromkeys([TAU_VALUES[0], TAU_VALUES[-1]]))
@@ -573,14 +555,185 @@ def plot_post_smoothing_vs_convergence():
 
     print("Saved post-smoothing sweep plots for pre=0 configurations.")
 
+def refinement_series(filepath, max_ref):
+    if not os.path.exists(filepath):
+        return [], [], []
+
+    data = read_csv(filepath)
+    target_col = 'AbsEval1' if 'AbsEval1' in data else 'AbsEval0'
+    refs, eigenvalues, gmres = [], [], []
+    for refinement in range(1, max_ref + 1):
+        mask = data['Refinements'] == refinement
+        if np.any(mask):
+            refs.append(refinement)
+            eigenvalues.append(data[target_col][mask][0])
+            gmres.append(data['AvgGMRES'][mask][0])
+    return refs, eigenvalues, gmres
+
+def plot_tau_parameter_sweeps():
+    """Plot smoothing and penalty effects across every refinement level."""
+    post_values = sorted({post for pre, post in SMOOTHING_ITERATIONS if pre == 0})
+    if not post_values:
+        print("No pre=0 smoothing pairs configured; skipping smoothing plots.")
+        return
+
+    os.makedirs(PLOT_FOLDER, exist_ok=True)
+
+    for mesh_path in MESH_CONFIG.keys():
+        mesh_name = os.path.basename(mesh_path)
+        max_ref = MESH_CONFIG[mesh_path]
+
+        for cycle in ['V', 'W']:
+            for tau in TAU_VALUES:
+                tau_label = str(tau)
+                tau_file_label = tau_label.replace('.', 'p')
+
+                # One column per penalty keeps the smoothing comparison readable.
+                fig, axes = plt.subplots(
+                    1, len(PENALTY_VALUES),
+                    figsize=(5 * len(PENALTY_VALUES), 7),
+                    squeeze=False
+                )
+                has_data = False
+                colors = plt.cm.viridis(np.linspace(0.1, 0.9, len(post_values)))
+
+                for penalty_index, penalty in enumerate(PENALTY_VALUES):
+                    penalty_val = round(penalty, 2)
+                    ax_eig = axes[0, penalty_index]
+                    ax_gmres = ax_eig.twinx()
+                    ax_eig.axhline(MAX_EIG_PLOT, color='gray', linestyle=':', alpha=0.5)
+                    ax_gmres.axhline(MAX_GMRES_PLOT, color='gray', linestyle=':', alpha=0.5)
+
+                    for color, post_smooth in zip(colors, post_values):
+                        filepath = os.path.join(
+                            OUTPUT_FOLDER,
+                            f"out_{mesh_name}_tau_{tau}_p_{penalty_val}_pre_0_post_{post_smooth}_{cycle}.csv"
+                        )
+                        refs, eigenvalues, gmres = refinement_series(filepath, max_ref)
+                        if not refs:
+                            continue
+                        has_data = True
+                        label = f"post={post_smooth}"
+                        plot_capped_line(ax_eig, refs, eigenvalues, MAX_EIG_PLOT, label,
+                                         marker='o', color=color)
+                        plot_capped_line(ax_gmres, refs, gmres, MAX_GMRES_PLOT, "_nolegend_",
+                                         marker='s', color=color, linestyle='--')
+
+                    ax_eig.set_title(f"Penalty = {penalty_val}")
+                    ax_eig.set_ylim(0, MAX_EIG_PLOT * 1.05)
+                    ax_gmres.set_ylim(0, MAX_GMRES_PLOT * 1.05)
+                    ax_eig.set_xticks(range(1, max_ref + 1))
+                    ax_eig.grid(True, alpha=0.4)
+                    ax_eig.set_xlabel("Refinement level")
+
+                axes[0, 0].set_ylabel("Max Eigenvalue")
+                axes[0, -1].set_ylabel("Avg GMRES iterations")
+                axes[0, -1].yaxis.set_label_position('right')
+                axes[0, -1].yaxis.tick_right()
+                handles, labels = axes[0, 0].get_legend_handles_labels()
+                style_handles = [
+                    plt.Line2D([], [], color='black', linestyle='-', marker='o',
+                               label='Eigenvalue'),
+                    plt.Line2D([], [], color='black', linestyle='--', marker='s',
+                               label='GMRES')
+                ]
+                if handles:
+                    fig.legend(
+                        handles + style_handles,
+                        labels + [handle.get_label() for handle in style_handles],
+                        loc='lower center',
+                        bbox_to_anchor=(0.5, 0.015),
+                        ncol=min(len(post_values) + 2, 5),
+                        frameon=True,
+                        title="Post-smoothing steps and metric"
+                    )
+                fig.suptitle(
+                    f"Post-smoothing versus refinement | Mesh: {mesh_name} | {cycle}-cycle | tau = {tau_label}",
+                    y=0.98
+                )
+                plt.tight_layout(rect=(0.03, 0.18, 0.97, 0.93))
+                smoothing_plot_file = os.path.join(
+                    PLOT_FOLDER,
+                    f"{mesh_name}_{cycle}_tau_{tau_file_label}_post_smoothing_vs_refinement.pdf"
+                )
+                if has_data:
+                    plt.savefig(smoothing_plot_file, bbox_inches='tight')
+                plt.close(fig)
+
+                # One plot per smoothing pair shows the penalty effect at all levels.
+                for pre_smooth, post_smooth in SMOOTHING_ITERATIONS:
+                    fig, ax_eig = plt.subplots(1, 1, figsize=(9, 7))
+                    has_data = False
+                    colors = plt.cm.plasma(np.linspace(0.1, 0.9, len(PENALTY_VALUES)))
+                    ax_gmres = ax_eig.twinx()
+                    ax_eig.axhline(MAX_EIG_PLOT, color='gray', linestyle=':', alpha=0.5)
+                    ax_gmres.axhline(MAX_GMRES_PLOT, color='gray', linestyle=':', alpha=0.5)
+
+                    for color, penalty in zip(colors, PENALTY_VALUES):
+                        penalty_val = round(penalty, 2)
+                        filepath = os.path.join(
+                            OUTPUT_FOLDER,
+                            f"out_{mesh_name}_tau_{tau}_p_{penalty_val}_pre_{pre_smooth}_post_{post_smooth}_{cycle}.csv"
+                        )
+                        refs, eigenvalues, gmres = refinement_series(filepath, max_ref)
+                        if not refs:
+                            continue
+                        has_data = True
+                        label = f"penalty={penalty_val}"
+                        plot_capped_line(ax_eig, refs, eigenvalues, MAX_EIG_PLOT, label,
+                                         marker='o', color=color)
+                        plot_capped_line(ax_gmres, refs, gmres, MAX_GMRES_PLOT, "_nolegend_",
+                                         marker='s', color=color, linestyle='--')
+
+                    ax_eig.set_xlabel("Refinement level")
+                    ax_eig.set_xticks(range(1, max_ref + 1))
+                    ax_eig.grid(True, alpha=0.4)
+                    ax_eig.set_title("Eigenvalues and GMRES iterations")
+                    ax_eig.set_ylabel("Max Eigenvalue")
+                    ax_eig.set_ylim(0, MAX_EIG_PLOT * 1.05)
+                    ax_gmres.set_ylabel("Avg GMRES iterations")
+                    ax_gmres.set_ylim(0, MAX_GMRES_PLOT * 1.05)
+                    ax_gmres.yaxis.set_label_position('right')
+                    ax_gmres.yaxis.tick_right()
+                    handles, labels = ax_eig.get_legend_handles_labels()
+                    style_handles = [
+                        plt.Line2D([], [], color='black', linestyle='-', marker='o',
+                                   label='Eigenvalue'),
+                        plt.Line2D([], [], color='black', linestyle='--', marker='s',
+                                   label='GMRES')
+                    ]
+                    if handles:
+                        fig.legend(
+                            handles + style_handles,
+                            labels + [handle.get_label() for handle in style_handles],
+                            loc='lower center',
+                            bbox_to_anchor=(0.5, 0.015),
+                            ncol=4,
+                            frameon=True,
+                            title="Penalty parameter and metric"
+                        )
+                    fig.suptitle(
+                        f"Penalty versus refinement | Mesh: {mesh_name} | {cycle}-cycle | "
+                        f"tau = {tau_label} | pre = {pre_smooth}, post = {post_smooth}",
+                        y=0.98
+                    )
+                    plt.tight_layout(rect=(0.08, 0.22, 0.92, 0.93))
+                    penalty_plot_file = os.path.join(
+                        PLOT_FOLDER,
+                        f"{mesh_name}_{cycle}_tau_{tau_file_label}_pre_{pre_smooth}_post_{post_smooth}_penalty_vs_refinement.pdf"
+                    )
+                    if has_data:
+                        plt.savefig(penalty_plot_file, bbox_inches='tight')
+                    plt.close(fig)
+
+    print(f"Saved tau-specific smoothing and penalty plots in '{PLOT_FOLDER}'.")
+
 def main():
     args = parse_arguments()
     if args.reuse_data:
         args.plot_only = True
 
     for smoothing_pair_index, smoothing_pair in enumerate(SMOOTHING_ITERATIONS):
-        global PURGE_OUTPUTS
-        PURGE_OUTPUTS = smoothing_pair_index == 0
         print(
             f"Running smoothing configuration {smoothing_pair_index + 1}/"
             f"{len(SMOOTHING_ITERATIONS)}: pre={smoothing_pair[0]}, "
@@ -588,8 +741,7 @@ def main():
         )
         run_smoothing_pair(smoothing_pair, args)
 
-    if args.plot_set in ('all', 'post-smoothing'):
-        plot_post_smoothing_vs_convergence()
+    plot_tau_parameter_sweeps()
 
 if __name__ == "__main__":
     main()
