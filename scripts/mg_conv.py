@@ -162,7 +162,7 @@ def run_smoothing_pair(smoothing_pair, args):
         for p in PENALTY_VALUES:
             for smooth_pair in (smoothing_pair,):
                 pre_smooth, post_smooth = smooth_pair
-                for cycle in ['V']:
+                for cycle in ['W']:
                     for mesh_path, refs in MESH_CONFIG.items():
                         mesh_name = os.path.basename(mesh_path)
                         
