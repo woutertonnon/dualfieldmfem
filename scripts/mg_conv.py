@@ -24,10 +24,10 @@ PURGE_OUTPUTS = True
 DEFAULT_REFINEMENTS = 4
 
 # Penalty Configuration
-PENALTY_VALUES = [20., 50., 100.]
+PENALTY_VALUES = np.linspace(20, 100, 5)
 
 # Time-stepping (Tau) Configuration
-TAU_VALUES = [0., 32., 1000.]
+TAU_VALUES = [0., 100., 1000.]
 
 # Multigrid smoothing configuration: (pre_smooth, post_smooth)
 SMOOTHING_ITERATIONS = [(1, 1), (0, 1), (0, 2), (0, 4)]
