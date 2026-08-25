@@ -17,7 +17,7 @@ MESH_FOLDER = os.path.join(SCRIPT_FOLDER, "../geo/mg_meshes")
 OUTPUT_FOLDER = "data/multigrid_results"
 PLOT_FOLDER = "data/multigrid_plots"
 
-NUM_JOBS = 12  # Number of parallel jobs
+NUM_JOBS = 6  # Number of parallel jobs
 
 # Default number of refinements for all meshes
 DEFAULT_REFINEMENTS = 4
@@ -36,6 +36,7 @@ MESH_CONFIG = {
     "corner.msh": DEFAULT_REFINEMENTS,
     # "corner_structured.msh": DEFAULT_REFINEMENTS,
     "cube.msh": DEFAULT_REFINEMENTS,
+    "corner_refined.msh": DEFAULT_REFINEMENTS,
     # "cube_hole.msh": DEFAULT_REFINEMENTS,
     # "cube_two_voids.msh": DEFAULT_REFINEMENTS,
     "cube_void.msh": DEFAULT_REFINEMENTS,
