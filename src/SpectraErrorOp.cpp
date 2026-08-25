@@ -169,16 +169,22 @@ Eigen::VectorXcd computeErrorOperatorEigenvalues(
                     const_cast<mfem::FiniteElementSpace*>(&hcurl));
                 mfem::GridFunction p_imag(
                     const_cast<mfem::FiniteElementSpace*>(&h1));
+                mfem::GridFunction u_mag(
+                    const_cast<mfem::FiniteElementSpace*>(&hcurl));
+                mfem::GridFunction p_mag(
+                    const_cast<mfem::FiniteElementSpace*>(&h1));
 
                 for (int j = 0; j < nu; ++j)
                 {
                     u_real(j) = eigenvecs(j, i).real();
                     u_imag(j) = eigenvecs(j, i).imag();
+                    u_mag(j)  = std::abs(eigenvecs(j, i));
                 }
                 for (int j = 0; j < np; ++j)
                 {
                     p_real(j) = eigenvecs(nu + j, i).real();
                     p_imag(j) = eigenvecs(nu + j, i).imag();
+                    p_mag(j)  = std::abs(eigenvecs(nu + j, i));
                 }
 
                 const std::string dc_name =
@@ -196,6 +202,8 @@ Eigen::VectorXcd computeErrorOperatorEigenvalues(
                 dc.RegisterField("p_real", &p_real);
                 dc.RegisterField("u_imag", &u_imag);
                 dc.RegisterField("p_imag", &p_imag);
+                dc.RegisterField("u_mag", &u_mag);
+                dc.RegisterField("p_mag", &p_mag);
                 dc.Save();
             }
         }
