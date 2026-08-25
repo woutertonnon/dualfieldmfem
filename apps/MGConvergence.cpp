@@ -63,7 +63,7 @@ int main(int argc, char* argv[])
     std::string mesh_file, output_file, cycle_str;
     int max_refinements, nev, n_gmres, pre_smooth, post_smooth;
     double gmres_tol, eval_tol, penalty, tau;
-    bool verbose;
+    bool verbose, save_eigenvectors_vtu;
 
     // Parse command line options
     po::options_description desc("Allowed options");
@@ -79,6 +79,8 @@ int main(int argc, char* argv[])
         ("pre_smooth", po::value<int>(&pre_smooth)->default_value(1), "number of pre-smoothing steps")
         ("post_smooth", po::value<int>(&post_smooth)->default_value(1), "number of post-smoothing steps")
         ("verbose,v", po::bool_switch(&verbose)->default_value(false), "enable verbose output")
+        ("save_eigenvectors_vtu", po::bool_switch(&save_eigenvectors_vtu)->default_value(false),
+         "save error-operator eigenvectors to VTU (one dataset per eigenvector)")
         ("gmres_tol", po::value<double>(&gmres_tol)->default_value(1e-6), "GMRES tolerance")
         ("eval_tol", po::value<double>(&eval_tol)->default_value(1e-4), "Eigenvalue solver tolerance")
         ("cycle,c", po::value<std::string>(&cycle_str)->default_value("V"), "cycle type (V or W)");
@@ -166,7 +168,20 @@ int main(int argc, char* argv[])
 
         Eigen::VectorXcd evals;
         if (nev > 0)
-            evals = computeErrorOperatorEigenvalues(finest_op, mg, nev, eval_tol, verbose);
+        {
+            const std::string eigvec_prefix =
+                "out/paraview/mg_error_operator_ref_" + std::to_string(r);
+            evals = computeErrorOperatorEigenvalues(
+                finest_op,
+                mg,
+                nev,
+                eval_tol,
+                verbose,
+                nullptr,
+                save_eigenvectors_vtu,
+                &finest_op,
+                eigvec_prefix);
+        }
 
         // 2. Run GMRES (Galerkin Mode)
         finest_op.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);

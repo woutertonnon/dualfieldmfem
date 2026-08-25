@@ -4,6 +4,12 @@
 #include <Eigen/Core>
 #include <complex>
 #include <mfem.hpp>
+#include <string>
+
+namespace StokesNitsche
+{
+class StokesNitscheOperator;
+}
 
 class ErrorOperator : public mfem::Operator
 {
@@ -41,6 +47,10 @@ Eigen::VectorXcd computeErrorOperatorEigenvalues(
     const mfem::Operator& prec,
     const int             numEigenvalues = 1,
     const double          tol            = 1e-3,
-    const bool            printResults   = false);
+    const bool            printResults   = false,
+    Eigen::MatrixXcd*     eigenvectors   = nullptr,
+    const bool            saveEigenvectorsVTU = false,
+    const StokesNitsche::StokesNitscheOperator* stokesOp = nullptr,
+    const std::string&    vtuPrefix      = "error_operator_eigenvectors");
 
 #endif  // SPECTRA_ERROR_OP_HPP

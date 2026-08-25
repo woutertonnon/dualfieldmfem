@@ -1,8 +1,11 @@
 #include "SpectraErrorOp.h"
+#include "StokesOperator.h"
 
 #include <Spectra/GenEigsSolver.h>
 
 #include <algorithm>
+#include <filesystem>
+#include <iomanip>
 #include <iostream>
 
 ErrorOperator::ErrorOperator(
@@ -51,7 +54,11 @@ Eigen::VectorXcd computeErrorOperatorEigenvalues(
     const mfem::Operator& prec,
     const int             numEigenvalues,
     const double          tol,
-    const bool            printResults)
+    const bool            printResults,
+    Eigen::MatrixXcd*     eigenvectors,
+    const bool            saveEigenvectorsVTU,
+    const StokesNitsche::StokesNitscheOperator* stokesOp,
+    const std::string&    vtuPrefix)
 {
     ErrorOperator  errorOp(mat, prec);
     SpectraAdapter spectraOp(errorOp);
@@ -73,6 +80,12 @@ Eigen::VectorXcd computeErrorOperatorEigenvalues(
     if (eigs.info() == Spectra::CompInfo::Successful)
     {
         results = eigs.eigenvalues();
+        Eigen::MatrixXcd eigenvecs = eigs.eigenvectors();
+
+        if (eigenvectors)
+        {
+            *eigenvectors = eigenvecs;
+        }
 
         if (printResults)
         {
@@ -106,8 +119,85 @@ Eigen::VectorXcd computeErrorOperatorEigenvalues(
             }
             std::cout << std::string(75, '-') << "\n";
 
+            std::cout << "Eigenvector norms (2-norm):\n";
+            std::cout << std::left << std::setw(6) << "Idx" << std::right
+                      << std::setw(20) << "||Re(v)||_2" << std::setw(20)
+                      << "||Im(v)||_2" << "\n";
+            std::cout << std::string(46, '-') << "\n";
+            for (int i = 0; i < eigenvecs.cols(); i++)
+            {
+                const double re_norm = eigenvecs.col(i).real().norm();
+                const double im_norm = eigenvecs.col(i).imag().norm();
+                std::cout << std::left << std::setw(6) << i << std::right
+                          << std::setw(20) << re_norm << std::setw(20)
+                          << im_norm << "\n";
+            }
+            std::cout << std::string(46, '-') << "\n";
+
             // Restore previous cout state
             std::cout.copyfmt(oldState);
+        }
+
+        if (saveEigenvectorsVTU)
+        {
+            MFEM_VERIFY(
+                stokesOp != nullptr,
+                "Saving eigenvectors to VTU requires a StokesNitscheOperator.");
+
+            const auto& hcurl = stokesOp->getHCurlSpace();
+            const auto& h1    = stokesOp->getH1Space();
+            const int   nu    = hcurl.GetNDofs();
+            const int   np    = h1.GetNDofs();
+
+            MFEM_VERIFY(
+                nu + np == mat.Height(),
+                "Eigenvector size does not match Stokes (HCurl,H1) block sizes.");
+
+            std::filesystem::path prefix_path(vtuPrefix);
+            if (prefix_path.has_parent_path())
+            {
+                std::filesystem::create_directories(prefix_path.parent_path());
+            }
+
+            for (int i = 0; i < eigenvecs.cols(); i++)
+            {
+                mfem::GridFunction u_real(
+                    const_cast<mfem::FiniteElementSpace*>(&hcurl));
+                mfem::GridFunction p_real(
+                    const_cast<mfem::FiniteElementSpace*>(&h1));
+                mfem::GridFunction u_imag(
+                    const_cast<mfem::FiniteElementSpace*>(&hcurl));
+                mfem::GridFunction p_imag(
+                    const_cast<mfem::FiniteElementSpace*>(&h1));
+
+                for (int j = 0; j < nu; ++j)
+                {
+                    u_real(j) = eigenvecs(j, i).real();
+                    u_imag(j) = eigenvecs(j, i).imag();
+                }
+                for (int j = 0; j < np; ++j)
+                {
+                    p_real(j) = eigenvecs(nu + j, i).real();
+                    p_imag(j) = eigenvecs(nu + j, i).imag();
+                }
+
+                const std::string dc_name =
+                    vtuPrefix + "_eigvec_" + std::to_string(i);
+                mfem::ParaViewDataCollection dc(
+                    dc_name,
+                    &const_cast<StokesNitsche::StokesNitscheOperator*>(stokesOp)
+                         ->getMesh());
+                dc.SetLevelsOfDetail(1);
+                dc.SetDataFormat(mfem::VTKFormat::BINARY);
+                dc.SetHighOrderOutput(true);
+                dc.SetCycle(i);
+                dc.SetTime(static_cast<double>(i));
+                dc.RegisterField("u_real", &u_real);
+                dc.RegisterField("p_real", &p_real);
+                dc.RegisterField("u_imag", &u_imag);
+                dc.RegisterField("p_imag", &p_imag);
+                dc.Save();
+            }
         }
     }
     else
