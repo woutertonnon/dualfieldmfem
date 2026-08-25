@@ -29,7 +29,7 @@ PENALTY_VALUES = np.linspace(20, 100, 5)
 TAU_VALUES = [0., 100., 1000.]
 
 # Multigrid smoothing configuration: (pre_smooth, post_smooth)
-SMOOTHING_ITERATIONS = [(1, 1), (0, 1), (0, 2), (0, 4)]
+SMOOTHING_ITERATIONS = [(0, 1), (0, 2), (0, 4), (0, 8)]
 
 MESH_CONFIG = {
     # "ball.msh": DEFAULT_REFINEMENTS,
