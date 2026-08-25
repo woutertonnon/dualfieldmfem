@@ -47,7 +47,7 @@ public:
         const double                theta   = 1,
         const double                penalty = -1,
         const double                factor  = 1,
-        const MassLumping           ml      = MassLumping::Diagonal,
+        const MassLumping           ml      = MassLumping::RowSum,
         const SmootherType          st      = SmootherType::GaussSeidelForw,
         // Consistent-Nitsche outflow marker + pressure penalty, forwarded to
         // every level's StokesNitscheOperator (empty => zero-mean as before).

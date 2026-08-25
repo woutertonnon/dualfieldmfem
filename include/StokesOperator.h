@@ -36,7 +36,7 @@ public:
         const double                theta,
         const double                penalty,
         const double                factor,
-        const MassLumping           ml = MassLumping::Diagonal,
+        const MassLumping           ml = MassLumping::RowSum,
         // Optional consistent-Nitsche outflow ("do-nothing" pressure outflow).
         // outflow_marker marks the boundary attribute(s) left open (e.g. the
         // channel outlet); on those faces the continuity flux <u.n,q> is

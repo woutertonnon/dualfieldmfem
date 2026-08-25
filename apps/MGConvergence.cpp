@@ -111,7 +111,7 @@ int main(int argc, char* argv[])
     // Initialize Multigrid with tau and penalty from command line
     StokesNitsche::StokesMG mg(
       mesh_ptr, tau, theta, penalty, factor,
-      StokesNitsche::MassLumping::Diagonal,
+      StokesNitsche::MassLumping::RowSum,
       StokesNitsche::SmootherType::GaussSeidelForw
     );
 

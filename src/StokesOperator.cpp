@@ -163,7 +163,7 @@ void StokesNitscheOperator::initLumpedMass()
                 [&](const mfem::SparseMatrix& A, mfem::Vector& abs_row_sums)
             {
                 abs_row_sums = 0.0;
-#pragma omp parallel for
+                #pragma omp parallel for
                 for (int i = 0; i < A.Height(); ++i)
                 {
                     const int     nnz  = A.RowSize(i);
