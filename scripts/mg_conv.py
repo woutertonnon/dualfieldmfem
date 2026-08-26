@@ -78,18 +78,38 @@ def parse_arguments():
     )
     return parser.parse_args()
 
-def run_job(cmd, out_file, rerun):
-    if not rerun and os.path.exists(out_file):
-        print(f"Skipping {os.path.basename(out_file)}, already exists.")
-        return True
-    
-    print(f"Running: {' '.join(cmd)}")
-    try:
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"Job failed: {' '.join(cmd)}\n{e}")
+def output_is_complete(out_file, expected_refinements):
+    """Checks whether out_file has a row for the finest requested refinement.
+
+    A job that crashes or diverges mid-run can still leave behind a CSV with
+    rows for the lower refinement levels it completed before failing. Treating
+    that file as "done" (as a plain os.path.exists check would) hides the
+    failure permanently, since later runs would just skip it.
+    """
+    if not os.path.exists(out_file):
         return False
+    with open(out_file, 'r') as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        return False
+    try:
+        return int(float(rows[-1]['Refinements'])) >= expected_refinements
+    except (KeyError, ValueError):
+        return False
+
+def run_job(cmd, out_file, rerun, expected_refinements):
+    if not rerun and os.path.exists(out_file):
+        if not output_is_complete(out_file, expected_refinements):
+            raise RuntimeError(
+                f"'{out_file}' exists but is missing refinement {expected_refinements} "
+                f"— a previous run likely crashed or diverged before finishing. "
+                f"Delete the file or re-run with --rerun."
+            )
+        print(f"Skipping {os.path.basename(out_file)}, already exists.")
+        return
+
+    print(f"Running: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
 
 def read_csv(filepath):
     data = {}
@@ -167,13 +187,17 @@ def run_smoothing_pair(smoothing_pair, args):
                             "--gmres_tol", str(GMRES_TOL),
                             "--eval_tol", str(EW_TOL)
                         ]
-                        jobs.append((cmd, out_file))
+                        jobs.append((cmd, out_file, refs))
 
     # 2. Execute Jobs
     if not args.plot_only:
         with ThreadPoolExecutor(max_workers=NUM_JOBS) as executor:
-            futures = [executor.submit(run_job, cmd, out_file, args.rerun) for cmd, out_file in jobs]
-            for future in as_completed(futures): future.result()
+            futures = [
+                executor.submit(run_job, cmd, out_file, args.rerun, refs)
+                for cmd, out_file, refs in jobs
+            ]
+            for future in as_completed(futures):
+                future.result()
 
     # 3. Read Results
     pre_smooth, post_smooth = smoothing_pair
@@ -639,6 +663,8 @@ def plot_tau_parameter_sweeps():
 
                     ax_eig.set_title(f"Penalty = {penalty_val}")
                     ax_eig.set_xticks(post_values)
+                    ax_eig.set_yscale('log')
+                    ax_eig.axhline(1.0, color='gray', linestyle=':', alpha=0.5)
                     ax_eig.grid(True, alpha=0.4)
                     ax_eig.set_xlabel("Post-smoothing steps")
                     if penalty_index == panel_count - 1:
@@ -648,7 +674,7 @@ def plot_tau_parameter_sweeps():
 
                 for unused_axis in axes[panel_count:]:
                     unused_axis.set_visible(False)
-                axes[0].set_ylabel("Max Eigenvalue")
+                axes[0].set_ylabel("Max Eigenvalue (log scale)")
                 handles, labels = axes[0].get_legend_handles_labels()
                 style_handles = [
                     plt.Line2D([], [], color='black', linestyle='-', marker='o',
@@ -716,9 +742,11 @@ def plot_tau_parameter_sweeps():
 
                     ax_eig.set_xlabel("Refinement level")
                     ax_eig.set_xticks(range(1, max_ref + 1))
+                    ax_eig.set_yscale('log')
+                    ax_eig.axhline(1.0, color='gray', linestyle=':', alpha=0.5)
                     ax_eig.grid(True, alpha=0.4)
                     ax_eig.set_title("Eigenvalues and GMRES iterations")
-                    ax_eig.set_ylabel("Max Eigenvalue")
+                    ax_eig.set_ylabel("Max Eigenvalue (log scale)")
                     ax_gmres.set_ylabel("Avg GMRES iterations")
                     ax_gmres.yaxis.set_label_position('right')
                     ax_gmres.yaxis.tick_right()
