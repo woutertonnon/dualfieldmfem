@@ -19,6 +19,8 @@
 #   VENV      path to the Python venv, e.g.  export VENV=~/physbc-venv
 #   PYTHON    python interpreter (default python3; the venv's python if VENV set)
 #   BUILD_BINARY=1   to (re)build the solver inside the first jobs
+#   PHYSBC_MAP  'convergence' (default) or 'penalty' (Nitsche penalty sweep on
+#               under-resolved boundary layers, _build_physbc_penalty_map)
 #   Plus any sbatch overrides via SBATCH_ARGS (e.g. SBATCH_ARGS="--time=12:00:00").
 #
 # Usage:
@@ -38,7 +40,10 @@ mapfile -t ALL_KEYS < <("$PYTHON" - <<'PY'
 import sys
 sys.path.insert(0, "scripts")
 import semilagrangian_benchmarks as slb
-for k in sorted(slb._build_physbc_benchmark_map()):
+import os
+build = {"convergence": slb._build_physbc_benchmark_map,
+         "penalty": slb._build_physbc_penalty_map}[os.environ.get("PHYSBC_MAP", "convergence")]
+for k in sorted(build()):
     print(k)
 PY
 )

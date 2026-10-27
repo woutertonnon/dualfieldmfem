@@ -99,8 +99,10 @@ int main(int argc, char *argv[])
     double tol = config.get_tol();
     std::string mesh_string = config.get_mesh();
     std::string output_file = config.get_outputfile();
-    double theta = 1.;
-    double Cw = 40000.;
+    // Nitsche variant and penalty (overridable from the config for penalty
+    // sweeps; the defaults are the values used in the thesis experiments).
+    double theta = config.get_value("theta", 1.);
+    double Cw = config.get_value("Cw", 40000.);
     double dt = config.get_dt();
     double T = config.get_T();
     int trace_order = config.get_value<int>("trace_order", 1);
@@ -194,6 +196,11 @@ int main(int argc, char *argv[])
     op.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);
     auto fine_mesh_ptr = op.getMeshPtr();
     int dim = fine_mesh_ptr->Dimension();
+    if (myid == 0)
+        std::cout << "  Nitsche: theta=" << op.getTheta()
+                  << ", penalty=" << op.getPenalty()
+                  << ", coercivity bound (theta=1)="
+                  << computeCWBound(*fine_mesh_ptr, order) << std::endl;
 
     mfem::FiniteElementCollection *fec_ND = new mfem::ND_FECollection(order, dim);
     mfem::FiniteElementCollection *fec_CG = new mfem::H1_FECollection(order, dim);

@@ -544,6 +544,34 @@ def _physbc_runtime(order):
     raise ValueError(f"unsupported order {order}")
 
 
+def _penalty_overrides(overrides, order, penalty):
+    """Add a Nitsche penalty to the config overrides.
+
+    `penalty` is the penalty C_w of the solved (finest) operator. The order-2
+    app passes its Cw to the order-1 MG levels and StokesMG rescales it by
+    bound(2)/bound(1) = 8/3 across the p-refinement, so the order-2 input is
+    3/8 of the target. Both apps log the penalty they actually use.
+    """
+    if penalty is None:
+        return overrides
+    overrides = dict(overrides)
+    overrides["Cw"] = float(penalty) if order == 1 else 3.0 * float(penalty) / 8.0
+    return overrides
+
+
+def _layer_refinements(levels, refines):
+    """Refinement levels of a boundary-layer case: explicit list or 0..refines-1."""
+    if levels is not None:
+        levels = list(levels)
+        return lambda order_: levels
+    return lambda order_: range(0, refines)
+
+
+def _penalty_tag(penalty):
+    """Name suffix for a penalty sweep entry (None -> '', 300 -> '_Cw300')."""
+    return "" if penalty is None else f"_Cw{float(penalty):g}"
+
+
 def _eps_tag(nu):
     """Filename-safe tag for a viscosity value (1e-2 -> '1em2', 0.0 -> '0')."""
     nu = float(nu)
@@ -685,12 +713,14 @@ class StokesSecondProblemSemiLag(benchmark):
     """
 
     def __init__(self, executable=None, solver="GMRES", nu=1e-2, order=1, refines=4,
-                 U=1.0, omega=2.0 * 3.141592653589793, L=3.0, H=1.0):
+                 U=1.0, omega=2.0 * 3.141592653589793, L=3.0, H=1.0,
+                 penalty=None, levels=None):
         exe, overrides = _physbc_runtime(order)
         if executable is not None:
             exe = executable
+        overrides = _penalty_overrides(overrides, order, penalty)
 
-        name = f"StokesSecond_eps{_eps_tag(nu)}_order{order}"
+        name = f"StokesSecond_eps{_eps_tag(nu)}_order{order}{_penalty_tag(penalty)}"
         meshname = f"./geo/mesh/{name}.msh"
         generate_rectangle_mesh(Lx=float(L), Ly=float(H), lc=float(H) / 16.0, out=meshname)
 
@@ -717,7 +747,7 @@ class StokesSecondProblemSemiLag(benchmark):
             SimulationDataProcessor=data_processor,
             dts=lambda order_, refinement: (period / 16.0) / (2 ** refinement),
             T=period,
-            refinements=lambda order_: range(0, refines),
+            refinements=_layer_refinements(levels, refines),
             orders=[order],
             slice_normal="z",
         )
@@ -736,12 +766,14 @@ class WomersleySemiLag(benchmark):
     """
 
     def __init__(self, executable=None, solver="GMRES", nu=1e-2, order=1, refines=4,
-                 A=1.0, omega=2.0 * 3.141592653589793, L=3.0, H=1.0):
+                 A=1.0, omega=2.0 * 3.141592653589793, L=3.0, H=1.0,
+                 penalty=None, levels=None):
         exe, overrides = _physbc_runtime(order)
         if executable is not None:
             exe = executable
+        overrides = _penalty_overrides(overrides, order, penalty)
 
-        name = f"Womersley_eps{_eps_tag(nu)}_order{order}"
+        name = f"Womersley_eps{_eps_tag(nu)}_order{order}{_penalty_tag(penalty)}"
         meshname = f"./geo/mesh/{name}.msh"
         generate_rectangle_mesh(Lx=float(L), Ly=float(H), lc=float(H) / 16.0, out=meshname)
 
@@ -786,7 +818,7 @@ class WomersleySemiLag(benchmark):
             SimulationDataProcessor=data_processor,
             dts=lambda order_, refinement: (period / 16.0) / (2 ** refinement),
             T=period,
-            refinements=lambda order_: range(0, refines),
+            refinements=_layer_refinements(levels, refines),
             orders=[order],
             slice_normal="z",
         )
@@ -830,6 +862,47 @@ def _build_physbc_benchmark_map():
                 StokesSecondProblemSemiLag, nu=eps, order=order)
             bm[f"Womersley_eps{tag}_order{order}"] = partial(
                 WomersleySemiLag, nu=eps, order=order)
+    return bm
+
+
+# Nitsche penalty sweep on UNDER-RESOLVED boundary layers (thesis section
+# "Viscous boundary layers"). Stokes' second problem and Womersley flow on the
+# same strip, base mesh size h_0 = H/16, levels h_r = h_0 / 2^r, layer
+# thickness delta = sqrt(2 eps / omega). Only levels with h_r / delta >=
+# PENALTY_MIN_H_OVER_DELTA are run, so every run under-resolves the layer.
+PENALTY_SWEEP = [30.0, 100.0, 300.0, 1e3, 3e3, 1e4, 4e4]
+PENALTY_EPS = [5e-4, 1e-4, 1e-5]
+PENALTY_MIN_H_OVER_DELTA = 4.0
+
+
+def _underresolved_levels(eps, omega=2.0 * 3.141592653589793, H=1.0, refines=4,
+                          min_ratio=PENALTY_MIN_H_OVER_DELTA):
+    """Refinement levels r < refines whose mesh size h_r = (H/16)/2^r is at
+    least `min_ratio` layer thicknesses delta = sqrt(2 eps / omega)."""
+    delta = (2.0 * eps / omega) ** 0.5
+    return [r for r in range(refines) if (H / 16.0) / 2 ** r >= min_ratio * delta]
+
+
+def _build_physbc_penalty_map():
+    """Register the penalty sweep: one entry per (case, eps, penalty, order).
+
+    The penalty is that of the solved operator (see _penalty_overrides); the
+    thesis defaults are 4e4 (order 1) and 800/3 (order 2, input 100).
+    """
+    bm = {}
+    for order in [1, 2]:
+        for eps in PENALTY_EPS:
+            levels = _underresolved_levels(eps)
+            if not levels:
+                continue
+            for penalty in PENALTY_SWEEP:
+                suffix = f"_order{order}{_penalty_tag(penalty)}"
+                bm[f"StokesSecond_eps{_eps_tag(eps)}{suffix}"] = partial(
+                    StokesSecondProblemSemiLag, nu=eps, order=order,
+                    penalty=penalty, levels=levels)
+                bm[f"Womersley_eps{_eps_tag(eps)}{suffix}"] = partial(
+                    WomersleySemiLag, nu=eps, order=order,
+                    penalty=penalty, levels=levels)
     return bm
 
 

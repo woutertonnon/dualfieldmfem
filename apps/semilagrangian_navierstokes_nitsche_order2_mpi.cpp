@@ -95,8 +95,12 @@ int main(int argc, char *argv[])
     double tol = config.get_tol();
     std::string mesh_string = config.get_mesh();
     std::string output_file = config.get_outputfile();
-    double theta = 1.;
-    double Cw = 100.;
+    // Nitsche variant and penalty (overridable from the config for penalty
+    // sweeps; the defaults are the values used in the thesis experiments).
+    // Cw is the order-1 penalty: StokesMG rescales it across the p-refinement,
+    // the fine-level value is logged below.
+    double theta = config.get_value("theta", 1.);
+    double Cw = config.get_value("Cw", 100.);
     double dt = config.get_dt();
     double T = config.get_T();
     int trace_order = config.get_value<int>("trace_order", 1);  // default Euler
@@ -164,6 +168,11 @@ int main(int argc, char *argv[])
     op.setOperatorMode(StokesNitsche::OperatorMode::Galerkin);
     mfem::Mesh &mesh = op.getMesh();
     int dim = mesh.Dimension();
+    if (myid == 0)
+        std::cout << "  Nitsche: theta=" << op.getTheta()
+                  << ", penalty=" << op.getPenalty()
+                  << ", coercivity bound (theta=1)="
+                  << computeCWBound(mesh, 2) << std::endl;
 
     const int order = 2;
     mfem::FiniteElementCollection *fec_ND = new mfem::ND_FECollection(order, dim);

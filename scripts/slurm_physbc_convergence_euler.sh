@@ -140,7 +140,7 @@ sys.path.insert(0, "scripts")
 real_stdout = sys.stdout
 sys.stdout = sys.stderr
 import semilagrangian_benchmarks as slb
-bm = slb._build_physbc_benchmark_map()
+bm = {**slb._build_physbc_benchmark_map(), **slb._build_physbc_penalty_map()}
 key = os.environ["BENCH"]
 if key not in bm:
     sys.stderr.write(f"unknown BENCH '{key}'. Available:\n  " +
